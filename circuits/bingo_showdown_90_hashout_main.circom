@@ -1,0 +1,11 @@
+/*
+Copyright 2026 by Barrett Harber. All rights reserved.
+
+Patent Pending USPTO Application Number 19/811,546
+*/
+
+pragma circom 2.2.2;
+
+include "./bingo_showdown.circom";
+
+component main { public [hash] } = Showdown90HashOut(12, 90);
