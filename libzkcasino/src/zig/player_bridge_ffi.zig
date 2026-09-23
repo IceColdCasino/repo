@@ -146,8 +146,14 @@ export fn zkplayer_bridge_op(
     const body = if (h.table) |*session| blk: {
         lockEngine();
         defer engine_lock.unlock();
-        break :blk game_bridge.dispatch(session, payload[0..payload_len]) catch return -2;
-    } else ops.dispatch(&h.poker, payload[0..payload_len], backend()) catch return -2;
+        break :blk game_bridge.dispatch(session, payload[0..payload_len]) catch |err| {
+            std.debug.print("zkplayer_bridge_op error: {s}\n", .{@errorName(err)});
+            return -2;
+        };
+    } else ops.dispatch(&h.poker, payload[0..payload_len], backend()) catch |err| {
+        std.debug.print("zkplayer_bridge_op error: {s}\n", .{@errorName(err)});
+        return -2;
+    };
     defer std.heap.page_allocator.free(body);
     if (body.len > out_cap) return -3;
     @memcpy(out[0..body.len], body);
