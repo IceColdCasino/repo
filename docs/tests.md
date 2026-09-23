@@ -30,12 +30,13 @@ missing. A missing zkey fails later, when that circuit is proved or verified.
 ## GitHub Actions
 
 Pushing to `main` runs `.github/workflows/tests.yml`. Typecheck uses a small
-Linux runner. Each game is a separate `ubuntu-24.04-arm` job: the proving
-keys are about 12 GB together, and a standard runner cannot hold all of them
-plus the witness build. The job downloads the Linux arm64 `librapidsnark.so`
-from the iden3/rapidsnark release, builds the witness libraries for that game
-(`zig build -Dcircuit-set=<game>`), pulls only that game’s
-keys from Git LFS, then runs the matching `complete_*` file.
+Linux runner. Each game runs twice, on `ubuntu-24.04-arm` and on `macos-26`:
+the proving keys are about 12 GB together, and a standard runner cannot hold
+all of them plus the witness build. The job downloads that platform’s arm64
+rapidsnark library from the iden3/rapidsnark release (`librapidsnark.so` on
+Linux, `librapidsnark.dylib` on macOS), installs GMP, builds the witness
+libraries for that game (`zig build -Dcircuit-set=<game>`), pulls only that
+game’s keys from Git LFS, then runs the matching `complete_*` file.
 
 Those jobs need `zkey/` and `.gitattributes` on `main`. The blackjack
 eight-seat case stays skipped.
