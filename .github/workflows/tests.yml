@@ -81,7 +81,7 @@ jobs:
         run: |
           set -eux
           sudo apt-get update
-          sudo apt-get install -y libgmp-dev git-lfs unzip
+          sudo apt-get install -y g++ libgmp-dev git-lfs unzip
           ver=v0.0.8
           curl -fsSL -o /tmp/rapidsnark.zip \
             "https://github.com/iden3/rapidsnark/releases/download/${ver}/rapidsnark-linux-arm64-${ver}.zip"
