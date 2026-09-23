@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [blacksmith-4vcpu-ubuntu-2404-arm, blacksmith-12vcpu-macos-latest]
+        runner: [blacksmith-16vcpu-ubuntu-2404-arm, blacksmith-12vcpu-macos-latest]
         game: [poker, blackjack, baccarat, war, roulette, craps, keno, slots, bingo]
         include:
           - game: poker
