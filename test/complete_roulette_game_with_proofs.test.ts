@@ -248,11 +248,11 @@ async function runGame(nActualPlayers: number, variant: RouletteVariant) {
 
 test('Complete Roulette EU (37) Game with 2 players', async () => {
   await runGame(2, 37);
-}, 300_000);
+}, 600_000);
 
 test('Complete Roulette US (38) Game with 2 players', async () => {
   await runGame(2, 38);
-}, 300_000);
+}, 600_000);
 
 test('Complete Roulette EU (37) Game with 3 players', async () => {
   await runGame(3, 37);

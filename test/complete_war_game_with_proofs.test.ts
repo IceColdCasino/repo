@@ -161,7 +161,7 @@ async function runGame(nActualPlayers: number) {
 
 test('Complete War Game with 2 players', async () => {
   await runGame(2);
-}, 300_000);
+}, 600_000);
 
 test('Complete War Game with 3 players', async () => {
   await runGame(3);

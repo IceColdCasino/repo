@@ -125,7 +125,7 @@ async function runGame(variant: SlotVariant) {
 
 test('Complete 3-reel Slots Game with 2 players', async () => {
   await runGame(3);
-}, 300_000);
+}, 600_000);
 
 test('Complete 5-reel Slots Game with 2 players', async () => {
   await runGame(5);

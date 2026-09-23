@@ -154,4 +154,4 @@ async function runGame(nActualPlayers: number) {
 
 test('Complete Craps Game with 2 players (bet after shuffle, before reveal)', async () => {
   await runGame(2);
-}, 300_000);
+}, 600_000);

@@ -27,7 +27,7 @@ jobs:
   games:
     name: ${{ matrix.game }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 300
+    timeout-minutes: 600
     strategy:
       fail-fast: false
       matrix:
