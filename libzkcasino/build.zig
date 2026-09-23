@@ -586,6 +586,7 @@ fn addLinuxCxxIncludes(module: *std.Build.Module) void {
     module.addIncludePath(.{ .cwd_relative = cxx });
     module.addIncludePath(.{ .cwd_relative = arch });
     module.addIncludePath(.{ .cwd_relative = bits });
+    module.addIncludePath(.{ .cwd_relative = "/usr/include/aarch64-linux-gnu" });
     module.addIncludePath(.{ .cwd_relative = "/usr/include" });
 }
 
