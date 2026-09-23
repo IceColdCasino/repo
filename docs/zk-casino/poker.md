@@ -62,4 +62,9 @@ the showdown seal vector.
 | `shuffle_1_deck_52_main.circom` | Shoe |
 | `poker_share_main.circom` / `poker_share_hashout_main.circom` | Partials |
 | `poker_showdown_main.circom` / `poker_showdown_hashout_main.circom` | Winners |
-| `poker_hand_eval_main.circom` / `poker_compare_hands_main.circom` | Isolated eval / compare (tests and tooling) |
+| `poker_hand_eval_main.circom` / `poker_compare_hands_main.circom` | Isolated eval / compare (templates inside showdown) |
+
+## Host test
+
+`test/complete_poker_game_with_proofs.test.ts`. What that file checks is in
+[tests.md](../tests.md).

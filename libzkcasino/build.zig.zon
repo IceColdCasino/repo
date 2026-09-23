@@ -1,0 +1,17 @@
+.{
+    .name = .libzkcasino,
+    .version = "0.0.0",
+    .fingerprint = 0xe8c240f8d53320f9,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .rapidsnark = .{
+            .url = "https://github.com/iden3/rapidsnark/archive/81eddf1a536d26497b237c0b8a04fe90baf7e439.tar.gz",
+            .hash = "N-V-__8AAD25GwArSiaE-omcpeLIQWF1DUW1MHXoi6bFKSkD",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

@@ -58,3 +58,8 @@ constraint is **hand composition**, not betting order.
 | `blackjack_share_hashout_main.circom` | Partials |
 | `blackjack_action_hashout_main.circom` | Hit / stand / split |
 | `blackjack_showdown_hashout_main.circom` | Settlement |
+
+## Host test
+
+`test/complete_blackjack_game_with_proofs.test.ts`. What that file checks is in
+[tests.md](../tests.md).

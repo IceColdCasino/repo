@@ -1,0 +1,121 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+
+  games:
+    name: ${{ matrix.game }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - game: poker
+            test: complete_poker_game_with_proofs.test.ts
+            circuit_set: poker
+            lfs: zkey/register_main*,zkey/shuffle_1_deck_52_main*,zkey/poker_*
+          - game: blackjack
+            test: complete_blackjack_game_with_proofs.test.ts
+            circuit_set: blackjack
+            lfs: zkey/register_main*,zkey/shuffle_6_deck_52_main*,zkey/blackjack_*
+          - game: baccarat
+            test: complete_baccarat_game_with_proofs.test.ts
+            circuit_set: baccarat
+            lfs: zkey/register_main*,zkey/shuffle_1_deck_52_main*,zkey/baccarat_*
+          - game: war
+            test: complete_war_game_with_proofs.test.ts
+            circuit_set: war
+            lfs: zkey/register_main*,zkey/shuffle_6_deck_52_main*,zkey/war_*
+          - game: roulette
+            test: complete_roulette_game_with_proofs.test.ts
+            circuit_set: roulette
+            lfs: zkey/register_main*,zkey/shuffle_1_deck_37_main*,zkey/shuffle_1_deck_38_main*,zkey/roulette_*
+          - game: craps
+            test: complete_craps_game_with_proofs.test.ts
+            circuit_set: craps
+            lfs: zkey/register_main*,zkey/shuffle_2_dice_6_main*,zkey/craps_*
+          - game: keno
+            test: complete_keno_game_with_proofs.test.ts
+            circuit_set: keno
+            lfs: zkey/register_main*,zkey/shuffle_1_deck_80_main*,zkey/keno_*
+          - game: slots
+            test: complete_slot_game_with_proofs.test.ts
+            circuit_set: slots
+            lfs: zkey/register_main*,zkey/shuffle_3_reel_22_main*,zkey/shuffle_5_reel_22_main*,zkey/slot_*
+          - game: bingo
+            test: complete_bingo_game_with_proofs.test.ts
+            circuit_set: bingo
+            lfs: zkey/register_main*,zkey/shuffle_1_deck_75_main*,zkey/shuffle_1_deck_90_main*,zkey/bingo_*
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/share/swift
+          df -h /
+
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Download rapidsnark
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y libgmp-dev git-lfs unzip
+          ver=v0.0.8
+          curl -fsSL -o /tmp/rapidsnark.zip \
+            "https://github.com/iden3/rapidsnark/releases/download/${ver}/rapidsnark-linux-arm64-${ver}.zip"
+          unzip -q /tmp/rapidsnark.zip -d /tmp/rapidsnark
+          mkdir -p "$GITHUB_WORKSPACE/rapidsnark/lib"
+          cp "/tmp/rapidsnark/rapidsnark-linux-arm64-${ver}/lib/librapidsnark.so" \
+            "$GITHUB_WORKSPACE/rapidsnark/lib/"
+          rm -rf /tmp/rapidsnark /tmp/rapidsnark.zip
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Build libzkcasino
+        working-directory: libzkcasino
+        run: zig build -Doptimize=ReleaseFast -Dcircuit-set=${{ matrix.circuit_set }}
+
+      - name: Drop the Zig cache
+        run: rm -rf libzkcasino/.zig-cache libzkcasino/zig-pkg "${HOME}/.cache/zig"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Pull proving keys for this game
+        run: |
+          set -eux
+          git lfs install --local
+          git lfs pull --include="${{ matrix.lfs }}"
+          key=zkey/register_main_0001.zkey
+          test -f "$key"
+          if head -c 40 "$key" | grep -q "git-lfs.github.com"; then
+            echo "zkey files are still Git LFS pointers. Push zkey/ before this job can prove."
+            exit 1
+          fi
+          df -h /
+
+      - run: bun install --frozen-lockfile
+      - run: bun test "test/${{ matrix.test }}"

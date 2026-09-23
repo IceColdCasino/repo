@@ -56,3 +56,8 @@ through even-money 1:1; `0` / `00` lose even-money bets.
 | `roulette_bet_37_main.circom` / `roulette_bet_38_main.circom` | Ticket commit |
 | `roulette_share_hashout_main.circom` | Pocket partials |
 | `roulette_showdown_37_hashout_main.circom` / `roulette_showdown_38_hashout_main.circom` | Payouts |
+
+## Host test
+
+`test/complete_roulette_game_with_proofs.test.ts`. What that file checks is in
+[tests.md](../tests.md).

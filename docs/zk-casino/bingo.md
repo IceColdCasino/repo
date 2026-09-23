@@ -59,3 +59,8 @@ scalars; the game logic is bingo patterns, not a keno hit count.
 | `bingo_card_75_main.circom` / `bingo_card_90_main.circom` | Card commit |
 | `bingo_share_hashout_main.circom` | Call partials |
 | `bingo_showdown_75_hashout_main.circom` / `bingo_showdown_90_hashout_main.circom` | Pattern win |
+
+## Host test
+
+`test/complete_bingo_game_with_proofs.test.ts`. What that file checks is in
+[tests.md](../tests.md).

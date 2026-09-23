@@ -56,3 +56,8 @@ the painted symbols. The strip mapping is a circuit constant.
 | `shuffle_3_reel_22_main.circom` / `shuffle_5_reel_22_main.circom` | Reels |
 | `slot_share_3_reel_hashout_main.circom` / `slot_share_5_reel_hashout_main.circom` | Partials |
 | `slot_showdown_3_reel_hashout_main.circom` / `slot_showdown_5_reel_hashout_main.circom` | Award |
+
+## Host test
+
+`test/complete_slot_game_with_proofs.test.ts`. What that file checks is in
+[tests.md](../tests.md).

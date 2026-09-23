@@ -52,3 +52,8 @@ opened 20 this many times.”
 | `keno_bet_main.circom` | Spot ticket |
 | `keno_share_hashout_main.circom` | Draw partials |
 | `keno_showdown_hashout_main.circom` | Hits |
+
+## Host test
+
+`test/complete_keno_game_with_proofs.test.ts`. What that file checks is in
+[tests.md](../tests.md).

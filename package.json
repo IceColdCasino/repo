@@ -1,0 +1,19 @@
+{
+  "name": "icecoldcasino",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:games": "bun test test/complete_*_game_with_proofs.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/circomlibjs": "^0.1.6",
+    "@types/node": "^26.6.2",
+    "@types/snarkjs": "^0.7.9",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "circomlib": "^2.0.5"
+  }
+}

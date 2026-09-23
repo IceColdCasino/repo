@@ -48,3 +48,8 @@ fewer opened indices).
 | `shuffle_{1,6,8}_deck_52_main.circom` | Shoe |
 | `war_share_hashout_main.circom` | Partials |
 | `war_showdown_hashout_main.circom` | Player / dealer / tie |
+
+## Host test
+
+`test/complete_war_game_with_proofs.test.ts`. What that file checks is in
+[tests.md](../tests.md).

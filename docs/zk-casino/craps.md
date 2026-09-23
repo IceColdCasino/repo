@@ -56,3 +56,8 @@ state inside Circom.
 | `craps_share_hashout_main.circom` | Die partials |
 | `craps_showdown_hashout_main.circom` | Bets + action + point |
 | `craps_bet_eval_main.circom` | Isolated bet evaluation |
+
+## Host test
+
+`test/complete_craps_game_with_proofs.test.ts`. What that file checks is in
+[tests.md](../tests.md).
