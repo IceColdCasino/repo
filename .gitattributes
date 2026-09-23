@@ -1,1 +1,2 @@
 zkey/** filter=lfs diff=lfs merge=lfs -text
+libzkcasino/src/circuits/** linguist-generated=true
