@@ -48,3 +48,8 @@ still encrypted positions in the deal window and must match `P(v)`).
 | `shuffle_{1,6,8}_deck_52_main.circom` | Shoe |
 | `baccarat_share_hashout_main.circom` | Partials |
 | `baccarat_showdown_hashout_main.circom` | Player / banker / tie |
+
+## Host test
+
+`test/complete_baccarat_game_with_proofs.test.ts`. What that file checks is in
+[tests.md](../tests.md).

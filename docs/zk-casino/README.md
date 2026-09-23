@@ -8,9 +8,10 @@
 > modification, distribution, or commercial use of the circuits or this
 > documentation is prohibited without written permission.
 
-This folder documents the **Groth16 / Circom** mental-poker stack only. It does
-not describe Arcium MPC, Solana programs, or the native app. Those layers
-consume the same hashes and proofs; they are not part of these circuits.
+This folder documents the **Groth16 / Circom** mental-poker protocol. Arcium
+MPC and the Solana programs are not described here. The Zig prover, the
+proving keys, and the TypeScript host tests are documented separately:
+[libzkcasino](../libzkcasino.md), [zkeys](../zkeys.md), [tests](../tests.md).
 
 Every game is a parameterized instance of one protocol:
 
@@ -357,8 +358,10 @@ hashes.
 | **Input (Poseidon)** | Register / shuffle / share / showdown | Binds private witness to a public commitment so a proof cannot be replayed against a different deck, key set, or bet vector. |
 | **Output (polynomial)** | Share and showdown `*_hashout_main` | `h = Σ fold(limb[i]) · HASH_COEFFS_900[i]`. `fold` is `ExtractAndCombine`: `low128 + 2 · reverse(high126)` after `Num2Bits_strict`. Fold is **not injective**; collision resistance comes from the random coefficients, not from fold. |
 
-`HASH_COEFFS_900` are deterministic ChaCha20 bytes from seed `[0; 32]`. Circom,
-TypeScript, and (outside this doc) Arcis must use the same fold and coefficients.
+`HASH_COEFFS_900` are deterministic ChaCha20 bytes from seed `[0; 32]`. Circom
+and libzkcasino use the same fold and the same coefficients. The TypeScript
+tests ask libzkcasino for the hash; they do not fold the limbs themselves.
+Arcis, outside this tree, has to use that same fold and those coefficients.
 
 ---
 
@@ -449,6 +452,9 @@ Share and showdown mains are usually `*_share_hashout_main` and
 
 ## Circuit sources
 
-All files live in `circuits/`. Compile and trusted-setup with `./calc.sh <main>`
-from the repository root (see `AGENTS.md`). Generated `.r1cs`, `.wasm`, and
-`.zkey` artifacts are not source and are not committed.
+Sources live in `circuits/`. `./calc.sh <main>` from the repository root
+compiles a main and writes `zkey/<main>_0001.zkey` plus
+`zkey/<main>_verification_key.json`. Those keys are part of the tree and are
+tracked with Git LFS. How a key is produced, and which mains the host tests
+prove, is in [zkeys.md](../zkeys.md). `build/` holds circom intermediates and
+is not the source of the keys.

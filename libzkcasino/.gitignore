@@ -1,0 +1,10 @@
+# Zig build artifacts
+.zig-cache/
+zig-out/
+zig-out-ios-simulator/
+*.o
+*.a
+*.dylib
+
+# Zig package dependencies
+zig-pkg/

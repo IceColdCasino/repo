@@ -20,43 +20,55 @@ Presence of source here does not waive those rights.
 
 ## Layout
 
-This public tree is a curated subset of the private implementation. It contains
-the Circom sources and the protocol documentation that maps them onto the
-patent.
-
 ```text
 .
 ├── circuits/              Groth16 / Circom sources (templates and mains)
-└── docs/zk-casino/        Protocol and per-game documentation
-    ├── README.md          Start here
-    ├── poker.md
-    ├── blackjack.md
-    ├── baccarat.md
-    ├── war.md
-    ├── roulette.md
-    ├── craps.md
-    ├── keno.md
-    ├── slots.md
-    └── bingo.md
+├── libzkcasino/           Zig field math, witness generation, Groth16 prove
+├── src/                   TypeScript table and player host
+├── test/                  Complete-game Bun tests that prove every phase
+├── zkey/                  Proving keys and verification keys (Git LFS)
+├── calc.sh                Compile a main and run its trusted setup
+└── docs/
+    ├── zk-casino/         Protocol and per-game documentation
+    ├── libzkcasino.md
+    ├── zkeys.md
+    └── tests.md
 ```
 
 - **`circuits/`** — shared primitives (`elgamal`, `register`, `shuffle`,
   `share`, `showdown`, hashes) and the game-specific mains compiled from them.
+- **`libzkcasino/`** — the library the host calls for every hash, decryption,
+  witness, and proof. See [docs/libzkcasino.md](docs/libzkcasino.md).
+- **`src/`** and **`test/`** — the TypeScript table. Proofs and hash checks
+  go through Bun FFI into libzkcasino. See [docs/tests.md](docs/tests.md).
+- **`zkey/`** — one Groth16 proving key and verification key per main.
+  See [docs/zkeys.md](docs/zkeys.md).
 - **`docs/zk-casino/`** — how the four-phase protocol works, how USPTO
   **19/811,546** maps onto these circuits, and the shoe / evaluator interface
   for each game.
 
-Arcium MPC, Solana programs, native app code, tests, and build tooling are
-**not** in this repository. Those layers consume the same hashes and proofs;
-they are not part of these circuits.
+Arcium MPC and the Solana programs are not in this repository. They consume
+the same hashes and proofs.
+
+`rapidsnark/` is a local build of the prover and is gitignored. The tests
+expect `rapidsnark/lib/librapidsnark.dylib`.
 
 ## Documentation
 
-Read **[docs/zk-casino/README.md](docs/zk-casino/README.md)** first.
+Read **[docs/zk-casino/README.md](docs/zk-casino/README.md)** for the protocol.
 
 That page covers encryption, the shared register → shuffle → share → showdown
 pipeline, the patent-to-circuit map, and links to each game. The game pages
-document only shoe layout, opened indices, and evaluation.
+document shoe layout, opened indices, and evaluation.
+
+The implementation docs are separate:
+
+- **[docs/libzkcasino.md](docs/libzkcasino.md)** — Zig libraries, the JSON
+  bridge, and the `calc` hashes.
+- **[docs/zkeys.md](docs/zkeys.md)** — proving keys, verification keys, and
+  `./calc.sh`.
+- **[docs/tests.md](docs/tests.md)** — what `bun run test:games` actually
+  checks.
 
 ## Legal
 
