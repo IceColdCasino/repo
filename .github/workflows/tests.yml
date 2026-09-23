@@ -10,6 +10,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   typecheck:
@@ -123,13 +124,37 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
+          cache: false
+
+      - name: Restore Zig cache
+        id: zig-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .zig-cache
+            libzkcasino/.zig-cache
+            libzkcasino/zig-pkg
+          key: zig-0.16.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}-${{ hashFiles('libzkcasino/build.zig', 'libzkcasino/build.zig.zon', 'libzkcasino/src/**/*.zig', 'libzkcasino/src/witness_common/**', 'libzkcasino/src/circuits/**/*.cpp', 'libzkcasino/src/circuits/**/*_prefix.h') }}
+          restore-keys: |
+            zig-0.16.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}-
 
       - name: Build libzkcasino
         working-directory: libzkcasino
         run: zig build -Doptimize=ReleaseFast -Dcircuit-set=${{ matrix.circuit_set }}
 
+      - name: Save Zig cache
+        if: steps.zig-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .zig-cache
+            libzkcasino/.zig-cache
+            libzkcasino/zig-pkg
+          key: ${{ steps.zig-cache.outputs.cache-primary-key }}
+
       - name: Drop the Zig cache
-        run: rm -rf libzkcasino/.zig-cache libzkcasino/zig-pkg "${HOME}/.cache/zig" "${HOME}/Library/Caches/zig"
+        run: rm -rf .zig-cache libzkcasino/.zig-cache libzkcasino/zig-pkg "${HOME}/.cache/zig" "${HOME}/Library/Caches/zig"
 
       - uses: oven-sh/setup-bun@v2
 

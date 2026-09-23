@@ -28,12 +28,11 @@ extern "c" fn Fr_rawMMul(dst: [*c]u64, a: [*c]u64, b: [*c]u64) void;
 extern "c" fn Fr_rawMMul1(dst: [*c]u64, a: [*c]u64, b: u64) void;
 extern "c" fn Fr_rawFromMontgomery(dst: [*c]u64, src: [*c]u64) void;
 
-// Fr_rawToMontgomery has C++ mangled name in libfr.a
-// We call it via the mangled name (without the leading underscore,
-// because Zig will add the macOS linker prefix automatically)
-extern fn @"_Z18Fr_rawToMontgomeryPyRA4_Ky"(dst: [*c]u64, src: [*c]u64) void;
+// C++ mangling of Fr_rawToMontgomery depends on whether uint64_t is
+// unsigned long. The wrapper in fr_raw_to_montgomery.cpp makes one C name.
+extern "c" fn zkcasino_Fr_rawToMontgomery(dst: [*c]u64, src: [*c]u64) void;
 export fn Fr_rawToMontgomery(dst: [*c]u64, src: [*c]u64) void {
-    @"_Z18Fr_rawToMontgomeryPyRA4_Ky"(dst, src);
+    zkcasino_Fr_rawToMontgomery(dst, src);
 }
 extern "c" fn Fr_rawIsEq(a: [*c]u64, b: [*c]u64) c_int;
 extern "c" fn Fr_rawIsZero(a: [*c]u64) c_int;
