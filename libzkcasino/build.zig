@@ -375,6 +375,10 @@ fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
     addLibcppLink(lib_mod, opts.target, opts.sdk);
     if (opts.target.result.os.tag == .macos or opts.target.result.os.tag == .ios) {
         lib_mod.addRPath(.{ .cwd_relative = "@loader_path" });
+    } else if (opts.target.result.os.tag == .linux) {
+        // Witness libs NEEDED libfr.so, which is installed beside them.
+        // Linux has no default sibling search; $ORIGIN is that directory.
+        lib_mod.addRPathSpecial("$ORIGIN");
     }
     lib_mod.addImport("witness_export_options", opts.witness_export_options_mod);
     lib_mod.addImport("witness_poker_options", opts.witness_poker_options_mod);

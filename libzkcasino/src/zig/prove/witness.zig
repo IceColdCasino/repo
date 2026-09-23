@@ -19,7 +19,11 @@ pub const Lib = struct {
     free: FreeFn,
 
     pub fn open(lib_path: [:0]const u8, dat_root: []const u8) !Lib {
-        var dyn = std.DynLib.open(lib_path) catch return error.WitnessLibOpen;
+        var dyn = std.DynLib.open(lib_path) catch {
+            std.debug.print("witness lib open failed: {s}\n", .{lib_path});
+            if (std.c.dlerror()) |msg| std.debug.print("dlerror: {s}\n", .{std.mem.span(msg)});
+            return error.WitnessLibOpen;
+        };
         const init_fn = dyn.lookup(InitFn, "zkcasino_init") orelse return error.WitnessSymbol;
         const generate = dyn.lookup(GenerateFn, "zkcasino_generate_wtns") orelse return error.WitnessSymbol;
         const free = dyn.lookup(FreeFn, "zkcasino_free") orelse return error.WitnessSymbol;
