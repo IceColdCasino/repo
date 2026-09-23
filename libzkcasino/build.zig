@@ -453,7 +453,9 @@ fn addLibcppLink(module: *std.Build.Module, target: std.Build.ResolvedTarget, sd
         return;
     }
 
-    module.linkSystemLibrary("stdc++", .{});
+    // linkSystemLibrary("stdc++") is rewritten to Zig's bundled libc++.
+    // These objects are compiled against the system libstdc++ headers.
+    module.addObjectFile(.{ .cwd_relative = "/usr/lib/aarch64-linux-gnu/libstdc++.so" });
 }
 
 fn appendIosCppFlags(
@@ -491,6 +493,7 @@ fn addCppCompileIncludes(
     if (sdk_cxx_include.len > 0) {
         module.addIncludePath(.{ .cwd_relative = sdk_cxx_include });
     }
+    if (os_tag == .linux) addLinuxCxxIncludes(module);
     module.addIncludePath(module.owner.path("src/witness_common"));
     module.addIncludePath(rapidsnark_build);
     if (include_gmp_headers) {
@@ -565,6 +568,25 @@ fn defaultGmpPath(os_tag: std.Target.Os.Tag) []const u8 {
         .ios => "../rapidsnark/lib/ios-simulator/lib/libgmp.a",
         else => "/opt/homebrew/lib/libgmp.dylib",
     };
+}
+
+fn addLinuxCxxIncludes(module: *std.Build.Module) void {
+    const b = module.owner;
+    var dir = std.Io.Dir.openDirAbsolute(b.graph.io, "/usr/include/c++", .{ .iterate = true }) catch
+        @panic("Linux C++ builds need g++ (/usr/include/c++ is missing)");
+    defer dir.close(b.graph.io);
+    var it = dir.iterate();
+    const ver = while (it.next(b.graph.io) catch null) |ent| {
+        if (ent.kind == .directory) break b.dupe(ent.name);
+    } else @panic("Linux C++ builds need g++ (/usr/include/c++ is empty)");
+
+    const cxx = b.fmt("/usr/include/c++/{s}", .{ver});
+    const arch = b.fmt("/usr/include/aarch64-linux-gnu/c++/{s}", .{ver});
+    const bits = b.fmt("/usr/include/c++/{s}/aarch64-linux-gnu", .{ver});
+    module.addIncludePath(.{ .cwd_relative = cxx });
+    module.addIncludePath(.{ .cwd_relative = arch });
+    module.addIncludePath(.{ .cwd_relative = bits });
+    module.addIncludePath(.{ .cwd_relative = "/usr/include" });
 }
 
 fn linkGmp(module: *std.Build.Module, os_tag: std.Target.Os.Tag, gmp_path: []const u8, explicit: bool) void {
