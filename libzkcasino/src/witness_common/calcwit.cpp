@@ -31,7 +31,10 @@ extern "C" {
 
 extern "C" uint64_t fnv1a(const char* str);
 
-u64 fnv1a(std::string s) {
+// Each circuit compiles this file with its own prefix header. These symbols are
+// identical across circuits and are not renamed, so more than one object in a
+// game library defines them. Weak lets the linker keep a single copy.
+__attribute__((weak)) u64 fnv1a(std::string s) {
     return ::fnv1a(s.c_str());
 }
 
@@ -108,7 +111,7 @@ Circom_CalcWit::~Circom_CalcWit() {
     zkcasino_calcwit_destroy(zig_ctx);
 }
 
-extern "C" void zkcasino_calcwit_reset_cpp_ctx(void* cpp_ctx) {
+extern "C" __attribute__((weak)) void zkcasino_calcwit_reset_cpp_ctx(void* cpp_ctx) {
     if (!cpp_ctx) return;
     static_cast<Circom_CalcWit*>(cpp_ctx)->reset();
 }
@@ -143,14 +146,14 @@ std::string Circom_CalcWit::generate_position_array(uint* dimensions, uint size_
     return std::string(pos);
 }
 
-extern "C" void zkcasino_calcwit_get_witness_cpp(void* cpp_ctx, uint32_t idx, FrElement* val) {
+extern "C" __attribute__((weak)) void zkcasino_calcwit_get_witness_cpp(void* cpp_ctx, uint32_t idx, FrElement* val) {
     static_cast<Circom_CalcWit*>(cpp_ctx)->getWitness(idx, val);
 }
 
-extern "C" void zkcasino_calcwit_delete_cpp_ctx(void* cpp_ctx) {
+extern "C" __attribute__((weak)) void zkcasino_calcwit_delete_cpp_ctx(void* cpp_ctx) {
     delete (Circom_CalcWit*)cpp_ctx;
 }
 
-extern "C" void* zkcasino_calcwit_get_zig_ctx(void* cpp_ctx) {
+extern "C" __attribute__((weak)) void* zkcasino_calcwit_get_zig_ctx(void* cpp_ctx) {
     return ((Circom_CalcWit*)cpp_ctx)->getZigCtx();
 }
