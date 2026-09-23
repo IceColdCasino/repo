@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <map>
+#include <system_error>
 #include <cassert>
 
 #include "circom.hpp"

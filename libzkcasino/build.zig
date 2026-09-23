@@ -97,6 +97,9 @@ pub fn build(b: *std.Build) void {
         opt_flag,
         "-DUSE_ASM",
         "-DARCH_ARM64",
+        "-stdlib=libc++",
+        "-Wno-vla-cxx-extension",
+        "-Wno-error=vla-cxx-extension",
     };
     var fr_cpp_flag_buf: [16][]const u8 = undefined;
     const fr_cpp_flags: []const []const u8 = if (is_apple)
@@ -117,6 +120,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    // libc++ keeps std::map at 24 bytes, matching calcwit.zig. libstdc++ is 48.
+    if (!is_apple) fr_cpp_mod.link_libcpp = true;
     addCppCompileIncludes(fr_cpp_mod, sdk_cxx_include, rapidsnark.path("build"), target.result.os.tag, target.result.os.tag == .macos or target.result.os.tag == .ios);
     fr_cpp_mod.addCSourceFile(.{ .file = rapidsnark.path("build/fr.cpp"), .flags = fr_cpp_flags });
     fr_cpp_mod.addCSourceFile(.{ .file = rapidsnark.path("build/fr_generic.cpp"), .flags = fr_cpp_flags });
@@ -178,6 +183,9 @@ pub fn build(b: *std.Build) void {
         "-fvisibility=hidden",
         "-DUSE_ASM",
         "-DARCH_ARM64",
+        "-stdlib=libc++",
+        "-Wno-vla-cxx-extension",
+        "-Wno-error=vla-cxx-extension",
     };
     var cpp_flag_buf: [16][]const u8 = undefined;
     const cpp_flags: []const []const u8 = if (is_apple)
@@ -410,6 +418,7 @@ fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
                 .sanitize_c = .off,
                 .strip = true,
             });
+            if (opts.target.result.os.tag == .linux) cpp_mod.link_libcpp = true;
             addCppCompileIncludes(cpp_mod, opts.sdk_cxx_include, opts.rapidsnark_build, opts.target.result.os.tag, opts.target.result.os.tag == .macos or opts.target.result.os.tag == .ios);
             addCppSourceWithPrefix(cpp_mod, cpp_file, prefix_path, opts.cpp_flags);
 
@@ -453,9 +462,8 @@ fn addLibcppLink(module: *std.Build.Module, target: std.Build.ResolvedTarget, sd
         return;
     }
 
-    // linkSystemLibrary("stdc++") is rewritten to Zig's bundled libc++.
-    // These objects are compiled against the system libstdc++ headers.
-    module.addObjectFile(.{ .cwd_relative = "/usr/lib/aarch64-linux-gnu/libstdc++.so" });
+    // Bundled libc++, same layout as the macOS witness structs.
+    module.link_libcpp = true;
 }
 
 fn appendIosCppFlags(
@@ -493,7 +501,7 @@ fn addCppCompileIncludes(
     if (sdk_cxx_include.len > 0) {
         module.addIncludePath(.{ .cwd_relative = sdk_cxx_include });
     }
-    if (os_tag == .linux) addLinuxCxxIncludes(module);
+    if (os_tag == .linux) addLinuxCIncludes(module);
     module.addIncludePath(module.owner.path("src/witness_common"));
     module.addIncludePath(rapidsnark_build);
     if (include_gmp_headers) {
@@ -570,22 +578,8 @@ fn defaultGmpPath(os_tag: std.Target.Os.Tag) []const u8 {
     };
 }
 
-fn addLinuxCxxIncludes(module: *std.Build.Module) void {
-    const b = module.owner;
-    var dir = std.Io.Dir.openDirAbsolute(b.graph.io, "/usr/include/c++", .{ .iterate = true }) catch
-        @panic("Linux C++ builds need g++ (/usr/include/c++ is missing)");
-    defer dir.close(b.graph.io);
-    var it = dir.iterate();
-    const ver = while (it.next(b.graph.io) catch null) |ent| {
-        if (ent.kind == .directory) break b.dupe(ent.name);
-    } else @panic("Linux C++ builds need g++ (/usr/include/c++ is empty)");
-
-    const cxx = b.fmt("/usr/include/c++/{s}", .{ver});
-    const arch = b.fmt("/usr/include/aarch64-linux-gnu/c++/{s}", .{ver});
-    const bits = b.fmt("/usr/include/c++/{s}/aarch64-linux-gnu", .{ver});
-    module.addIncludePath(.{ .cwd_relative = cxx });
-    module.addIncludePath(.{ .cwd_relative = arch });
-    module.addIncludePath(.{ .cwd_relative = bits });
+fn addLinuxCIncludes(module: *std.Build.Module) void {
+    // C headers only. C++ comes from Zig's libc++ via link_libcpp.
     module.addIncludePath(.{ .cwd_relative = "/usr/include/aarch64-linux-gnu" });
     module.addIncludePath(.{ .cwd_relative = "/usr/include" });
 }
