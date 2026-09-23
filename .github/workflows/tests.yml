@@ -13,7 +13,36 @@ permissions:
   actions: write
 
 jobs:
+  changes:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    outputs:
+      typecheck: ${{ steps.select.outputs.typecheck }}
+      has_games: ${{ steps.select.outputs.has_games }}
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - uses: useblacksmith/checkout@v1
+        with:
+          fetch-depth: 1
+          lfs: false
+      - name: Select tests
+        id: select
+        run: |
+          set -euo pipefail
+          before="${{ github.event.before }}"
+          zero=0000000000000000000000000000000000000000
+          if [ "$before" = "$zero" ]; then
+            .github/select-tests.sh --all
+          elif git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            git diff --name-only "$before" HEAD | .github/select-tests.sh
+          elif git fetch --depth=1 origin "$before"; then
+            git diff --name-only "$before" HEAD | .github/select-tests.sh
+          else
+            .github/select-tests.sh --all
+          fi
+
   typecheck:
+    needs: changes
+    if: needs.changes.outputs.typecheck == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
@@ -26,50 +55,14 @@ jobs:
 
   games:
     name: ${{ matrix.game }} (${{ matrix.runner }})
+    needs: changes
+    if: needs.changes.outputs.has_games == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 600
     strategy:
       fail-fast: false
       matrix:
-        runner: [blacksmith-16vcpu-ubuntu-2404-arm, blacksmith-12vcpu-macos-latest]
-        game: [poker, blackjack, baccarat, war, roulette, craps, keno, slots, bingo]
-        include:
-          - game: poker
-            test: complete_poker_game_with_proofs.test.ts
-            circuit_set: poker
-            lfs: zkey/register_main*,zkey/shuffle_1_deck_52_main*,zkey/poker_*
-          - game: blackjack
-            test: complete_blackjack_game_with_proofs.test.ts
-            circuit_set: blackjack
-            lfs: zkey/register_main*,zkey/shuffle_6_deck_52_main*,zkey/blackjack_*
-          - game: baccarat
-            test: complete_baccarat_game_with_proofs.test.ts
-            circuit_set: baccarat
-            lfs: zkey/register_main*,zkey/shuffle_1_deck_52_main*,zkey/baccarat_*
-          - game: war
-            test: complete_war_game_with_proofs.test.ts
-            circuit_set: war
-            lfs: zkey/register_main*,zkey/shuffle_6_deck_52_main*,zkey/war_*
-          - game: roulette
-            test: complete_roulette_game_with_proofs.test.ts
-            circuit_set: roulette
-            lfs: zkey/register_main*,zkey/shuffle_1_deck_37_main*,zkey/shuffle_1_deck_38_main*,zkey/roulette_*
-          - game: craps
-            test: complete_craps_game_with_proofs.test.ts
-            circuit_set: craps
-            lfs: zkey/register_main*,zkey/shuffle_2_dice_6_main*,zkey/craps_*
-          - game: keno
-            test: complete_keno_game_with_proofs.test.ts
-            circuit_set: keno
-            lfs: zkey/register_main*,zkey/shuffle_1_deck_80_main*,zkey/keno_*
-          - game: slots
-            test: complete_slot_game_with_proofs.test.ts
-            circuit_set: slots
-            lfs: zkey/register_main*,zkey/shuffle_3_reel_22_main*,zkey/shuffle_5_reel_22_main*,zkey/slot_*
-          - game: bingo
-            test: complete_bingo_game_with_proofs.test.ts
-            circuit_set: bingo
-            lfs: zkey/register_main*,zkey/shuffle_1_deck_75_main*,zkey/shuffle_1_deck_90_main*,zkey/bingo_*
+        include: ${{ fromJson(needs.changes.outputs.matrix) }}
     steps:
       - name: Free disk space
         run: |

@@ -29,8 +29,13 @@ missing. A missing zkey fails later, when that circuit is proved or verified.
 
 ## GitHub Actions
 
-Pushing to `main` runs `.github/workflows/tests.yml`. Typecheck uses a small
-Linux runner. Each game runs twice, on `ubuntu-24.04-arm` and on `macos-26`:
+Pushing to `main` runs `.github/workflows/tests.yml` only for what changed.
+A poker C++, TypeScript, Zig, zkey, or verification-key file runs the poker
+tests. A shoe file runs the games that prove that shoe. Shared prover code
+and `register_main` run every game. Docs and other files run nothing.
+Typecheck runs when TypeScript or its package config changes. Each selected
+game runs twice, on `blacksmith-16vcpu-ubuntu-2404-arm` and on
+`blacksmith-12vcpu-macos-latest`:
 the proving keys are about 12 GB together, and a standard runner cannot hold
 all of them plus the witness build. The job downloads that platform’s arm64
 rapidsnark library from the iden3/rapidsnark release (`librapidsnark.so` on
