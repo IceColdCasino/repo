@@ -14,10 +14,10 @@ permissions:
 
 jobs:
   typecheck:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: useblacksmith/checkout@v1
         with:
           lfs: false
       - uses: oven-sh/setup-bun@v2
@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04-arm, macos-26]
+        runner: [blacksmith-4vcpu-ubuntu-2404-arm, blacksmith-12vcpu-macos-latest]
         game: [poker, blackjack, baccarat, war, roulette, craps, keno, slots, bingo]
         include:
           - game: poker
