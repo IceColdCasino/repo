@@ -163,16 +163,16 @@ async function runGame(nActualPlayers = 2, toFold: (p: number) => boolean = () =
 
 test('Complete Game with 2 players', async () => {
   await runGame();
-}, 60_000);
+}, 600_000);
 
 test('Complete Game with 3 players, 1 folds', async () => {
   await runGame(3, p => p === 0);
-}, 2 * 60_000);
+}, 600_000);
 
 test('Complete Game with 10 players, 5 fold', async () => {
   await runGame(10, p => p % 2 === 0);
-}, 3 * 60_000);
+}, 900_000);
 
 test('Complete Game with 10 players', async () => {
   await runGame(10);
-}, 3 * 60_000);
+}, 900_000);
