@@ -28,7 +28,8 @@ extern void cxx_Fr_rawShl(Raw, Raw, uint64_t) asm("__Z9Fr_rawShlPyS_y");
 extern void cxx_Fr_rawShr(Raw, Raw, uint64_t) asm("__Z9Fr_rawShrPyS_y");
 extern int cxx_Fr_rawCmp(Raw, Raw) asm("__Z9Fr_rawCmpPyS_");
 
-// Fr_rawToMontgomery is already exported by Zig fr.zig (mangled trampoline).
+// Fr_rawToMontgomery's C++ mangling differs by platform. Zig calls
+// zkcasino_Fr_rawToMontgomery from fr_raw_to_montgomery.cpp.
 
 extern "C" {
 

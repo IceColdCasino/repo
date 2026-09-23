@@ -125,6 +125,7 @@ pub fn build(b: *std.Build) void {
     addCppCompileIncludes(fr_cpp_mod, sdk_cxx_include, rapidsnark.path("build"), target.result.os.tag, target.result.os.tag == .macos or target.result.os.tag == .ios);
     fr_cpp_mod.addCSourceFile(.{ .file = rapidsnark.path("build/fr.cpp"), .flags = fr_cpp_flags });
     fr_cpp_mod.addCSourceFile(.{ .file = rapidsnark.path("build/fr_generic.cpp"), .flags = fr_cpp_flags });
+    fr_cpp_mod.addCSourceFile(.{ .file = b.path("src/witness_common/fr_raw_to_montgomery.cpp"), .flags = fr_cpp_flags });
 
     const fr_asm_mod = b.createModule(.{
         .target = target,

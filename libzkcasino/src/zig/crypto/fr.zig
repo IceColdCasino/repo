@@ -15,13 +15,13 @@ extern "c" fn Fr_rawSub(dst: [*c]u64, a: [*c]u64, b: [*c]u64) void;
 extern "c" fn Fr_rawNeg(dst: [*c]u64, a: [*c]u64) void;
 extern "c" fn Fr_rawMMul(dst: [*c]u64, a: [*c]u64, b: [*c]u64) void;
 extern "c" fn Fr_rawFromMontgomery(dst: [*c]u64, src: [*c]u64) void;
-extern fn @"_Z18Fr_rawToMontgomeryPyRA4_Ky"(dst: [*c]u64, src: [*c]u64) void;
+extern "c" fn zkcasino_Fr_rawToMontgomery(dst: [*c]u64, src: [*c]u64) void;
 extern "c" fn Fr_rawIsEq(a: [*c]u64, b: [*c]u64) c_int;
 extern "c" fn Fr_rawIsZero(a: [*c]u64) c_int;
 extern "c" fn Fr_rawCmp(a: [*c]u64, b: [*c]u64) c_int;
 
 fn toMontRaw(dst: [*c]u64, src: [*c]u64) void {
-    @"_Z18Fr_rawToMontgomeryPyRA4_Ky"(dst, src);
+    zkcasino_Fr_rawToMontgomery(dst, src);
 }
 
 pub const Fr = struct {
