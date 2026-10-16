@@ -46,6 +46,7 @@ pub fn reencryptPartial(partial: Delta, recipient: PublicKey, randomness: Fr, us
     return Ciphertext.fromPoints(c0, c1);
 }
 
+/// c1 - sk * c0.
 pub fn decryptReencrypted(ct: Ciphertext, sk: Fr) Delta {
     const sk_c0 = baby.mul(ct.c0(), sk);
     const neg = Point{ .x = sk_c0.x.neg(), .y = sk_c0.y };

@@ -1,5 +1,6 @@
 const std = @import("std");
 const paths_mod = @import("paths.zig");
+const Fr = @import("../crypto/fr.zig").Fr;
 
 const PROVER_OK: c_int = 0;
 const PROVER_ERROR_SHORT_BUFFER: c_int = 2;
@@ -192,6 +193,22 @@ pub const Prover = struct {
         self.zkey = &.{};
     }
 };
+
+/// Circom public signals are a JSON array, outputs first. Shuffle signal 1 is the permutation hash.
+pub fn publicSignal(alloc: std.mem.Allocator, public_json: []const u8, index: usize) !Fr {
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, public_json, .{});
+    defer parsed.deinit();
+    const items = switch (parsed.value) {
+        .array => |arr| arr.items,
+        else => return error.InvalidPublicSignals,
+    };
+    if (index >= items.len) return error.InvalidPublicSignals;
+    return switch (items[index]) {
+        .string, .number_string => |s| Fr.fromDec(s),
+        .integer => |n| Fr.fromI64(@intCast(n)),
+        else => error.InvalidPublicSignals,
+    };
+}
 
 fn finishProof(alloc: std.mem.Allocator, proof: []const u8, public: []const u8) !Proof {
     const proof_json = try dupeZ(alloc, proof);

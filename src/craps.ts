@@ -1,6 +1,5 @@
 import type { BabyJub } from 'circomlibjs';
 import assert from 'node:assert';
-import { hash88Bn254 } from './hash-coeffs';
 import {
   type Ciphertext,
   type PlaintextCard,
@@ -14,12 +13,14 @@ import {
 } from './zk-crypto-base';
 import { GameKind } from './game-config';
 import { casinoDeck } from './casino-calc';
+import { packCrapsMultipliers, showdownTwoResultHash } from './showdown-sealed-coeffs';
 import {
   CRAPS_SHOWDOWN_TERMS,
   MAX_CRAPS_BETS,
   evaluateCrapsShowdown,
   padCrapsBets,
   packCrapsBet,
+  packCrapsTableTerm,
   type CrapsBet,
 } from './craps-eval';
 
@@ -52,6 +53,7 @@ export interface ShowdownHashInput {
   nActualBets: number;
   phase: number;
   point: number;
+  sealCommitment: bigint;
 }
 
 export function parseBetPublicSignals(publicSignals: string[]) {
@@ -115,6 +117,7 @@ export class Craps extends ZkCrypto {
     assert(ciphertextBets.length === MAX_CRAPS_BETS);
 
     return this.calcFr('showdownHash', {
+      sealCommitment: hashInput.sealCommitment,
       publicKeys,
       playerIndex,
       cards: ciphertextCards,
@@ -175,12 +178,11 @@ export class Craps extends ZkCrypto {
 
   computeShowdownOutputHash(results: number[], coefficients: bigint[]): bigint {
     assert(results.length === CRAPS_SHOWDOWN_TERMS);
-    assert(coefficients.length === CRAPS_SHOWDOWN_TERMS);
-    let h = 0n;
-    for (let i = 0; i < CRAPS_SHOWDOWN_TERMS; i++) {
-      h += (BigInt(results[i]!) + 1n) * coefficients[i]!;
-    }
-    return h;
+    const multipliers = packCrapsMultipliers(
+      results.slice(0, MAX_CRAPS_BETS).map((payout) => BigInt(payout)),
+    );
+    const table = packCrapsTableTerm(results[MAX_CRAPS_BETS]!, results[MAX_CRAPS_BETS + 1]!);
+    return showdownTwoResultHash(multipliers, BigInt(table), coefficients);
   }
 
   override decryptCards(

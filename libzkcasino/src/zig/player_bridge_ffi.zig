@@ -50,16 +50,8 @@ const HeldProof = struct {
 fn proveCb(ctx: *anyopaque, circuit: []const u8, input: []const u8) anyerror!ops.ProveOutput {
     _ = ctx;
     const id = try circuitId(circuit);
-    lockEngine();
-    defer engine_lock.unlock();
-    if (engine == null) {
-        if (engine_err) return error.EngineUnavailable;
-        engine = prove.Engine.init(std.heap.page_allocator) catch |err| {
-            engine_err = true;
-            return err;
-        };
-    }
-    const proof = try engine.?.proveJson(id, input);
+    const eng = try ensureEngine();
+    const proof = try eng.proveJson(id, input);
     const held = std.heap.page_allocator.create(HeldProof) catch {
         var tmp = proof;
         tmp.deinit();
@@ -115,11 +107,13 @@ export fn zkplayer_bridge_create_ex(kind_u: u32, variant: u32) callconv(.c) ?*Ha
         h.* = .{ .kind = .poker, .poker = .init(alloc), .table = null };
         return h;
     }
-    const eng = ensureEngine() catch {
+    const eng = ensureEngine() catch |err| {
+        std.debug.print("zkplayer_bridge_create engine: {s}\n", .{@errorName(err)});
         alloc.destroy(h);
         return null;
     };
-    const session = game_bridge.Session.init(alloc, eng, kind, variant) catch {
+    const session = game_bridge.Session.init(alloc, eng, kind, variant) catch |err| {
+        std.debug.print("zkplayer_bridge_create session: {s}\n", .{@errorName(err)});
         alloc.destroy(h);
         return null;
     };
@@ -134,6 +128,20 @@ export fn zkplayer_bridge_free(handle: ?*Handle) callconv(.c) void {
     std.heap.page_allocator.destroy(h);
 }
 
+/// Same as {@link zkplayer_bridge_op} with the session pointer as an integer.
+/// Worker threads cannot pass a raw address through `FFIType.ptr`.
+export fn zkplayer_bridge_op_u64(
+    handle_bits: u64,
+    payload: [*]const u8,
+    payload_len: usize,
+    out: [*]u8,
+    out_cap: usize,
+    out_len: *usize,
+) callconv(.c) i32 {
+    const handle: ?*Handle = @ptrFromInt(handle_bits);
+    return zkplayer_bridge_op(handle, payload, payload_len, out, out_cap, out_len);
+}
+
 export fn zkplayer_bridge_op(
     handle: ?*Handle,
     payload: [*]const u8,
@@ -144,8 +152,6 @@ export fn zkplayer_bridge_op(
 ) callconv(.c) i32 {
     const h = handle orelse return -1;
     const body = if (h.table) |*session| blk: {
-        lockEngine();
-        defer engine_lock.unlock();
         break :blk game_bridge.dispatch(session, payload[0..payload_len]) catch |err| {
             std.debug.print("zkplayer_bridge_op error: {s}\n", .{@errorName(err)});
             return -2;

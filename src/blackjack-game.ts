@@ -7,6 +7,8 @@ import {
   SHOE_SIZE,
   MAX_HANDS,
   MAX_SHOWDOWN_CARDS,
+  CHUNK_SHARE_CARDS,
+  N_OTHERS,
   paddedShareChunk,
   shareChunksForSeats,
   type BlackjackHandLayout,
@@ -28,6 +30,7 @@ import {
 import { type Ciphertext, type PublicKey } from './zk-casino';
 import { verify } from './rapidsnark-ffi';
 import type { Groth16Proof, PublicSignals } from 'snarkjs';
+import { readShuffleProof } from './shuffle-signals';
 import path from 'path';
 
 interface ShuffledDeck {
@@ -64,6 +67,8 @@ export interface SharePrivateData {
 
 export interface ShowdownPrivateData {
   publicKey: PublicKey;
+  /** Poseidon of the seal rows Arcis revealed for this seat (seal account, not the prover). */
+  coefficientCommitment: bigint;
   outcomesHash: bigint;
   handLayout: BlackjackHandLayout;
   /** Which of the player's hands this proof covers (0..MAX_HANDS-1). */
@@ -82,10 +87,12 @@ export class Game {
   #inProgress = false;
   #turnSeatIndex = 0;
   #shuffledDecks: ShuffledDeck[] = [];
-  #blackjack = new Blackjack();
+  #blackjack: Blackjack;
   #phase: GamePhase = 'Registration';
   #partials: (Ciphertext[][] | undefined)[] = Array.from({ length: MAX_SEATS });
   #partialsChunks: (Ciphertext[][] | undefined)[][] = Array.from({ length: N_SHARE_CHUNKS }, () => new Array(MAX_SEATS));
+  #chunkOutputHash: (bigint | undefined)[][] = Array.from({ length: N_SHARE_CHUNKS }, () => new Array(MAX_SEATS));
+  #chunkCardHash: (bigint[] | undefined)[][] = Array.from({ length: N_SHARE_CHUNKS }, () => new Array(MAX_SEATS));
   #currentShareChunk = 0;
   // Computed at start() from the actual seat count; players only share the chunks
   // their hands can occupy (1 chunk for a single player + dealer).
@@ -102,6 +109,7 @@ export class Game {
 
   constructor(shoeDecks: 1 | 6 | 8 = 6) {
     this.#shoeDecks = shoeDecks;
+    this.#blackjack = new Blackjack(shoeDecks);
     this.#shuffleCircuit = `shuffle_${shoeDecks}_deck_52_main`;
   }
 
@@ -270,25 +278,28 @@ export class Game {
       throw new Error('Not your turn');
     }
 
-    const signalBigInts = publicSignals.map(s => BigInt(s));
     const transientHashExpected = this.#blackjack.shuffleHash(this.deck, this.#seats);
-    const transientHash = signalBigInts.pop()!;
-    const permutationHash = signalBigInts.pop()!;
+    const { outputDeckHash, permutationHash, inputHash } = readShuffleProof(publicSignals);
 
-    if (transientHash !== transientHashExpected) {
-      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${transientHash}`);
+    if (inputHash !== transientHashExpected) {
+      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${inputHash}`);
+    }
+    if (this.#blackjack.deckHash(privateData.deck) !== outputDeckHash) {
+      throw new Error('Shuffle output hash does not match the shoe');
+    }
+    if (privateData.permutationHash !== permutationHash) {
+      throw new Error('Shuffle permutation hash does not match the proof');
     }
 
     if (!verify(proof, publicSignals, verifyingKeyPath(this.#shuffleCircuit))) {
       throw new Error('Invalid shuffle proof');
     }
 
-    const deckFromSignals: Ciphertext[] = [];
-    for (let i = 0; i < SHOE_SIZE; i++) {
-      deckFromSignals.push(signalBigInts.slice(i * 4, i * 4 + 4) as Ciphertext);
-    }
-
-    this.#shuffledDecks.push({ transientHash, deck: deckFromSignals, permutationHash });
+    this.#shuffledDecks.push({
+      transientHash: inputHash,
+      deck: privateData.deck,
+      permutationHash,
+    });
 
     if (++this.#turnSeatIndex === this.#numPlayers) {
       this.#phase = 'Share';
@@ -329,12 +340,12 @@ export class Game {
       throw new Error('Invalid share chunk proof');
     }
 
-    const expectedOutputHash = this.#blackjack.computeChunkShareOutputHash(
+    const commitment = this.#blackjack.shareCardCommitment(
       privateData.ciphertexts,
       this.#numPlayers,
     );
-    if (outputHash !== expectedOutputHash) {
-      throw new Error(`Output hash mismatch: circuit has ${outputHash}, got ${expectedOutputHash}`);
+    if (outputHash !== commitment.finalHash) {
+      throw new Error(`Output hash mismatch: circuit has ${outputHash}, got ${commitment.finalHash}`);
     }
 
     if (this.#partialsChunks[chunkIndex]![seatIndex]) {
@@ -342,6 +353,8 @@ export class Game {
     }
 
     this.#partialsChunks[chunkIndex]![seatIndex] = privateData.ciphertexts;
+    this.#chunkOutputHash[chunkIndex]![seatIndex] = commitment.finalHash;
+    this.#chunkCardHash[chunkIndex]![seatIndex] = commitment.cards;
 
     const activePartials = this.#partialsChunks[chunkIndex]!.filter((p, i) =>
       i < this.#numPlayers && p,
@@ -355,6 +368,61 @@ export class Game {
       if (this.#currentShareChunk === this.#nShareChunks) {
         this.#phase = 'Showdown';
       }
+    }
+  }
+
+  /**
+   * The seat has not shared this chunk, so that bet is forfeit. The dealer seat
+   * is a player and forfeits the same way.
+   */
+  unsharedSeatForfeits(chunkIndex: number, seatIndex: number): boolean {
+    return !this.#partialsChunks[chunkIndex]?.[seatIndex];
+  }
+
+  /**
+   * Card hashes published with the share. The chain folds them into the proof
+   * output, then checks one opened card against its stored hash.
+   */
+  shareTierCommitment(ciphertexts: Ciphertext[][]): { hashes: bigint[]; finalHash: bigint } {
+    const commitment = this.#blackjack.shareCardCommitment(ciphertexts, this.#numPlayers);
+    return { hashes: commitment.cards, finalHash: commitment.finalHash };
+  }
+
+  /**
+   * One revealed card: every recipient's partials for that card must match the
+   * card hash committed inside the share output. The other card of an initial
+   * two-card deal stays sealed.
+   */
+  assertRevealedCard(
+    chunkIndex: number,
+    seatIndex: number,
+    cardIndex: number,
+    column: Ciphertext[],
+  ): void {
+    if (cardIndex < 0 || cardIndex >= CHUNK_SHARE_CARDS) {
+      throw new Error(`Card ${cardIndex} is outside the ${CHUNK_SHARE_CARDS}-card share chunk`);
+    }
+    const expected = this.#chunkCardHash[chunkIndex]?.[seatIndex]?.[cardIndex];
+    if (expected === undefined) throw new Error('Card share hash is not on record');
+    if (column.length !== N_OTHERS) {
+      throw new Error(`Expected ${N_OTHERS} recipient partials for one card, got ${column.length}`);
+    }
+    const got = this.#blackjack.cardShareHash(column);
+    if (got !== expected) {
+      throw new Error(`Revealed card ${cardIndex} does not match the share card hash`);
+    }
+  }
+
+  /**
+   * After every card in a chunk is revealed, the folded card hashes must match
+   * the share output hash recorded when that seat shared.
+   */
+  assertRevealedChunk(chunkIndex: number, seatIndex: number, ciphertexts: Ciphertext[][]): void {
+    const expected = this.#chunkOutputHash[chunkIndex]?.[seatIndex];
+    if (expected === undefined) throw new Error('Chunk share hash is not on record');
+    const got = this.#blackjack.computeChunkShareOutputHash(ciphertexts, this.#numPlayers);
+    if (got !== expected) {
+      throw new Error('Revealed dealer partials do not match the on-chain chunk hash');
     }
   }
 
@@ -448,6 +516,7 @@ export class Game {
     const playerCardCount = privateData.handLayout.playerHandLengths[playerIndex]![handIndex]!;
     const dealerCardCount = privateData.handLayout.dealerCardCount;
     const hashInput: ShowdownHashInput = {
+      sealCommitment: privateData.coefficientCommitment,
       publicKeys: this.#seats,
       playerIndex: BigInt(playerIndex),
       ciphertextCards: sourceIndices.map(index => this.shareCiphertextCards[index]!),
@@ -456,7 +525,10 @@ export class Game {
       dealerCardCount,
     };
 
-    const expectedInputHash = this.#blackjack.showdownHash(hashInput);
+    const expectedInputHash = this.#blackjack.showdownHash({
+      ...hashInput,
+      sealCommitment: privateData.coefficientCommitment,
+    });
     const [outputHash, transientHash] = publicSignals.map(s => BigInt(s));
 
     if (transientHash !== expectedInputHash) {

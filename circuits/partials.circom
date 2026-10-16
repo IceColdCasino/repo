@@ -9,19 +9,23 @@ pragma circom 2.2.2;
 include "./elgamal.circom";
 
 template DecryptPartials(nPlayers, nTotalCards) {
-  signal input ciphertextPartials[nPlayers-1][nTotalCards][4];
+  signal input ciphertextPartials[nPlayers - 1][nTotalCards][4];
   signal input privateKey;
-  
-  signal output partials[nPlayers-1][nTotalCards][2];
-  
-  component decrypt[nPlayers-1][nTotalCards];
-  
+
+  signal output partials[nPlayers - 1][nTotalCards][2];
+
+  component decrypt[nPlayers - 1][nTotalCards];
+
   for (var p = 0; p < nPlayers - 1; p++) {
     for (var card = 0; card < nTotalCards; card++) {
       decrypt[p][card] = parallel Decrypt();
       decrypt[p][card].ciphertext <== ciphertextPartials[p][card];
       decrypt[p][card].privateKey <== privateKey;
-      
+    }
+  }
+
+  for (var p = 0; p < nPlayers - 1; p++) {
+    for (var card = 0; card < nTotalCards; card++) {
       partials[p][card] <== decrypt[p][card].plaintext;
     }
   }
@@ -39,9 +43,45 @@ template CreateOwnPartials(nTotalCards) {
     createOwnPartial[card] = parallel PartialDecrypt();
     createOwnPartial[card].c0 <== [ciphertextCards[card][0], ciphertextCards[card][1]];
     createOwnPartial[card].privateKey <== privateKey;
-    
+  }
+
+  for (var card = 0; card < nTotalCards; card++) {
     ownPartials[card] <== createOwnPartial[card].partial;
   }
+}
+
+template AggregateOneCard(nPlayers) {
+  signal input ownPartial[2];
+  signal input otherPartials[nPlayers-1][2];
+  signal input ciphertext[4];
+
+  signal output decrypted[2];
+
+  signal aggPartial[nPlayers][2];
+
+  component partialAdder[nPlayers - 1];
+  component cardAdder;
+
+  aggPartial[0] <== ownPartial;
+
+  for (var p = 0; p < nPlayers - 1; p++) {
+    partialAdder[p] = BabyAdd();
+    partialAdder[p].x1 <== aggPartial[p][0];
+    partialAdder[p].y1 <== aggPartial[p][1];
+    partialAdder[p].x2 <== otherPartials[p][0];
+    partialAdder[p].y2 <== otherPartials[p][1];
+    aggPartial[p + 1][0] <== partialAdder[p].xout;
+    aggPartial[p + 1][1] <== partialAdder[p].yout;
+  }
+
+  cardAdder = BabyAdd();
+  cardAdder.x1 <== 0 - aggPartial[nPlayers - 1][0];
+  cardAdder.y1 <== aggPartial[nPlayers - 1][1];
+  cardAdder.x2 <== ciphertext[2];
+  cardAdder.y2 <== ciphertext[3];
+
+  decrypted[0] <== cardAdder.xout;
+  decrypted[1] <== cardAdder.yout;
 }
 
 template AggregatePartials(nPlayers, nTotalCards) {
@@ -49,46 +89,20 @@ template AggregatePartials(nPlayers, nTotalCards) {
   signal input otherPartials[nPlayers-1][nTotalCards][2];
   signal input ciphertextCards[nTotalCards][4];
   
-  signal aggPartial[nTotalCards][nPlayers+1][2];
-  signal sumD[nTotalCards][2];
-
   signal output decryptedCards[nTotalCards][2];
-  
-  component partialAdder[nTotalCards][nPlayers];
-  component cardAdder[nTotalCards];
-  
+
+  component cards[nTotalCards];
+
   for (var card = 0; card < nTotalCards; card++) {
-    // Start with own partial
-    aggPartial[card][0][0] <== ownPartials[card][0];
-    aggPartial[card][0][1] <== ownPartials[card][1];
-    
-    // Add other partials one by one (sequential within a card)
+    cards[card] = parallel AggregateOneCard(nPlayers);
+    cards[card].ownPartial <== ownPartials[card];
+    cards[card].ciphertext <== ciphertextCards[card];
     for (var p = 0; p < nPlayers - 1; p++) {
-      partialAdder[card][p] = BabyAdd();
-      partialAdder[card][p].x1 <== aggPartial[card][p][0];
-      partialAdder[card][p].y1 <== aggPartial[card][p][1];
-      partialAdder[card][p].x2 <== otherPartials[p][card][0];
-      partialAdder[card][p].y2 <== otherPartials[p][card][1];
-      aggPartial[card][p+1][0] <== partialAdder[card][p].xout;
-      aggPartial[card][p+1][1] <== partialAdder[card][p].yout;
+      cards[card].otherPartials[p] <== otherPartials[p][card];
     }
-    
-    // Final aggregated partial for this card
-    sumD[card][0] <== aggPartial[card][nPlayers-1][0];
-    sumD[card][1] <== aggPartial[card][nPlayers-1][1];
-    
-    // Decrypt card using aggregated partial
-    // M = c1 - sumD = c1 + (-sumD)
-    // Where -sumD = [-x, y] (negate x-coordinate only)
-    cardAdder[card] = BabyAdd();
-    cardAdder[card].x1 <== 0 - sumD[card][0];  // Negate x
-    cardAdder[card].y1 <== sumD[card][1];    // Keep y
-    cardAdder[card].x2 <== ciphertextCards[card][2];  // c1.x
-    cardAdder[card].y2 <== ciphertextCards[card][3];  // c1.y
-    
-    decryptedCards[card] <== [
-      cardAdder[card].xout,
-      cardAdder[card].yout
-    ];
+  }
+
+  for (var card = 0; card < nTotalCards; card++) {
+    decryptedCards[card] <== cards[card].decrypted;
   }
 }

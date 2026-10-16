@@ -18,11 +18,10 @@ template Register() {
   component verifyKey;
   component encrypt;
 
-  verifyKey = VerifyKey();
+  verifyKey = parallel VerifyKey();
+  encrypt = parallel Encrypt();
   verifyKey.privateKey <== privateKey;
   verifyKey.publicKey <== publicKey;
-
-  encrypt = Encrypt();
   encrypt.plaintext <== [0, 1];
   encrypt.publicKey <== publicKey;
   encrypt.randomness <== 1;

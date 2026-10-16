@@ -49,6 +49,16 @@ pub fn identityKey() PublicKey {
     return PublicKey.identity();
 }
 
+pub fn identityKeys(out: []PublicKey) []PublicKey {
+    for (out) |*k| k.* = PublicKey.identity();
+    return out;
+}
+
+pub fn zeroScalars(out: []Fr) []Fr {
+    for (out) |*x| x.* = Fr.zero();
+    return out;
+}
+
 pub fn padKeys(keys: []const PublicKey, comptime n: usize, out: *[n]PublicKey) []PublicKey {
     std.debug.assert(keys.len <= n);
     @memcpy(out[0..keys.len], keys);

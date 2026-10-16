@@ -1,6 +1,5 @@
 import type { BabyJub } from 'circomlibjs';
 import assert from 'node:assert';
-import { hash220Bn254 } from './hash-coeffs';
 import {
   type Ciphertext,
   type PrivateKey,
@@ -9,7 +8,8 @@ import {
 import { hashPublicKeys12 } from './shuffle-common';
 import { ZkCrypto } from './zk-crypto-base';
 import { GameKind } from './game-config';
-import { casinoDeck } from './casino-calc';
+import { casinoDeck, casinoFr, casinoShareBalls } from './casino-calc';
+import { showdownTwoCoeffHash } from './showdown-sealed-coeffs';
 import {
   BINGO_75_CELLS,
   BINGO_75_SHOE,
@@ -18,6 +18,7 @@ import {
   BINGO_CHUNK_BALLS,
   evaluateBingo75,
   evaluateBingo90,
+  packBingo90Prizes,
   type BingoPattern75,
 } from './bingo-eval';
 
@@ -63,6 +64,7 @@ export interface ShowdownHashInput {
   ciphertextCardCells: Ciphertext[];
   nCalled: number;
   patternId?: number;
+  sealCommitment: bigint;
 }
 
 export function parseCardPublicSignals(publicSignals: string[], variant: BingoVariant): {
@@ -124,6 +126,18 @@ export class Bingo extends ZkCrypto {
     return this.calcFr('cardHash', { publicKey, nCells: this.nCells });
   }
 
+  override shareHash(
+    ciphertext: Ciphertext[],
+    publicKey: PublicKey,
+    publicKeys: PublicKey[],
+  ): bigint {
+    return this.calcFr('shareHash', {
+      deck: ciphertext,
+      publicKey,
+      publicKeys,
+    });
+  }
+
   showdownHash(hashInput: ShowdownHashInput) {
     const {
       publicKeys,
@@ -140,6 +154,7 @@ export class Bingo extends ZkCrypto {
     assert(ciphertextCardCells.length === this.nCells);
 
     return this.calcFr('showdownHash', {
+      sealCommitment: hashInput.sealCommitment,
       publicKeys,
       playerIndex,
       cards: ciphertextCards,
@@ -156,13 +171,36 @@ export class Bingo extends ZkCrypto {
   }
 
   computeShareOutputHash(ciphertexts: Ciphertext[][], nActualPlayers: number): bigint {
+    return this.shareBallCommitment(ciphertexts, nActualPlayers).finalHash;
+  }
+
+  /**
+   * One hash per ball (every recipient's partials for that ball), then Poseidon
+   * of the five ball hashes. A called ball can be checked without the rest of
+   * the five-ball window.
+   */
+  shareBallCommitment(ciphertexts: Ciphertext[][], nActualPlayers: number): { finalHash: bigint; balls: bigint[] } {
     const values = this.flattenShareValues(ciphertexts);
     if (values.length !== N_OTHERS * BINGO_CHUNK_BALLS * 4) {
       throw new Error(
         `Expected ${N_OTHERS * BINGO_CHUNK_BALLS * 4} BN254 values for bingo share, got ${values.length}`,
       );
     }
-    return this.calcFr('shareOutputHash', { ciphertexts, nActualPlayers });
+    if (nActualPlayers < 2 || nActualPlayers > MAX_PLAYERS) {
+      throw new Error(`nActualPlayers must be 2..${MAX_PLAYERS}, got ${nActualPlayers}`);
+    }
+    const commitment = casinoShareBalls(this.calcKind, { ciphertexts, nActualPlayers }, this.calcVariant);
+    if (commitment.balls.length !== BINGO_CHUNK_BALLS) {
+      throw new Error(`Expected ${BINGO_CHUNK_BALLS} ball hashes, got ${commitment.balls.length}`);
+    }
+    return commitment;
+  }
+
+  ballShareHash(column: Ciphertext[]): bigint {
+    if (column.length !== N_OTHERS) {
+      throw new Error(`Expected ${N_OTHERS} recipient partials for one ball, got ${column.length}`);
+    }
+    return casinoFr(this.calcKind, 'ballShareHash', { column }, this.calcVariant);
   }
 
   padShowdownBalls(called: Ciphertext[], nCalled: number): Ciphertext[] {
@@ -179,16 +217,16 @@ export class Bingo extends ZkCrypto {
     });
   }
 
-  computeShowdownOutputHash75(packed: number, coefficient: bigint): bigint {
-    return (BigInt(packed) + 1n) * coefficient;
+  computeShowdownOutputHash75(packed: number, coefficients: readonly bigint[]): bigint {
+    return showdownTwoCoeffHash(BigInt(packed), coefficients);
   }
 
-  computeShowdownOutputHash90(packed: number[], coefficients: bigint[]): bigint {
-    let h = 0n;
-    for (let i = 0; i < 3; i++) {
-      h += (BigInt(packed[i]!) + 1n) * coefficients[i]!;
+  computeShowdownOutputHash90(packed: number[], coefficients: readonly bigint[]): bigint {
+    if (packed.length !== 3) {
+      throw new Error(`Expected 3 bingo 90 prizes, got ${packed.length}`);
     }
-    return h;
+    const prize = packBingo90Prizes(packed[0]!, packed[1]!, packed[2]!);
+    return showdownTwoCoeffHash(BigInt(prize), coefficients);
   }
 
   override decryptCards(

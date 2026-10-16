@@ -5,7 +5,7 @@
 
 Zig library that does the field arithmetic, witness generation, and Groth16
 proving for the circuits in `circuits/`. The TypeScript tests load it with
-Bun FFI. They do not reimplement Poseidon, the polynomial hash, decryption,
+Bun FFI. They do not reimplement Poseidon, the seal polynomial, decryption,
 or witness generation.
 
 ## What a build produces
@@ -24,7 +24,7 @@ Artifacts land in `libzkcasino/zig-out/lib`.
 |---------|------|
 | `libfr` | BN254 field, from rapidsnark `fr.cpp`, the arm64 assembly, and GMP |
 | `libzkcasino-player` | Poseidon, BabyJubJub, catalog decrypt, derangement, shuffle permutation |
-| `libzkcasino-player-bridge` | JSON session the tests call. Proves with rapidsnark |
+| `libzkcasino-player-bridge` | JSON session the tests call. Proves with the library from `zkey lib` |
 | `libzkcasino` | Register witness |
 | `libzkcasino-shuffle-*` | One witness library per shoe size |
 | `libzkcasino-{game}` | Share, showdown, and the game’s bet / action / card witnesses |
@@ -34,6 +34,48 @@ the poker witnesses. The same option accepts `blackjack`, `baccarat`, `war`,
 `roulette`, `craps`, `keno`, `slots`, and `bingo`. `all` is the default.
 GitHub Actions uses one set per game so the runner only compiles the circuits
 that test proves. Linux builds require aarch64 and link system GMP.
+
+`-Dhouse=true` is the house-seat build. It is only valid with `baccarat`,
+`blackjack`, `war`, `roulette`, `craps`, `keno`, or `slots`. Those builds
+leave out `roulette_bet_37`, `roulette_bet_38`, `craps_bet`, and `keno_bet`.
+Showdown stays in every house game. Blackjack `action` stays too, because
+the house plays the dealer hand. After the player's showdown window, that
+same showdown circuit is what the house submits to free the table. Slot
+share stays, because the house still shuffles a dummy coin. Card games also
+link the 1-deck, 6-deck, and 8-deck shuffles so one image can seat any shoe. The
+player bridge returns `HouseDoesNotBet` for `bet` and `card`. The repo
+`Dockerfile` builds one image per game from that flag. Zkeys are mounted at
+`ZK_ZKEY_DIR`; they are not copied into the image.
+
+Each image starts its own file: `src/house/baccarat.ts`, `blackjack.ts`,
+`war.ts`, `roulette.ts`, `craps.ts`, `keno.ts`, or `slots.ts`. The file
+opens that game. Shoe, wheel, and reel choice are arguments on
+`openHousePlayer`, not environment variables.
+
+`test/house.test.ts` runs each game file’s self-check on the host. It uses
+`libzkcasino/zig-out/lib` and `libzkcasino/src/zig/dat`, or
+`ZKCASINO_LIB_DIR` and `ZKCASINO_DAT_ROOT` when those point at a checkout.
+The host tree contains every game, so the check requires this game’s
+libraries and witness data to be present, then pings, generates a key,
+loads the light-casino IDL, and refuses `bet` and `card` in the session.
+`HouseDoesNotBet` is asserted in the image, where the bridge is built with
+`-Dhouse=true`.
+
+`test/e2e/house-image.test.ts` builds each target and runs the same check
+inside the image. `/opt/zkcasino/lib` and `/opt/zkcasino/dat` must be exactly
+that game’s house set, with no bet witness data.
+
+```sh
+bun run test:house
+bun test test/house.test.ts -t keno
+bun run test:e2e:house
+bun test test/e2e/house-image.test.ts -t keno
+```
+
+The first build compiles that game’s circuits, so the test timeout is two
+hours per image. On this machine the test calls Apple Container
+(`container build` / `container run`). The `docker` shim does not build
+these images.
 
 `zig build test` runs the library tests. `zig build player-test` checks
 player crypto against the golden vectors in
@@ -73,8 +115,9 @@ uses `src/zig/player/game_bridge.zig`. Kinds match the TypeScript `GameKind`:
 | 8 | Bingo |
 
 A non-poker session loads the Groth16 engine once for the process. The
-engine reads zkeys from `zkey/` and witness libraries from `zig-out/lib`.
-See [zkeys.md](./zkeys.md).
+engine reads zkeys from `zkey/` (`ZK_ZKEY_DIR`) and witness libraries from
+`zig-out/lib` (`ZKCASINO_LIB_DIR`). Bun FFI uses that same directory when
+`ZKCASINO_LIB_DIR` is set. See [zkeys.md](./zkeys.md).
 
 ## JSON operations
 
@@ -102,8 +145,8 @@ through `src/casino-calc.ts`.
 | `initialDeck` | Identity catalog ciphertexts for the shoe |
 | `shuffleHash` | Poseidon input hash of the current deck and public keys |
 | `shareHash` | Poseidon input hash of the share |
-| `shareOutputHash` | Polynomial hash of the sealed partials |
-| `showdownHash` | Polynomial hash of the showdown limbs |
+| `shareOutputHash` | Poseidon of the sealed partials, grouped the way that game’s share circuit groups them |
+| `showdownHash` | Showdown input Poseidon, with the seal commitment last |
 | `betHash` | Bet-ticket input hash |
 | `cardHash` | Bingo card-commit input hash |
 | `actionHash` | Blackjack action input hash |
@@ -115,10 +158,10 @@ the table. That is what keeps the TypeScript game state on the same hashes
 as the circuit.
 
 Showdown and action coefficients are inputs to `calc` and to the prove
-operation. The library does not sample them. They are host-sealed values,
-or the fixed `HASH_COEFFS_900` set used by the polynomial hash. The
-blackjack action circuit requires the non-dealer ace coefficient to be zero;
-that slot is the only place a zero coefficient is accepted.
+operation. The library does not sample them. They are the 14 values Arcis
+sealed for that seat. The public showdown field is
+`Σ (result_i + 1) · coefficient_i` over the live terms. The input hash is
+the Poseidon that ends with the seal commitment.
 
 ## Paths
 
@@ -131,7 +174,7 @@ that slot is the only place a zero coefficient is accepted.
 | `ZK_ZKEY_DIR` | `zkey` |
 | `ZKCASINO_LIB_DIR` | `libzkcasino/zig-out/lib` |
 | `ZKCASINO_DAT_ROOT` | `libzkcasino/src/zig/dat` |
-| `RAPIDSNARK_LIB` | `rapidsnark/lib/librapidsnark.dylib` |
+| `RAPIDSNARK_LIB` | `zkey lib` when unset |
 
-`src/zig/dat` holds the constant tables the witness libraries embed. `rapidsnark/`
-is a local checkout and is gitignored.
+`src/zig/dat` holds the constant tables the witness libraries embed. The prover
+and verifier are the library `zkey lib` prints.

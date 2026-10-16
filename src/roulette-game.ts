@@ -10,6 +10,7 @@ import {
 import { type Ciphertext, type PublicKey } from './zk-casino';
 import type { Groth16Proof, PublicSignals } from 'snarkjs';
 import { HouseZkGame, IDENTITY_POINT, type CasinoGamePhase } from './zk-game-base';
+import { readShuffleProof } from './shuffle-signals';
 
 export type GamePhase = CasinoGamePhase;
 export { MAX_PLAYERS, TOTAL_CARDS, IDENTITY_POINT };
@@ -33,6 +34,8 @@ export interface SharePrivateData {
 
 export interface ShowdownPrivateData {
   publicKey: PublicKey;
+  /** Poseidon of the seal rows Arcis revealed for this seat (seal account, not the prover). */
+  coefficientCommitment: bigint;
 }
 
 export class Game extends HouseZkGame {
@@ -77,19 +80,19 @@ export class Game extends HouseZkGame {
     this.assertPhase('Shuffle', 'Game is not in shuffle phase');
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
     this.assertTurn(playerIndex);
-    const signalBigInts = publicSignals.map(s => BigInt(s));
     const transientHashExpected = this.#roulette.shuffleHash(this.deck, this.players);
-    const transientHash = signalBigInts.pop()!;
-    const permutationHash = signalBigInts.pop()!;
-    if (transientHash !== transientHashExpected) {
-      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${transientHash}`);
+    const { outputDeckHash, permutationHash, inputHash } = readShuffleProof(publicSignals);
+    if (inputHash !== transientHashExpected) {
+      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${inputHash}`);
+    }
+    if (this.#roulette.deckHash(privateData.deck) !== outputDeckHash) {
+      throw new Error('Shuffle output hash does not match the shoe');
+    }
+    if (privateData.permutationHash !== permutationHash) {
+      throw new Error('Shuffle permutation hash does not match the proof');
     }
     this.verifyProof(proof, publicSignals, this.#circuitNames().shuffle, 'Invalid shuffle proof');
-    const deckFromSignals: Ciphertext[] = [];
-    for (let i = 0; i < this.deckSize; i++) {
-      deckFromSignals.push(signalBigInts.slice(i * 4, i * 4 + 4) as Ciphertext);
-    }
-    this.shuffledDecks.push({ transientHash, deck: deckFromSignals, permutationHash });
+    this.shuffledDecks.push({ transientHash: inputHash, deck: privateData.deck, permutationHash });
     this.advanceAfterShuffle('Share');
   }
 
@@ -161,6 +164,7 @@ export class Game extends HouseZkGame {
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
     this.assertShowdownPlayer(playerIndex);
     const hashInput: ShowdownHashInput = {
+      sealCommitment: privateData.coefficientCommitment,
       publicKeys: this.players,
       playerIndex: BigInt(playerIndex),
       ciphertextCards: this.finalShuffledDeck,
@@ -168,7 +172,10 @@ export class Game extends HouseZkGame {
       ciphertextBets: this.getEncryptedBetsForPlayer(playerIndex),
       nActualBets: this.getNActualBetsForPlayer(playerIndex),
     };
-    const expectedInputHash = this.#roulette.showdownHash(hashInput);
+    const expectedInputHash = this.#roulette.showdownHash({
+      ...hashInput,
+      sealCommitment: privateData.coefficientCommitment,
+    });
     const [outputHash, transientHash] = publicSignals.map(s => BigInt(s));
     if (transientHash !== expectedInputHash) {
       throw new Error('Input hash does not match expected');

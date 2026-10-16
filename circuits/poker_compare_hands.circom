@@ -123,6 +123,8 @@ template CompareHands(nPlayers) {
   assert(nPlayers > 1 && nPlayers < 11);
 
   signal input mask;
+  // Bits of `mask`, split once by the caller. Width 10 because nPlayers < 11.
+  signal input maskBits[10];
   signal input maxInPot;
   signal input playerCards[nPlayers][2];
   signal input sharedCards[5];
@@ -131,8 +133,6 @@ template CompareHands(nPlayers) {
 
   signal output winnerMask;
 
-  component maskLt;
-  component num2Bits;
   component handEval[nPlayers];
   component winnerComputer;
   component bits2Num;
@@ -144,9 +144,6 @@ template CompareHands(nPlayers) {
   component totalLtMax;
   component playerPlayerDistinct[nPlayers][nPlayers][2][2];
 
-  maskLt = ConstrainLt(11, 2 ** 10);
-  maskLt.in <== mask;
-
   for (var i = 0; i < 5; i++) {
     for (var j = i + 1; j < 5; j++) {
       sharedDistinct[i][j] = ConstrainNotEqual();
@@ -154,17 +151,10 @@ template CompareHands(nPlayers) {
     }
   }
 
-  // Literal width silences non-strict Num2Bits warnings; nPlayers < 11.
-  num2Bits = Num2Bits(10);
-  num2Bits.in <== mask;
-  for (var p = nPlayers; p < 10; p++) {
-    num2Bits.out[p] === 0;
-  }
-
   var totalInPot = 0;
 
   for (var p = 0; p < nPlayers; p++) {
-    var maskBit = num2Bits.out[p];
+    var maskBit = maskBits[p];
     playerCardDistinct[p] = IsEqual();
     playerCardDistinct[p].in <== [playerCards[p][0], playerCards[p][1]];
     playerCardDistinct[p].out * maskBit === 0;
@@ -185,9 +175,9 @@ template CompareHands(nPlayers) {
   totalLtMax.in <== [totalInPot, maxInPot + 1];
 
   for (var p = 0; p < nPlayers; p++) {
-    var maskBitP = num2Bits.out[p];
+    var maskBitP = maskBits[p];
     for (var q = p + 1; q < nPlayers; q++) {
-      var maskBitQ = num2Bits.out[q];
+      var maskBitQ = maskBits[q];
       activePair[p][q] <== maskBitP * maskBitQ;
       for (var k = 0; k < 2; k++) {
         for (var l = 0; l < 2; l++) {
@@ -199,13 +189,11 @@ template CompareHands(nPlayers) {
     }
   }
 
-  winnerComputer = ComputeWinners(nPlayers);
-
   for (var player = 0; player < nPlayers; player++) {
-    var maskBit = num2Bits.out[player];
+    var maskBit = maskBits[player];
     var invMaskBit = 1 - maskBit;
 
-    handEval[player] = HandEval(7);
+    handEval[player] = parallel HandEval(7);
     handEval[player].cards <== [
       sharedCards[0] * maskBit,
       sharedCards[1] * maskBit + invMaskBit * 1,
@@ -215,7 +203,12 @@ template CompareHands(nPlayers) {
       playerCards[player][0] * maskBit + invMaskBit * 5,
       playerCards[player][1] * maskBit + invMaskBit * 6
     ];
-    
+  }
+
+  winnerComputer = ComputeWinners(nPlayers);
+
+  for (var player = 0; player < nPlayers; player++) {
+    var maskBit = maskBits[player];
     for (var i = 0; i < 7; i++) {
       winnerComputer.hands[player][i] <== handEval[player].evaluated[i] * maskBit;
     }

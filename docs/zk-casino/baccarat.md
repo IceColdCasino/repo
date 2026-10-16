@@ -14,15 +14,21 @@ standard tableau (third-card rules) and scores hands modulo 10.
 | Encoding | Card `0..52·shoe−1` → `BabyPbk(v+1)` |
 | Shuffle mains | `shuffle_{1,6,8}_deck_52_main` |
 | Opened at showdown | 6 |
-| Poly-hash terms | 1 (`0` player, `1` banker, `2` tie) |
+| Showdown terms | 2: `[winner, 0]` (`0` player, `1` banker, `2` tie) |
 
 ## ZK pipeline
 
 Shared register → shuffle → `baccarat_share_hashout_main` →
-`baccarat_showdown` / `baccarat_showdown_hashout_main`.
+`baccarat_showdown_hashout_main`.
 
-There is no mid-hand action circuit. After share, showdown decrypts six
-cards, applies tableau, and emits the side.
+Share’s public output is `Poseidon(4)` of the player hand, the banker hand,
+the player third, and the banker third. Showdown decrypts six cards, applies
+the tableau, and publishes `(winner + 1) · c0 + c1`.
+
+There is no house seat. The bankroll is still the dealer pool: `start_hand`
+requires it, and coverage is `bet_unit × seats`. A pool win pays the 500 bps
+banker commission; action collection is 100 bps. See
+[on-chain](../on-chain.md#dealer-pool).
 
 ## Unique ZK
 
@@ -39,7 +45,9 @@ still encrypted positions in the deal window and must match `P(v)`).
 
 | Public | Private |
 |--------|---------|
-| Input hash, output hash (winner code) | `sk`, six faces, tableau intermediates |
+| `hash`, `(winner+1)·c0 + c1`, Groth16 proof | `sk`, six faces, tableau intermediates, 14 coefficients, seal commitment |
+
+`hash` is `Poseidon(keys, playerIndex, ciphertextHash, sealCommitment)`. The showdown template checks that equality.
 
 ## Entrypoints
 

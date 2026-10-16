@@ -65,6 +65,22 @@ function encCt(ct: Ciphertext): [string, string, string, string] {
   return [encFr(ct[0]), encFr(ct[1]), encFr(ct[2]), encFr(ct[3])];
 }
 
+function sharePayload(
+  deck: Ciphertext[],
+  publicKeys: PublicKey[],
+  nActualPlayers: number,
+  privateKey?: PrivateKey | bigint,
+  extras?: ShareExtras,
+) {
+  return {
+    deck: deck.map(encCt),
+    publicKeys: publicKeys.map(encPoint),
+    nActualPlayers: encFr(nActualPlayers),
+    ...(extras?.coinBet !== undefined ? { coinBet: encFr(extras.coinBet) } : {}),
+    ...(privateKey !== undefined ? { privateKey: encFr(privateKey) } : {}),
+  };
+}
+
 type PlayerResult = Record<string, unknown> & { ok?: boolean; error?: string };
 
 export type PlayerInvoke = (payload: Record<string, unknown>) => PlayerResult | Promise<PlayerResult>;
@@ -171,6 +187,7 @@ export type PlayerSession = {
     cards: Ciphertext[];
     partials: Ciphertext[][];
     sourceIndices: number[];
+    upcardIndex: number;
     cardCount?: number;
     canSplit?: boolean;
     hitSoft17?: boolean;
@@ -263,11 +280,7 @@ export function createPlayerSession(invoke: PlayerInvoke, close: () => void = ()
     share: async (deck, publicKeys, nActualPlayers, privateKey, extras) => {
       const result = await call({
         op: 'share',
-        deck: deck.map(encCt),
-        publicKeys: publicKeys.map(encPoint),
-        nActualPlayers: encFr(nActualPlayers),
-        ...(extras?.coinBet !== undefined ? { coinBet: encFr(extras.coinBet) } : {}),
-        ...(privateKey !== undefined ? { privateKey: encFr(privateKey) } : {}),
+        ...sharePayload(deck, publicKeys, nActualPlayers, privateKey, extras),
       });
       return {
         ...parseProof(result),
@@ -344,6 +357,7 @@ export function createPlayerSession(invoke: PlayerInvoke, close: () => void = ()
         cards: input.cards.map(encCt),
         partials: input.partials.map((row) => row.map(encCt)),
         sourceIndices: input.sourceIndices.map(encFr),
+        upcardIndex: encFr(input.upcardIndex),
         ...(input.cardCount !== undefined ? { cardCount: encFr(input.cardCount) } : {}),
         ...(input.canSplit !== undefined ? { canSplit: input.canSplit } : {}),
         ...(input.hitSoft17 !== undefined ? { hitSoft17: input.hitSoft17 } : {}),
@@ -518,6 +532,7 @@ export async function share(
   publicKeys: PublicKey[],
   nActualPlayers: number,
   privateKey?: PrivateKey | bigint,
+  extras?: ShareExtras,
 ): Promise<{
   proof: object;
   publicSignals: string[];
@@ -525,10 +540,7 @@ export async function share(
 }> {
   const result = await player({
     op: 'share',
-    deck: deck.map(encCt),
-    publicKeys: publicKeys.map(encPoint),
-    nActualPlayers: encFr(nActualPlayers),
-    ...(privateKey !== undefined ? { privateKey: encFr(privateKey) } : {}),
+    ...sharePayload(deck, publicKeys, nActualPlayers, privateKey, extras),
   });
   return {
     ...parseProof(result),

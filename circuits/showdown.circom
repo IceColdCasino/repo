@@ -6,9 +6,29 @@ Patent Pending USPTO Application Number 19/811,546
 
 pragma circom 2.2.2;
 
+include "circuits/bitify.circom";
 include "./hash.circom";
 include "./deck.circom";
 include "./helpers.circom";
+
+// Canonical decomposition of a value below 2^n. `Num2Bits_strict` rejects a
+// field alias. `n` is at most 253. Every bit at index `n` or higher is zero,
+// so a 128-bit coefficient also has bits 252 and 253 clear. Bit 252 stays
+// live only when `n` is 253, the widest width whose top bit is 252.
+template Num2BitsStrict(n) {
+  assert(n > 0 && n <= 253);
+  signal input in;
+  signal output out[n];
+
+  component full = Num2Bits_strict();
+  full.in <== in;
+  for (var i = 0; i < n; i++) {
+    out[i] <== full.out[i];
+  }
+  for (var i = n; i < 254; i++) {
+    full.out[i] === 0;
+  }
+}
 
 template HashMain(nPlayers, nTotalCards) {
   var nOthers = nPlayers - 1;
@@ -17,6 +37,7 @@ template HashMain(nPlayers, nTotalCards) {
   signal input playerIndex;
   signal input ciphertextCards[nTotalCards][4];
   signal input ciphertextPartials[nOthers][nTotalCards][4];
+  signal input sealCommitment;
 
   signal output out;
 
@@ -25,10 +46,10 @@ template HashMain(nPlayers, nTotalCards) {
   component h2;
   component finalHash;
 
-  h1 = HashPublicKeys(nPlayers);
+  h1 = parallel HashPublicKeys(nPlayers);
   h1.publicKeys <== publicKeys;
 
-  h2 = Poseidon(nPlayers);
+  h2 = parallel Poseidon(nPlayers);
 
   for (var p = 0; p < nPlayers; p++) {
     _h2[p] = parallel HashCiphertexts(nTotalCards);
@@ -37,27 +58,30 @@ template HashMain(nPlayers, nTotalCards) {
     } else {
       _h2[p].ciphertext <== ciphertextPartials[p - 1];
     }
+  }
+  for (var p = 0; p < nPlayers; p++) {
     h2.inputs[p] <== _h2[p].out;
   }
 
-  finalHash = Poseidon(3);
+  finalHash = Poseidon(4);
   finalHash.inputs <== [
     h1.out,
     playerIndex,
-    h2.out
+    h2.out,
+    sealCommitment
   ];
 
   out <== finalHash.out;
 }
 
-template VerifyDecryptedCards(nTotalCards, shoeSize, deckSize) {
+template VerifyDecryptedCards(nTotalCards, deckSize) {
   signal input plaintextCards[nTotalCards];
   signal input decryptedCards[nTotalCards][2];
 
   component deck;
   component isEqual[nTotalCards][2];
 
-  deck = InstantiateDeck(nTotalCards, shoeSize, deckSize);
+  deck = InstantiateDeck(nTotalCards, deckSize);
   deck.cards <== plaintextCards;
 
   for (var c = 0; c < nTotalCards; c++) {
@@ -82,16 +106,12 @@ template ShowdownPolynomialHash(nTerms) {
 
   signal output out;
 
-  component lt[nTerms];
-
   // Polynomial hash: h = sum((result + 1) * coefficients[i])
-  // Adding 1 prevents 0 multiplication which leaks information
+  // Adding 1 prevents 0 multiplication which leaks information.
+  // Range is the seal's single Num2BitsStrict(128) check.
   acc[0] <== 0;
 
   for (var i = 0; i < nTerms; i++) {
-    lt[i] = ConstrainLt(252, 2 ** 129);
-    lt[i].in <== coefficients[i];
-
     terms[i] <== (results[i] + 1) * coefficients[i];
     acc[i + 1] <== acc[i] + terms[i];
   }

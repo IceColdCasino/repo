@@ -13,6 +13,8 @@ const craps = @import("craps_player.zig");
 const keno = @import("keno_player.zig");
 const bingo = @import("bingo_player.zig");
 const slot = @import("slot_player.zig");
+const seal = @import("../crypto/seal.zig");
+const house_build = @import("house_options").house_build;
 
 const Fr = table.Fr;
 const Crypto = table.Crypto;
@@ -164,6 +166,7 @@ pub fn dispatch(self: *Session, payload: []const u8) ![]u8 {
         return w.toOwned();
     }
     if (std.mem.eql(u8, op, "bet")) {
+        if (comptime house_build) return error.HouseDoesNotBet;
         try writeBet(self, root, &w);
         return w.toOwned();
     }
@@ -172,6 +175,7 @@ pub fn dispatch(self: *Session, payload: []const u8) ![]u8 {
         return w.toOwned();
     }
     if (std.mem.eql(u8, op, "card")) {
+        if (comptime house_build) return error.HouseDoesNotBet;
         try writeCard(self, root, &w);
         return w.toOwned();
     }
@@ -190,7 +194,7 @@ pub fn dispatch(self: *Session, payload: []const u8) ![]u8 {
 fn shoeDecks(kind: Kind, variant: u32) u32 {
     if (variant == 1 or variant == 6 or variant == 8) return variant;
     return switch (kind) {
-        .war, .blackjack => 6,
+        .war, .blackjack, .baccarat => 6,
         else => 1,
     };
 }
@@ -237,25 +241,14 @@ fn requireKey(self: *Session, root: std.json.Value) !void {
     if (t.key == null) return error.KeyNotGenerated;
 }
 
-fn applyActionCoeffs(self: *Session, root: std.json.Value) !void {
+fn applySeal(self: *Session, root: std.json.Value) !void {
     const raw = root.object.get("coefficients") orelse return error.MissingHostCoefficients;
-    const n = try ops.parseFrListCount(raw, self.sealed_buf[0..2]);
-    if (n != 2) return error.FrListSize;
-    if (self.sealed_buf[0].eql(Fr.zero())) return error.ZeroCoefficient;
-    self.sealed_len = 2;
-    self.tablePtr().setSealed(self.sealed_buf[0..2]);
-}
-
-fn applyCoeffs(self: *Session, root: std.json.Value, need: usize) !void {
-    const raw = root.object.get("coefficients") orelse return error.MissingHostCoefficients;
-    if (need == 0 or need > self.sealed_buf.len) return error.SealedCoefficientCount;
-    const n = try ops.parseFrListCount(raw, self.sealed_buf[0..need]);
-    if (n != need) return error.FrListSize;
-    for (self.sealed_buf[0..need]) |c| {
-        if (c.eql(Fr.zero())) return error.ZeroCoefficient;
-    }
-    self.sealed_len = need;
-    self.tablePtr().setSealed(self.sealed_buf[0..need]);
+    const slots = self.sealed_buf[0..seal.SLOTS];
+    const n = try ops.parseFrListCount(raw, slots);
+    if (n != seal.SLOTS) return error.FrListSize;
+    try seal.validate(slots);
+    self.sealed_len = seal.SLOTS;
+    self.tablePtr().setSealed(slots);
 }
 
 fn writeKey(self: *Session, root: std.json.Value, w: *Writer) !void {
@@ -371,6 +364,18 @@ fn writeShare(self: *Session, root: std.json.Value, w: *Writer) !void {
         return;
     }
 
+    if (self.kind == .bingo) {
+        var out = try self.player.bingo.shareProve(deck, keys, n_actual);
+        defer out.deinit();
+        try w.beginObj();
+        try w.okTrue();
+        try w.embedProof(out.proof.proof_json, out.proof.public_json);
+        try w.key("ciphertexts");
+        try w.ctGrid(out.rows);
+        try w.endObj();
+        return;
+    }
+
     var out = try switch (self.player) {
         .war => |*p| p.shareProve(deck, keys, n_actual),
         .baccarat => |*p| p.shareProve(deck, keys, n_actual),
@@ -378,7 +383,7 @@ fn writeShare(self: *Session, root: std.json.Value, w: *Writer) !void {
         .roulette => |*p| p.shareProve(deck, keys, n_actual),
         .craps => |*p| p.shareProve(deck, keys, n_actual),
         .keno => |*p| p.shareProve(deck, keys, n_actual),
-        .bingo => |*p| p.shareProve(deck, keys, n_actual),
+        .bingo => unreachable,
         .slot => unreachable,
     };
     defer out.deinit();
@@ -401,13 +406,13 @@ fn writeShowdown(self: *Session, root: std.json.Value, w: *Writer) !void {
     var grid = try parseCtGridAlloc(self.alloc, root.object.get("partials") orelse return error.MissingPartials);
     defer grid.deinit(self.alloc);
     const partials = grid.rows;
+    try applySeal(self, root);
 
     try w.beginObj();
     try w.okTrue();
 
     switch (self.player) {
         .war => |*p| {
-            try applyCoeffs(self, root, 1);
             var out = try p.showdownProve(keys, cards, partials);
             defer out.proof.deinit();
             try w.embedProof(out.proof.proof_json, out.proof.public_json);
@@ -417,7 +422,6 @@ fn writeShowdown(self: *Session, root: std.json.Value, w: *Writer) !void {
             try w.u64s(&out.plaintext);
         },
         .baccarat => |*p| {
-            try applyCoeffs(self, root, 1);
             var out = try p.showdownProve(keys, cards, partials);
             defer out.proof.deinit();
             try w.embedProof(out.proof.proof_json, out.proof.public_json);
@@ -427,7 +431,6 @@ fn writeShowdown(self: *Session, root: std.json.Value, w: *Writer) !void {
             try w.u64s(&out.plaintext);
         },
         .blackjack => |*p| {
-            try applyCoeffs(self, root, 1);
             const player_n = try ops.parseU64(root.object.get("playerCardCount") orelse return error.MissingPlayerCardCount);
             const dealer_n = try ops.parseU64(root.object.get("dealerCardCount") orelse return error.MissingDealerCardCount);
             var pt_buf: [32]u64 = undefined;
@@ -441,7 +444,6 @@ fn writeShowdown(self: *Session, root: std.json.Value, w: *Writer) !void {
             try w.embedProof(proof.proof_json, proof.public_json);
         },
         .roulette => |*p| {
-            try applyCoeffs(self, root, 12);
             const enc = try ops.parseCtList(self.alloc, root.object.get("ciphertextBets") orelse root.object.get("encBets") orelse return error.MissingBets);
             defer self.alloc.free(enc.ptr[0..enc.len]);
             var bets: [12][2]u32 = undefined;
@@ -452,7 +454,6 @@ fn writeShowdown(self: *Session, root: std.json.Value, w: *Writer) !void {
             try w.embedProof(proof.proof_json, proof.public_json);
         },
         .craps => |*p| {
-            try applyCoeffs(self, root, 14);
             const enc = try ops.parseCtList(self.alloc, root.object.get("ciphertextBets") orelse root.object.get("encBets") orelse return error.MissingBets);
             defer self.alloc.free(enc.ptr[0..enc.len]);
             var bets: [12][2]u32 = undefined;
@@ -465,7 +466,6 @@ fn writeShowdown(self: *Session, root: std.json.Value, w: *Writer) !void {
             try w.embedProof(proof.proof_json, proof.public_json);
         },
         .keno => |*p| {
-            try applyCoeffs(self, root, 1);
             const enc = try ops.parseCtList(self.alloc, root.object.get("ciphertextBets") orelse root.object.get("encBets") orelse return error.MissingBets);
             defer self.alloc.free(enc.ptr[0..enc.len]);
             var spots: [20]u8 = undefined;
@@ -478,8 +478,6 @@ fn writeShowdown(self: *Session, root: std.json.Value, w: *Writer) !void {
             try w.writeU64(out.matches);
         },
         .bingo => |*p| {
-            const need: usize = if (p.variant == 90) 3 else 1;
-            try applyCoeffs(self, root, need);
             const cells_ct = try ops.parseCtList(self.alloc, root.object.get("ciphertextCardCells") orelse root.object.get("cardCells") orelse return error.MissingCardCells);
             defer self.alloc.free(cells_ct.ptr[0..cells_ct.len]);
             var cells: [27]u8 = undefined;
@@ -491,7 +489,6 @@ fn writeShowdown(self: *Session, root: std.json.Value, w: *Writer) !void {
             try w.embedProof(proof.proof_json, proof.public_json);
         },
         .slot => |*p| {
-            try applyCoeffs(self, root, 1);
             const enc_bet = try ops.parseCt(root.object.get("ciphertextBet") orelse root.object.get("encBet") orelse return error.MissingBet);
             const coin = try ops.parseU64(root.object.get("coinBet") orelse return error.MissingCoinBet);
             var proof = try p.showdownProve(keys, cards, partials, enc_bet, coin);
@@ -560,7 +557,8 @@ fn writeAction(self: *Session, root: std.json.Value, w: *Writer) !void {
     const can_split = ops.parseBool(root.object.get("canSplit"), false);
     const hit_soft_17 = ops.parseBool(root.object.get("hitSoft17"), false);
     const is_dealer = ops.parseBool(root.object.get("isDealer"), false);
-    try applyActionCoeffs(self, root);
+    const upcard_index = try ops.parseU64(root.object.get("upcardIndex") orelse return error.MissingUpcard);
+    try applySeal(self, root);
 
     var sel_cards: [13]Ciphertext = undefined;
     var sel_partial_store: [16][13]Ciphertext = undefined;
@@ -578,6 +576,21 @@ fn writeAction(self: *Session, root: std.json.Value, w: *Writer) !void {
     else
         blackjack.actionStatus(faces[0..card_count], card_count, can_split);
 
+    if (upcard_index >= cards_n.len) return error.MissingUpcard;
+    const upcard = cards_n.ptr[upcard_index];
+    var up_partials: [16]Ciphertext = undefined;
+    if (grid.rows.len > up_partials.len) return error.InvalidPartials;
+    for (grid.rows, 0..) |row, r| {
+        if (upcard_index >= row.len) return error.MissingUpcard;
+        up_partials[r] = row[upcard_index];
+    }
+    var up_plain: [1]u64 = undefined;
+    const up_one = [_]Ciphertext{upcard};
+    var up_rows: [16][]const Ciphertext = undefined;
+    for (0..grid.rows.len) |r| up_rows[r] = up_partials[r .. r + 1];
+    try self.crypto.decryptCards(self.tablePtr().privateKey(), &up_one, up_rows[0..grid.rows.len], &up_plain);
+    const insurance_eligible = @as(u32, @intCast(up_plain[0])) % 13 == 12;
+
     var proof = try self.player.blackjack.actionProve(
         keys,
         sel_cards[0..n_sel],
@@ -587,6 +600,10 @@ fn writeAction(self: *Session, root: std.json.Value, w: *Writer) !void {
         can_split,
         hit_soft_17,
         is_dealer,
+        upcard,
+        up_partials[0..grid.rows.len],
+        up_plain[0],
+        insurance_eligible,
     );
     defer proof.deinit();
 
@@ -611,6 +628,12 @@ fn writeCard(self: *Session, root: std.json.Value, w: *Writer) !void {
     try w.okTrue();
     try w.embedProof(proof.proof_json, proof.public_json);
     try w.endObj();
+}
+
+comptime {
+    // House builds return before these calls. Keep the writers typechecked.
+    _ = writeBet;
+    _ = writeCard;
 }
 
 fn writeDecrypt(self: *Session, root: std.json.Value, w: *Writer) !void {

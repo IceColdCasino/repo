@@ -1,7 +1,6 @@
 import {
   Craps,
   MAX_CRAPS_BETS,
-  CRAPS_SHOWDOWN_TERMS,
   padCrapsBets,
   parseBetPublicSignals,
   type CrapsBet,
@@ -16,6 +15,7 @@ import { Circuit } from './circuit';
 import type { Groth16Proof } from 'snarkjs';
 import assert from 'assert';
 import { GameKind } from './game-config';
+import { requireHostShowdownCoefficients, sealCommitment, sealedShowdownWitness } from './host-showdown-coefficients';
 import { tryOpenGameSession } from './player-zig-session';
 import type { PlayerSession } from './player-native-bridge';
 
@@ -116,9 +116,11 @@ export class Player {
   #sealedCoefficients: bigint[] | undefined;
   #session: PlayerSession | undefined;
   #padding: Ciphertext | undefined;
+  #house: boolean;
 
-  constructor(circuits: CrapsCircuits) {
+  constructor(circuits: CrapsCircuits, house = false) {
     this.#circuits = circuits;
+    this.#house = house;
   }
 
   private usesZig(): boolean {
@@ -126,7 +128,7 @@ export class Player {
   }
 
   async init() {
-    this.#session = await tryOpenGameSession({ kind: GameKind.Craps });
+    this.#session = await tryOpenGameSession({ kind: GameKind.Craps, house: this.#house });
     await this.#craps.init();
     if (this.#session) return;
     await this.#circuits.register.load();
@@ -161,13 +163,7 @@ export class Player {
   }
 
   setSealedCoefficients(coeffs: bigint[]): void {
-    if (coeffs.length !== CRAPS_SHOWDOWN_TERMS) {
-      throw new Error(`Expected ${CRAPS_SHOWDOWN_TERMS} sealed coefficients, got ${coeffs.length}`);
-    }
-    for (const coeff of coeffs) {
-      if (coeff === 0n) throw new Error('Sealed coefficient must be non-zero');
-    }
-    this.#sealedCoefficients = [...coeffs];
+    this.#sealedCoefficients = requireHostShowdownCoefficients(coeffs);
     this.#showdownParams = undefined;
   }
 
@@ -282,6 +278,7 @@ export class Player {
   }
 
   async betProve(houseKey: PublicKey, bets: CrapsBet[]): Promise<BetOutput> {
+    if (this.#house) throw new Error('house player does not place bets');
     if (this.#session) {
       const plaintextBets = padCrapsBets(bets);
       const out = await this.#session.bet({
@@ -360,7 +357,12 @@ export class Player {
       };
     }
     const params = this.prepareShare(deck, publicKeys, nActualPlayers);
-    const ciphertexts = this.#craps.share(deck, publicKeys, this.#privateKey, params.cardRandomness);
+    const ciphertexts = this.#craps.share(
+      deck,
+      publicKeys,
+      this.#privateKey,
+      params.cardRandomness,
+    );
     const { proof, publicSignals } = await this.#circuits.share.prove({
       hash: params.hash,
       ciphertext: deck,
@@ -389,10 +391,7 @@ export class Player {
         pk.every((value, i) => value === this.publicKey[i]),
       );
       if (playerIndex < 0) throw new Error('Player public key not found');
-      if (!this.#sealedCoefficients || this.#sealedCoefficients.length !== CRAPS_SHOWDOWN_TERMS) {
-        throw new Error('showdown coefficients must come from the host');
-      }
-      const coefficients = [...this.#sealedCoefficients];
+      const coefficients = requireHostShowdownCoefficients(this.#sealedCoefficients);
       const paddedBets = padCrapsBets(plaintextBets);
       const hashInput = {
         publicKeys,
@@ -403,6 +402,7 @@ export class Player {
         nActualBets,
         phase,
         point,
+        sealCommitment: sealCommitment(coefficients),
       };
       const hash = this.#craps.showdownHash(hashInput);
       const plaintextDice = this.#craps.decryptCards(
@@ -438,15 +438,14 @@ export class Player {
       plaintextBets, nActualBets, phase, point,
     );
     this.#circuits.showdown.preloadWitness({
-      hash: params.hash,
       ...(params.hashInput as object),
+      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCards: params.plaintextDice,
       plaintextBets: plaintextBets.length === MAX_CRAPS_BETS
         ? plaintextBets.map(b => [b[0], b[1]])
         : padCrapsBets(plaintextBets).map(b => [b[0], b[1]]),
-      coefficients: params.coefficients.map(c => c.toString()),
     });
   }
 
@@ -461,9 +460,6 @@ export class Player {
     point: number,
   ): Promise<ShowdownOutput> {
     if (this.#session) {
-      if (!this.#sealedCoefficients || this.#sealedCoefficients.length !== CRAPS_SHOWDOWN_TERMS) {
-        throw new Error('showdown coefficients must come from the host');
-      }
       const paddedBets = padCrapsBets(plaintextBets);
       const out = await this.#session.showdown({
         publicKeys,
@@ -474,7 +470,7 @@ export class Player {
         nActualBets,
         phase,
         point,
-        coefficients: this.#sealedCoefficients,
+        coefficients: requireHostShowdownCoefficients(this.#sealedCoefficients),
         privateKey: this.#key?.privateKey,
       });
       const plaintextDice = this.#craps.decryptCards(
@@ -503,13 +499,12 @@ export class Player {
     );
     const paddedBets = padCrapsBets(plaintextBets);
     const { proof, publicSignals } = await this.#circuits.showdown.prove({
-      hash: params.hash,
       ...(params.hashInput as object),
+      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCards: params.plaintextDice,
       plaintextBets: paddedBets.map(b => [b[0], b[1]]),
-      coefficients: params.coefficients.map(c => c.toString()),
     });
     this.#showdownParams = undefined;
     return {

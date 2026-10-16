@@ -13,6 +13,27 @@ export const GameKind = {
 } as const;
 export type GameKind = (typeof GameKind)[keyof typeof GameKind];
 
+/** Seats at a full table, including the house when the game has one. */
+export function maxTableSeats(kind: GameKind): number {
+  switch (kind) {
+    case GameKind.Poker:
+      return 10;
+    case GameKind.Blackjack:
+      return 8;
+    case GameKind.Slots:
+      return 2;
+    case GameKind.Baccarat:
+    case GameKind.War:
+    case GameKind.Roulette:
+    case GameKind.Craps:
+    case GameKind.Keno:
+    case GameKind.Bingo:
+      return 12;
+    default:
+      throw new Error(`invalid game_kind ${kind}`);
+  }
+}
+
 export const ShoeDecks = {
   One: 1,
   Six: 6,
@@ -146,40 +167,44 @@ export function revealCardCount(config: GameConfig): number {
 }
 
 /** Active showdown polynomial-hash coefficients (pad to SHOWDOWN_MAX_COEFFS). */
+/** Every game seals two coefficients. Poker packs its nine winner masks into the first. */
 export function showdownCoeffCount(config: GameConfig): number {
   switch (config.kind) {
     case GameKind.Poker:
-      return 9;
     case GameKind.Baccarat:
     case GameKind.War:
     case GameKind.Blackjack:
-      return 1;
-    case GameKind.Roulette:
-      return 12;
-    case GameKind.Craps:
-      return 14;
     case GameKind.Keno:
     case GameKind.Slots:
-      return 1;
+    case GameKind.Roulette:
+    case GameKind.Craps:
     case GameKind.Bingo:
-      return config.rouletteVariant === 90 ? 3 : 1;
+      return 2;
     default:
       throw new Error(`invalid game_kind ${config.kind}`);
   }
 }
 
-/** House/dealer seat that must shuffle and cannot place an economic bet. */
+/** Physical seat kept for the house. Poker and bingo return null. */
+export function reservedHouseSeat(kind: GameKind): number | null {
+  if (!gameKindNeedsHouseSeat(kind)) return null;
+  return maxTableSeats(kind) - 1;
+}
+
+/** House/dealer seat that must shuffle and cannot place an economic bet. Poker and bingo have none. */
 export function gameKindNeedsHouseSeat(kind: GameKind): boolean {
   return (
-    kind === GameKind.Roulette
+    kind === GameKind.Baccarat
+    || kind === GameKind.Roulette
     || kind === GameKind.Blackjack
+    || kind === GameKind.War
     || kind === GameKind.Craps
     || kind === GameKind.Keno
     || kind === GameKind.Slots
   );
 }
 
-/** Max sealed showdown coefficients (craps 14); smaller games pad unused slots. */
+/** Seal account width. The polynomial and the seal weights use the first `showdownCoeffCount` slots. */
 export const SHOWDOWN_MAX_COEFFS = 14;
 
 /** Blackjack: chunks scale with seats (players + dealer), min 2, max 19. */

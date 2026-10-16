@@ -13,8 +13,16 @@ CIRCOM_LIBS=(-l node_modules/circomlib)
 
 # cargo run --manifest-path rust/circom-assert-lint/Cargo.toml -- circuits/${circuit}.circom
 
+# The sibling compiler at ../circom. CIRCOM overrides it.
+script_dir=${0:A:h}
+circom_bin=${CIRCOM:-${script_dir}/../circom/target/release/circom}
+if [[ ! -x ${circom_bin} ]]; then
+  echo "missing circom at ${circom_bin}"
+  exit 1
+fi
+
 # Compile the circuit and capture output
-compile_output=$(circom circuits/${circuit}.circom "${CIRCOM_LIBS[@]}" -c --O2 --r1cs -o build 2>&1)
+compile_output=$(${circom_bin} circuits/${circuit}.circom "${CIRCOM_LIBS[@]}" -c --O2 --r1cs -o build 2>&1)
 echo "$compile_output"
 
 # Extract number of non-linear and linear constraints
@@ -81,49 +89,67 @@ if [ ! -f ~/ptau/powersOfTau28_hez_final${suffix}.ptau ]; then
   curl https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final${suffix}.ptau -o ~/ptau/powersOfTau28_hez_final${suffix}.ptau
 fi
 
-# Allow override for huge circuits (e.g. blackjack_showdown needs >>8GB heap).
-export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=8192}"
-
 circuit_basename=$(basename "${circuit}")
 
-# Create RAM disk for faster zkey operations.
-# Override with RAMDISK_SIZE_MB for large circuits (need ~2x final zkey size).
-RAMDISK_SIZE_MB=${RAMDISK_SIZE_MB:-4096}
-RAMDISK_NAME="zkey_ramdisk_$$"
-# Create RAM disk and trim whitespace from device path
-RAMDISK_DEVICE=$(hdiutil attach -nomount ram://$((RAMDISK_SIZE_MB * 2048 * 2)) | tr -d '[:space:]')
-echo "Created RAM disk device: ${RAMDISK_DEVICE}"
+if [[ -n ${ZKEY:-} ]]; then
+  zkey_setup=$ZKEY
+elif command -v zkey >/dev/null 2>&1; then
+  zkey_setup=$(command -v zkey)
+else
+  echo "missing zkey from the IceColdCasino/groth16 formula"
+  echo "brew trust --tap IceColdCasino/groth16"
+  echo "brew tap IceColdCasino/groth16 https://github.com/IceColdCasino/groth16"
+  echo "brew install icecoldcasino/groth16/zkey"
+  exit 1
+fi
 
-# Format the RAM disk
-newfs_hfs -v "${RAMDISK_NAME}" "${RAMDISK_DEVICE}"
+mkdir -p zkey
+out_zkey="zkey/${circuit_basename}_0001.zkey"
+out_vk="zkey/${circuit_basename}_verification_key.json"
 
-# Mount to /tmp/ instead of /Volumes/ for better permissions
-RAMDISK_MOUNT="/tmp/${RAMDISK_NAME}"
-mkdir -p "${RAMDISK_MOUNT}"
-mount -t hfs "${RAMDISK_DEVICE}" "${RAMDISK_MOUNT}"
+# Setup and contribute stay in memory. The final key is written once.
+${zkey_setup} "build/${circuit_basename}.r1cs" "${HOME}/ptau/powersOfTau28_hez_final${suffix}.ptau" "${out_zkey}" "${out_vk}" "1st Contributor Name"
 
-echo "RAM disk mounted at ${RAMDISK_MOUNT} (${RAMDISK_SIZE_MB}MB)"
-df -h "${RAMDISK_MOUNT}" | head -1
+# Isolated mains are proved on their own. Their short names are not the
+# witness files the game tests load (poker_share_main must not replace
+# poker_share_hashout_main).
+case ${circuit_basename} in
+  poker_share_main|poker_hand_eval_main|poker_compare_hands_main|craps_bet_eval_main)
+    echo "zkey ready for ${circuit_basename}; game witness comes from another main"
+    exit 0
+    ;;
+esac
 
-# Work in RAM disk for zkey operations
-ZKEY_RAM="${RAMDISK_MOUNT}/zkeys"
-mkdir -p "${ZKEY_RAM}"
-
-# Run snarkjs setup in RAM disk
-bun x snarkjs groth16 setup build/${circuit_basename}.r1cs ~/ptau/powersOfTau28_hez_final${suffix}.ptau "${ZKEY_RAM}/${circuit_basename}_0000.zkey"
-set +x
-bun x snarkjs zkey contribute "${ZKEY_RAM}/${circuit_basename}_0000.zkey" "${ZKEY_RAM}/${circuit_basename}_0001.zkey" --name="1st Contributor Name" -v -e="$(head -c 2048 /dev/random | base64)"
-set -x
-bun x snarkjs zkey export verificationkey "${ZKEY_RAM}/${circuit_basename}_0001.zkey" "${ZKEY_RAM}/${circuit_basename}_verification_key.json"
-
-# Copy results from RAM disk to zkey directory
-echo "Copying zkeys from RAM disk to zkey/..."
-mkdir -p $(pwd)/zkey/
-# cp "${ZKEY_RAM}/${circuit_basename}_0000.zkey" $(pwd)/zkey/ # We only need to keep _0001
-cp "${ZKEY_RAM}/${circuit_basename}_0001.zkey" $(pwd)/zkey/
-cp "${ZKEY_RAM}/${circuit_basename}_verification_key.json" $(pwd)/zkey/
-
-# Unmount and eject RAM disk
-umount "${RAMDISK_MOUNT}"
-hdiutil detach "${RAMDISK_DEVICE}"
-echo "RAM disk ejected"
+# Witness calculator used by libzkcasino. The file is named after the main;
+# the library loads the short name (hashout mains drop that suffix).
+short=${circuit_basename%_main}
+short=${short%_hashout}
+case ${short} in
+  register) sub=register ;;
+  shuffle_*) sub=shuffle ;;
+  poker_*) sub=poker ;;
+  baccarat_*) sub=baccarat ;;
+  war_*) sub=war ;;
+  blackjack_*) sub=blackjack ;;
+  roulette_*) sub=roulette ;;
+  craps_*) sub=craps ;;
+  keno_*) sub=keno ;;
+  slot_*) sub=slots ;;
+  bingo_*) sub=bingo ;;
+  *)
+    echo "no witness directory for ${short}"
+    exit 1
+    ;;
+esac
+cpp_src="build/${circuit_basename}_cpp/${circuit_basename}.cpp"
+dat_src="build/${circuit_basename}_cpp/${circuit_basename}.dat"
+if [[ ! -f ${dat_src} ]]; then
+  dat_src="build/${circuit_basename}.dat"
+fi
+if [[ ! -f ${cpp_src} || ! -f ${dat_src} ]]; then
+  echo "missing witness outputs cpp=${cpp_src} dat=${dat_src}"
+  exit 1
+fi
+cp "${cpp_src}" "libzkcasino/src/circuits/${sub}/${short}.cpp"
+cp "${dat_src}" "libzkcasino/src/zig/dat/${short}.dat"
+echo "installed witness ${short} from ${circuit_basename}"

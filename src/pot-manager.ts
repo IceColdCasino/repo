@@ -107,6 +107,11 @@ export class PotManager {
     return this.pots.reduce((acc, pot) => acc + pot.playerAmount(playerIndex), 0n);
   }
 
+  /** Chips this seat contributed, including chips left behind by a fold. */
+  contribution(playerIndex: number): bigint {
+    return this.pots.reduce((acc, pot) => acc + pot.contribution(playerIndex), 0n);
+  }
+
   get currentBet(): bigint {
     return this.pots.reduce((acc, pot) => acc + pot.lastBetAmount, 0n);
   }

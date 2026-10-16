@@ -50,7 +50,7 @@ template RankToHardValue() {
   value <== muxAce.out;
 }
 
-template CardToHardValue(shoeSize) {
+template CardToHardValue() {
   signal input card;
 
   signal output value;
@@ -59,7 +59,7 @@ template CardToHardValue(shoeSize) {
   component rank;
   component val;
 
-  rank = CardToRank(shoeSize);
+  rank = CardToRank();
   rank.card <== card;
 
   val = RankToHardValue();

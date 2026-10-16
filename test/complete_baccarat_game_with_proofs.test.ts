@@ -1,6 +1,7 @@
 import './helpers/require-player-ffi';
 import { MAX_PLAYERS } from '../src/baccarat';
 import { hostShowdownCoefficients } from './helpers/host-showdown-coefficients';
+import { sealCommitment } from '../src/host-showdown-coefficients';
 import { Game } from '../src/baccarat-game';
 import { Player, loadBaccaratCircuits, type BaccaratCircuits } from '../src/baccarat-player';
 import { verify } from '../src/rapidsnark-ffi';
@@ -69,6 +70,7 @@ async function share(game: Game, players: Player[], nActualPlayers: number) {
     console.timeEnd(`Share Prove ${p}`);
 
     console.time(`Game Share ${p}`);
+    game.postShareStake(p, game.requiredShareStake(p));
     game.share(proof, publicSignals, { publicKey: player.publicKey, ciphertexts });
     console.timeEnd(`Game Share ${p}`);
   }
@@ -80,7 +82,8 @@ async function showdown(game: Game, players: Player[], nActualPlayers: number) {
   for (let p = 0; p < nActualPlayers; p++) {
     const player = players[p]!;
 
-    player.setSealedCoefficients(hostShowdownCoefficients(1));
+    const sealed = hostShowdownCoefficients(2);
+    player.setSealedCoefficients(sealed);
     console.time(`Showdown Prove ${p}`);
     const { proof, publicSignals, publicKey, winner } = await player.showdownProve(
       game.publicKeys,
@@ -93,7 +96,10 @@ async function showdown(game: Game, players: Player[], nActualPlayers: number) {
       expectedWinner = winner;
 
       console.time(`Game Verify Showdown ${p}`);
-      const result = game.verifyShowdown(proof, publicSignals, { publicKey });
+      const result = game.verifyShowdown(proof, publicSignals, {
+        publicKey,
+        coefficientCommitment: sealCommitment(sealed),
+      });
       console.timeEnd(`Game Verify Showdown ${p}`);
       expect(result).toBe(BigInt(publicSignals[0]!));
     } else {

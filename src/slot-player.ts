@@ -4,7 +4,9 @@ import { Circuit } from './circuit';
 import type { Groth16Proof } from 'snarkjs';
 import assert from 'assert';
 import { GameKind } from './game-config';
+import { requireHostShowdownCoefficients, sealCommitment, sealedShowdownWitness } from './host-showdown-coefficients';
 import { tryOpenGameSession } from './player-zig-session';
+import { readShuffleProof } from './shuffle-signals';
 import type { PlayerSession } from './player-native-bridge';
 
 export interface SlotCircuits {
@@ -93,10 +95,12 @@ export class Player {
   #sealedCoefficients: bigint[] | undefined;
   #session: PlayerSession | undefined;
   #padding: Ciphertext | undefined;
+  #house: boolean;
 
-  constructor(circuits: SlotCircuits, variant: SlotVariant) {
+  constructor(circuits: SlotCircuits, variant: SlotVariant, house = false) {
     this.#circuits = circuits;
     this.#slot = new Slot(variant);
+    this.#house = house;
   }
 
   private usesZig(): boolean {
@@ -111,6 +115,7 @@ export class Player {
     this.#session = await tryOpenGameSession({
       kind: GameKind.Slots,
       variant: this.nReels,
+      house: this.#house,
     });
     await this.#slot.init();
     if (this.#session) return;
@@ -147,9 +152,7 @@ export class Player {
   }
 
   setSealedCoefficients(coeffs: bigint[]): void {
-    if (coeffs.length !== 1) throw new Error(`Expected 1 sealed coefficient, got ${coeffs.length}`);
-    if (coeffs[0]! === 0n) throw new Error('Sealed coefficient must be non-zero');
-    this.#sealedCoefficients = [...coeffs];
+    this.#sealedCoefficients = requireHostShowdownCoefficients(coeffs);
     this.#showdownParams = undefined;
   }
 
@@ -214,7 +217,6 @@ export class Player {
     const shuffled = params.reels.map((reel, i) =>
       this.#slot.shuffleReel(reel, pkAgg, params.permutationMatrices[i]!, params.randomness[i]!),
     );
-    const permutationHash = this.#slot.hashIndependentPermutations(params.permutationMatrices);
     const { proof, publicSignals } = await this.#circuits.shuffle.prove({
       hash: params.hash,
       reels: params.reels,
@@ -223,7 +225,12 @@ export class Player {
       randomness: params.randomness,
     });
     this.#shuffleParams = undefined;
-    return { proof, publicSignals, reels: shuffled, permutationHash };
+    return {
+      proof,
+      publicSignals,
+      reels: shuffled,
+      permutationHash: readShuffleProof(publicSignals).permutationHash,
+    };
   }
 
   private prepareShare(
@@ -285,7 +292,12 @@ export class Player {
       };
     }
     const params = this.prepareShare(centers, publicKeys, coinBet);
-    const ciphertexts = this.#slot.share(centers, publicKeys, this.#privateKey, params.cardRandomness);
+    const ciphertexts = this.#slot.share(
+      centers,
+      publicKeys,
+      this.#privateKey,
+      params.cardRandomness,
+    );
     const encryptedBets = this.#slot.commitCoinBet(
       coinBet,
       [this.publicKey, ...publicKeys],
@@ -318,16 +330,14 @@ export class Player {
         pk.every((value, i) => value === this.publicKey[i]),
       );
       if (playerIndex < 0) throw new Error('Player public key not found');
-      if (!this.#sealedCoefficients?.[0]) {
-        throw new Error('showdown coefficients must come from the host');
-      }
-      const coefficient = this.#sealedCoefficients[0];
+      const coefficients = requireHostShowdownCoefficients(this.#sealedCoefficients);
       const hashInput = {
         publicKeys,
         playerIndex: BigInt(playerIndex),
         ciphertextCards,
         ciphertextPartials,
         ciphertextBet,
+        sealCommitment: sealCommitment(coefficients),
       };
       const hash = this.#slot.showdownHash(hashInput);
       const plaintextCenters = this.#slot.decryptCards(
@@ -341,7 +351,7 @@ export class Player {
         hashInput,
         plaintextCenters,
         payout,
-        coefficients: [coefficient],
+        coefficients,
       };
     }
     return this.#showdownParams;
@@ -359,13 +369,12 @@ export class Player {
       publicKeys, ciphertextCards, ciphertextPartials, ciphertextBet, coinBet,
     );
     this.#circuits.showdown.preloadWitness({
-      hash: params.hash,
       ...(params.hashInput as object),
+      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCards: params.plaintextCenters,
       coinBet,
-      coefficients: params.coefficients.map(c => c.toString()),
     });
   }
 
@@ -377,16 +386,13 @@ export class Player {
     coinBet: number,
   ): Promise<ShowdownOutput> {
     if (this.#session) {
-      if (!this.#sealedCoefficients?.[0]) {
-        throw new Error('showdown coefficients must come from the host');
-      }
       const out = await this.#session.showdown({
         publicKeys,
         cards: ciphertextCards,
         partials: ciphertextPartials,
         ciphertextBet,
         coinBet,
-        coefficients: this.#sealedCoefficients,
+        coefficients: requireHostShowdownCoefficients(this.#sealedCoefficients),
         privateKey: this.#key?.privateKey,
       });
       const plaintextCenters = this.#slot.decryptCards(
@@ -406,13 +412,12 @@ export class Player {
       publicKeys, ciphertextCards, ciphertextPartials, ciphertextBet, coinBet,
     );
     const { proof, publicSignals } = await this.#circuits.showdown.prove({
-      hash: params.hash,
       ...(params.hashInput as object),
+      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCards: params.plaintextCenters,
       coinBet,
-      coefficients: params.coefficients.map(c => c.toString()),
     });
     this.#showdownParams = undefined;
     return {

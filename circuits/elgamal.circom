@@ -52,11 +52,10 @@ template Encrypt() {
   randomnessBits = Num2Bits(253);
   randomnessBits.in <== randomness;
 
-  c0Mul = EscalarMulFix(253, BASE8());
+  // c0 = r*G and r*pk are independent once the randomness bits exist.
+  c0Mul = parallel EscalarMulFix(253, BASE8());
+  rPk = parallel EscalarMulAny(253);
   c0Mul.e <== randomnessBits.out;
-
-  // Step 2: Compute r * publicKey
-  rPk = EscalarMulAny(253);
   rPk.p <== publicKey;
   rPk.e <== randomnessBits.out;
 
@@ -98,18 +97,18 @@ template AddRandomness() {
   randomnessBits = Num2Bits(253);
   randomnessBits.in <== randomness;
 
-  randomnessG = EscalarMulFix(253, BASE8());
+  // r*G and r*pk share the randomness bits and do not depend on each other.
+  randomnessG = parallel EscalarMulFix(253, BASE8());
+  randomnessPublicKey = parallel EscalarMulAny(253);
   randomnessG.e <== randomnessBits.out;
-  
+  randomnessPublicKey.p <== publicKey;
+  randomnessPublicKey.e <== randomnessBits.out;
+
   c0Add = BabyAdd();
   c0Add.x1 <== ciphertext[0];
   c0Add.y1 <== ciphertext[1];
   c0Add.x2 <== randomnessG.out[0];
   c0Add.y2 <== randomnessG.out[1];
-  
-  randomnessPublicKey = EscalarMulAny(253);
-  randomnessPublicKey.p <== publicKey;
-  randomnessPublicKey.e <== randomnessBits.out;
   
   c1Add = BabyAdd();
   c1Add.x1 <== ciphertext[2];
@@ -229,7 +228,7 @@ template VerifyKey() {
   component babyPbk;
   component eq[2];
 
-  babyPbk = BabyPbk();
+  babyPbk = parallel BabyPbk();
   babyPbk.in <== privateKey;
 
   for (var i = 0; i < 2; i++) {
@@ -242,6 +241,7 @@ template VerifyKey() {
 
   eq[0].out * eq[1].out === 1;
 }
+
 
 /**
  * Public key check using selector approach

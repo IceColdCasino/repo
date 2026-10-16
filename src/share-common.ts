@@ -10,6 +10,10 @@ export const SHARE_PLAYER_SLOTS = 10;
 
 export const SHARE_IDENTITY_POINT = [0n, 1n] as PublicKey;
 
+export function identityKeys(count: number): PublicKey[] {
+  return Array.from({ length: count }, () => SHARE_IDENTITY_POINT);
+}
+
 export const SHARE_OTHER_SLOTS = SHARE_PLAYER_SLOTS - 1;
 
 /** Pad registered keys to 10 slots with BabyJub identity [0, 1]. */

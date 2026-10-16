@@ -6,6 +6,6 @@ Patent Pending USPTO Application Number 19/811,546
 
 pragma circom 2.2.2;
 
-include "./share.circom";
+include "./baccarat_share.circom";
 
-component main { public [hash] } = ShareHashOut(12, 6);
+component main { public [hash] } = BaccaratShareHashOut(12, 6);

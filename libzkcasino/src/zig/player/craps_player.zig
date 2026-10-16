@@ -1,7 +1,6 @@
 const std = @import("std");
 const poseidon = @import("../crypto/poseidon.zig");
 const hash = @import("../crypto/hash.zig");
-const poly = @import("../crypto/poly_hash.zig");
 const base = @import("player_base.zig");
 const eval = @import("craps_eval.zig");
 const table = @import("table_player.zig");
@@ -26,6 +25,7 @@ pub fn showdownHash(
     n_actual_bets: u64,
     phase: u64,
     point: u64,
+    seal_commitment: Fr,
 ) Fr {
     const h1 = hash.hashPublicKeys12(public_keys);
     var h2_in: [13]Fr = undefined;
@@ -34,7 +34,7 @@ pub fn showdownHash(
     while (p < partials.len) : (p += 1) h2_in[p + 1] = crypto.hashCiphertexts(partials[p]);
     const h2 = poseidon.hash(h2_in[0 .. 1 + partials.len]);
     const table_bind = poseidon.hash(&.{ Fr.fromU64(n_actual_bets), Fr.fromU64(phase), Fr.fromU64(point) });
-    return poseidon.hash(&.{ h1, player_index, h2, crypto.hashCiphertexts(bets), table_bind });
+    return poseidon.hash(&.{ h1, player_index, h2, crypto.hashCiphertexts(bets), table_bind, seal_commitment });
 }
 
 pub fn shuffleHash(crypto: *const Crypto, dice: []const Ciphertext, keys: []const PublicKey) Fr {
@@ -46,12 +46,11 @@ pub const evaluateBet = eval.evaluateBet;
 pub const evaluateShowdown = eval.evaluateShowdown;
 
 pub fn computeShareOutputHash(values: []const Fr, n_actual: u32) Fr {
-    return poly.hashRecipientMajor(values, 11, 2, 12, n_actual);
+    _ = n_actual;
+    return hash.hashRecipientCiphertexts(values, 11, 2);
 }
 
 pub const MAX_CRAPS_BETS: usize = 12;
-pub const CRAPS_SHOWDOWN_TERMS: usize = 14;
-
 pub const Player = struct {
     table: table.TablePlayer,
 
@@ -86,7 +85,7 @@ pub const Player = struct {
             const r = randomness[d * 6 .. (d + 1) * 6];
             self.table.crypto.generateShufflePermutation(6, m);
             self.table.crypto.generateShuffleRandomness(6, r);
-            _ = self.table.crypto.shuffle(
+            self.table.crypto.shuffle(
                 dice[d * 6 .. (d + 1) * 6],
                 shuffle_keys,
                 m,
@@ -110,17 +109,22 @@ pub const Player = struct {
         const shuffled = try self.table.alloc.alloc(Ciphertext, 12);
         errdefer self.table.alloc.free(shuffled);
         @memcpy(shuffled, &out);
+        const perm = try prove.publicSignal(self.table.alloc, proof.public_json, 1);
         return .{
             .proof = proof,
             .deck = shuffled,
-            .permutation_hash = Fr.zero(),
+            .permutation_hash = perm,
             .alloc = self.table.alloc,
         };
     }
 
     pub fn shareProve(self: *Player, deck: []const Ciphertext, keys: []const PublicKey, n_actual: u32) !table.ShareOut {
-        const h = self.table.crypto.shareHash(deck, self.table.publicKey(), keys);
-        return self.table.linearShareProve(.craps_share_hashout_main, deck, keys, n_actual, h);
+        var keys12: [12]PublicKey = undefined;
+        for (&keys12) |*k| k.* = PublicKey.identity();
+        keys12[0] = self.table.publicKey();
+        @memcpy(keys12[1 .. 1 + keys.len], keys);
+        const h = hash.shareInputHashHouse(self.table.crypto.hashCiphertexts(deck), hash.hashPublicKeys12(keys12[0..12]));
+        return self.table.linearShareProveHouse(.craps_share_hashout_main, deck, keys, n_actual, h);
     }
 
     pub fn betProve(self: *Player, house: PublicKey, bets: []const [2]u32) !table.Proof {
@@ -164,9 +168,7 @@ pub const Player = struct {
         point: u64,
     ) !table.Proof {
         const idx = self.table.indexOfSelf(public_keys);
-        var coeffs: [CRAPS_SHOWDOWN_TERMS]Fr = undefined;
-        self.table.fillCoeffs(&coeffs);
-        const h = showdownHash(self.table.crypto, public_keys, Fr.fromU64(idx), cards, partials, enc_bets, n_actual, phase, point);
+        const h = showdownHash(self.table.crypto, public_keys, Fr.fromU64(idx), cards, partials, enc_bets, n_actual, phase, point, self.table.sealCommitment());
         var dice: [2]u64 = undefined;
         try self.table.crypto.decryptCards(self.table.privateKey(), cards, partials, &dice);
         var flat: [24]u64 = undefined;
@@ -180,7 +182,7 @@ pub const Player = struct {
         var j = prove.json.Json.init(self.table.alloc);
         errdefer j.deinit();
         try j.begin();
-        try j.fieldFr("hash", h);
+        try self.table.writeSealedShowdown(&j, h, 2);
         try j.fieldPoints("publicKeys", public_keys);
         try j.fieldU64("playerIndex", idx);
         try j.fieldCts("ciphertextCards", cards);
@@ -193,7 +195,6 @@ pub const Player = struct {
         try j.fieldFr("privateKey", self.table.privateKey());
         try j.fieldU64s("plaintextCards", &dice);
         try j.fieldU64s("plaintextBets", &flat);
-        try j.fieldFrs("coefficients", &coeffs);
         const json = try j.finish();
         defer self.table.alloc.free(json);
         return self.table.proveJson(.craps_showdown_hashout_main, json);

@@ -8,8 +8,8 @@ pragma circom 2.2.2;
 
 include "./helpers.circom";
 
-template CardToRank(shoeSize) {
-  var nCards = 52 * shoeSize;
+template CardToRank() {
+  var nCards = 52;
   var baccaratRanks[13] = [2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 1];
 
   signal input card; // Card number (0 to 51)
@@ -29,18 +29,16 @@ template CardToRank(shoeSize) {
 
   rankCounter[0] <== 0;
 
-  for (var d = 0; d < shoeSize; d++) {
-    for (var s = 0; s < 4; s++) {
-      for (var r = 0; r < 13; r++) {
-        var i = d * 52 + s * 13 + r;
+  for (var s = 0; s < 4; s++) {
+    for (var r = 0; r < 13; r++) {
+      var i = s * 13 + r;
 
-        eqCheck[i] = IsEqual();
-        eqCheck[i].in <== [card, i];
+      eqCheck[i] = IsEqual();
+      eqCheck[i].in <== [card, i];
 
-        ltOrCheck[i] = LessThanOR(6);
-        ltOrCheck[i].in <== [rankCounter[i], baccaratRanks[r] * eqCheck[i].out];
-        rankCounter[i + 1] <== ltOrCheck[i].out;
-      }
+      ltOrCheck[i] = LessThanOR(6);
+      ltOrCheck[i].in <== [rankCounter[i], baccaratRanks[r] * eqCheck[i].out];
+      rankCounter[i + 1] <== ltOrCheck[i].out;
     }
   }
 

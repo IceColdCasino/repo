@@ -1,25 +1,45 @@
 import type { BabyJub } from 'circomlibjs';
 import assert from 'node:assert';
-import { hash264Bn254 } from './hash-coeffs';
 import {
   type Ciphertext,
   type PublicKey,
 } from './zk-casino';
 import { ZkCrypto } from './zk-crypto-base';
 import { GameKind } from './game-config';
-import { casinoDeck } from './casino-calc';
+import { casinoDeck, casinoShareStreets } from './casino-calc';
+import { showdownTwoCoeffHash } from './showdown-sealed-coeffs';
 
 export const MAX_PLAYERS = 12;
 export const TOTAL_CARDS = 6;
 export const N_OTHERS = MAX_PLAYERS - 1;
+/** Player hand, banker hand, player third, banker third. */
+export const BACCARAT_STREET_COUNT = 4;
 
 const BACCARAT_RANKS = [2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 1] as const;
+
+/** Cards covered by street 0 (player), 1 (banker), 2 (player third), 3 (banker third). */
+export function baccaratStreetCards(street: number): number[] {
+  if (street === 0) return [0, 1];
+  if (street === 1) return [2, 3];
+  if (street === 2) return [4];
+  if (street === 3) return [5];
+  throw new Error(`baccarat street ${street} is out of range`);
+}
+
+export function baccaratStreetName(street: number): string {
+  if (street === 0) return 'player hand';
+  if (street === 1) return 'banker hand';
+  if (street === 2) return 'player third';
+  if (street === 3) return 'banker third';
+  throw new Error(`baccarat street ${street} is out of range`);
+}
 
 export interface ShowdownHashInput {
   publicKeys: PublicKey[];
   playerIndex: bigint;
   ciphertextCards: Ciphertext[];
   ciphertextPartials: Ciphertext[][];
+  sealCommitment: bigint;
 }
 
 export function cardToBaccaratRank(card: number): number {
@@ -87,9 +107,15 @@ export function evaluateBaccarat(cards: number[]): 0 | 1 | 2 {
 
 export class Baccarat extends ZkCrypto {
   protected override calcKind = GameKind.Baccarat;
+  readonly shoeDecks: 1 | 6 | 8;
+
+  constructor(shoeDecks: 1 | 6 | 8 = 6) {
+    super();
+    this.shoeDecks = shoeDecks;
+  }
 
   protected override onCryptoReady(_babyjub: BabyJub): void {
-    this.initialDeckCards = casinoDeck(this.calcKind, 52);
+    this.initialDeckCards = casinoDeck(this.calcKind, 52, this.shoeDecks);
   }
 
   override generateShufflePermutation(numCards: number = 52): bigint[] {
@@ -135,6 +161,7 @@ export class Baccarat extends ZkCrypto {
     assert(ciphertextPartials.every(cp => cp.length === TOTAL_CARDS));
 
     return this.calcFr('showdownHash', {
+      sealCommitment: hashInput.sealCommitment,
       publicKeys,
       playerIndex,
       cards: ciphertextCards,
@@ -156,19 +183,35 @@ export class Baccarat extends ZkCrypto {
   }
 
   computeShareOutputHash(ciphertexts: Ciphertext[][], nActualPlayers: number): bigint {
-    const values = this.flattenShareValues(ciphertexts);
-
-    if (values.length !== N_OTHERS * TOTAL_CARDS * 4) {
-      throw new Error(
-        `Expected ${N_OTHERS * TOTAL_CARDS * 4} BN254 values for share partials hash, got ${values.length}`
-      );
-    }
-
-    return this.calcFr('shareOutputHash', { ciphertexts, nActualPlayers });
+    return this.shareStreetCommitment(ciphertexts, nActualPlayers).finalHash;
   }
 
-  computeShowdownOutputHash(winner: bigint, coefficient: bigint): bigint {
-    return (winner + 1n) * coefficient;
+  /**
+   * One hash per street, then Poseidon of the four. Player hand, banker hand,
+   * player third, and banker third can be opened on their own.
+   */
+  shareStreetCommitment(
+    ciphertexts: Ciphertext[][],
+    nActualPlayers: number,
+  ): { finalHash: bigint; streets: bigint[] } {
+    const values = this.flattenShareValues(ciphertexts);
+    if (values.length !== N_OTHERS * TOTAL_CARDS * 4) {
+      throw new Error(
+        `Expected ${N_OTHERS * TOTAL_CARDS * 4} BN254 values for baccarat share, got ${values.length}`,
+      );
+    }
+    if (nActualPlayers < 2 || nActualPlayers > MAX_PLAYERS) {
+      throw new Error(`nActualPlayers must be 2..${MAX_PLAYERS}, got ${nActualPlayers}`);
+    }
+    const commitment = casinoShareStreets(this.calcKind, { ciphertexts, nActualPlayers }, this.calcVariant);
+    if (commitment.streets.length !== BACCARAT_STREET_COUNT) {
+      throw new Error(`Expected ${BACCARAT_STREET_COUNT} street hashes, got ${commitment.streets.length}`);
+    }
+    return commitment;
+  }
+
+  computeShowdownOutputHash(winner: bigint, coefficients: readonly bigint[]): bigint {
+    return showdownTwoCoeffHash(winner, coefficients);
   }
 
   evaluateOutcome(plaintextCards: bigint[]): 0 | 1 | 2 {

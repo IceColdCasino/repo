@@ -5,15 +5,20 @@
 import { dlopen, FFIType, ptr, suffix } from 'bun:ffi';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
+import { Worker } from 'node:worker_threads';
 import {
   createPlayerSession,
   type PlayerSession,
 } from './player-native-bridge';
+import { groth16ProveConcurrency } from './arcium/heap';
 
-const libPath = path.join(
-  import.meta.dir,
-  `../libzkcasino/zig-out/lib/libzkcasino-player-bridge.${suffix}`,
-);
+function zkcasinoLib(file: string): string {
+  const dir = process.env.ZKCASINO_LIB_DIR;
+  if (dir && dir.length > 0) return path.join(dir, file);
+  return path.join(import.meta.dir, '../libzkcasino/zig-out/lib', file);
+}
+
+const libPath = zkcasinoLib(`libzkcasino-player-bridge.${suffix}`);
 
 const SYMBOLS = {
   zkplayer_bridge_create: { args: [], returns: FFIType.ptr },
@@ -49,7 +54,106 @@ function getLib() {
 
 const OUT_CAP = 1 << 20;
 
-function opJson(handle: NonNullable<ReturnType<ReturnType<typeof getLib>['symbols']['zkplayer_bridge_create']>>, json: string): string {
+type BridgePtr = NonNullable<ReturnType<ReturnType<typeof getLib>['symbols']['zkplayer_bridge_create']>>;
+
+function pointerKey(handle: BridgePtr): string {
+  return typeof handle === 'bigint' ? handle.toString() : BigInt(handle).toString();
+}
+
+type WorkerResponse = { id: number; body?: string; error?: string };
+
+type Inflight = {
+  resolve: (body: string) => void;
+  reject: (err: Error) => void;
+};
+
+/**
+ * Prove calls are synchronous FFI. A pool of workers lets two seats run
+ * register or share at the same time; the main thread stays free for the
+ * chain and Arcis waits. Idle workers are unref'd so the process can exit.
+ */
+class ProvePool {
+  private readonly workers: Worker[] = [];
+  private readonly idle: Worker[] = [];
+  private readonly waiters: Array<{ handle: string; json: string; inflight: Inflight }> = [];
+  private readonly inflight = new Map<number, { worker: Worker; job: Inflight }>();
+  private nextId = 1;
+  private started = false;
+
+  start(): void {
+    if (this.started) return;
+    this.started = true;
+    const n = groth16ProveConcurrency();
+    const url = new URL('./player-bridge-worker.ts', import.meta.url);
+    for (let i = 0; i < n; i++) {
+      const worker = new Worker(url);
+      worker.on('message', (msg: WorkerResponse) => this.onMessage(worker, msg));
+      worker.on('error', (err) => {
+        this.onWorkerError(worker, err instanceof Error ? err : new Error(String(err)));
+      });
+      worker.unref();
+      this.workers.push(worker);
+      this.idle.push(worker);
+    }
+  }
+
+  run(handle: BridgePtr, json: string): Promise<string> {
+    this.start();
+    return new Promise((resolve, reject) => {
+      const job = { handle: pointerKey(handle), json, inflight: { resolve, reject } };
+      const worker = this.idle.pop();
+      if (worker) this.dispatch(worker, job);
+      else this.waiters.push(job);
+    });
+  }
+
+  private dispatch(
+    worker: Worker,
+    job: { handle: string; json: string; inflight: Inflight },
+  ): void {
+    const id = this.nextId++;
+    this.inflight.set(id, { worker, job: job.inflight });
+    worker.ref();
+    worker.postMessage({ id, handle: job.handle, json: job.json });
+  }
+
+  private onMessage(worker: Worker, msg: WorkerResponse): void {
+    const pending = this.inflight.get(msg.id);
+    this.inflight.delete(msg.id);
+    if (pending) {
+      if (msg.error) pending.job.reject(new Error(msg.error));
+      else pending.job.resolve(msg.body ?? '');
+    }
+    this.release(worker);
+  }
+
+  private onWorkerError(worker: Worker, err: Error): void {
+    for (const [id, pending] of this.inflight) {
+      if (pending.worker !== worker) continue;
+      this.inflight.delete(id);
+      pending.job.reject(err);
+    }
+    const index = this.workers.indexOf(worker);
+    if (index >= 0) this.workers.splice(index, 1);
+    const idleAt = this.idle.indexOf(worker);
+    if (idleAt >= 0) this.idle.splice(idleAt, 1);
+    worker.unref();
+  }
+
+  private release(worker: Worker): void {
+    const next = this.waiters.shift();
+    if (next) {
+      this.dispatch(worker, next);
+      return;
+    }
+    worker.unref();
+    this.idle.push(worker);
+  }
+}
+
+const provePool = new ProvePool();
+
+function opJson(handle: BridgePtr, json: string): string {
   const input = Buffer.from(json, 'utf8');
   const out = new Uint8Array(OUT_CAP);
   const lenSlot = new BigUint64Array(1);
@@ -102,9 +206,9 @@ export function openSession(opts?: { kind?: number; variant?: number }): PlayerS
   if (!handle) {
     throw new Error('zkplayer_bridge_create failed');
   }
-  const invoke = (payload: Record<string, unknown>) => {
-    const parsed = JSON.parse(opJson(handle, JSON.stringify(payload))) as Record<string, unknown>;
-    return parsed;
+  const invoke = async (payload: Record<string, unknown>) => {
+    const body = await provePool.run(handle, JSON.stringify(payload));
+    return JSON.parse(body) as Record<string, unknown>;
   };
   return createPlayerSession(invoke, () => {
     opened.symbols.zkplayer_bridge_free(handle);

@@ -3,6 +3,7 @@
 const std = @import("std");
 const poker = @import("poker_math.zig");
 const hash = @import("../crypto/hash.zig");
+const seal = @import("../crypto/seal.zig");
 const baby = @import("../crypto/babyjub.zig");
 const prove_json = @import("../prove/json.zig");
 const Field = @import("../crypto/fr.zig").Fr;
@@ -15,7 +16,7 @@ pub const Point = baby.Point;
 
 pub const CATALOG_SIZE: usize = 52;
 pub const MAX_DECK: usize = 52;
-pub const MAX_KEYS: usize = 12;
+pub const MAX_KEYS: usize = 90;
 pub const MAX_OTHERS: usize = 9;
 pub const MAX_PARTIAL_ROWS: usize = 16;
 
@@ -151,7 +152,7 @@ fn writeShuffle(self: *State, crypto: *Crypto, root: std.json.Value, w: *Writer,
 
     var out_buf: [MAX_DECK]Ciphertext = undefined;
     const out = out_buf[0..deck_n.len];
-    const perm_hash = crypto.shuffle(deck_n.ptr[0..deck_n.len], keys, matrix, randomness, out, deck_n.len);
+    crypto.shuffle(deck_n.ptr[0..deck_n.len], keys, matrix, randomness, out, deck_n.len);
     const input_hash = crypto.shuffleHash(deck_n.ptr[0..deck_n.len], keys_n.buf[0..keys_n.len]);
 
     const input = try prove_json.shuffleJson(self.alloc, input_hash, deck_n.ptr[0..deck_n.len], keys, matrix, randomness);
@@ -163,7 +164,7 @@ fn writeShuffle(self: *State, crypto: *Crypto, root: std.json.Value, w: *Writer,
     try w.okTrue();
     try w.embedProof(proved.proof, proved.public_signals);
     try w.key("permutationHash");
-    try w.fr(perm_hash);
+    try w.fr(try @import("../prove/rapidsnark.zig").publicSignal(self.alloc, proved.public_signals, 1));
     try w.key("deck");
     try w.cts(out);
     try w.endObj();
@@ -255,18 +256,19 @@ fn writeShowdown(self: *State, crypto: *Crypto, root: std.json.Value, w: *Writer
     const partial_rows = try parseCtGrid(root.object.get("partials") orelse return error.MissingPartials, &row_storage, &row_slices);
 
     const do_prove = parseBool(root.object.get("prove"), true);
-    var coeffs: [9]Field = undefined;
+    var coeffs: [seal.SLOTS]Field = undefined;
     var have_coeffs = false;
     if (root.object.get("coefficients")) |raw_coeffs| {
         try parseFrList(raw_coeffs, &coeffs);
-        for (coeffs) |c| {
-            if (c.eql(Field.zero())) return error.ZeroCoefficient;
-        }
+        try seal.validate(&coeffs);
         have_coeffs = true;
     } else if (do_prove) {
         return error.MissingHostCoefficients;
     }
-    const commitment = if (have_coeffs) poker.computeCoefficientCommitment(&coeffs) else Field.zero();
+    const commitment = if (have_coeffs) seal.commitment(&coeffs) else Field.zero();
+    var pot_u64: [16]u64 = undefined;
+    var i: usize = 0;
+    while (i < pot_n) : (i += 1) pot_u64[i] = pot_fr[i].toU64();
     const h = poker.showdownHash(
         crypto,
         pot_fr[0..pot_n],
@@ -274,6 +276,7 @@ fn writeShowdown(self: *State, crypto: *Crypto, root: std.json.Value, w: *Writer
         Field.fromU64(player_index),
         cards_n.ptr[0..cards_n.len],
         row_slices[0..partial_rows],
+        commitment,
     );
 
     var plaintext: [52]u64 = undefined;
@@ -285,9 +288,6 @@ fn writeShowdown(self: *State, crypto: *Crypto, root: std.json.Value, w: *Writer
         row_slices[0..partial_rows],
         plaintext[0..cards_n.len],
     );
-    var pot_u64: [16]u64 = undefined;
-    var i: usize = 0;
-    while (i < pot_n) : (i += 1) pot_u64[i] = pot_fr[i].toU64();
     var winners: [9]u64 = undefined;
     poker.compareHands(pot_u64[0..pot_n], plaintext[0..cards_n.len], &winners);
 
@@ -298,6 +298,7 @@ fn writeShowdown(self: *State, crypto: *Crypto, root: std.json.Value, w: *Writer
         errdefer j.deinit();
         try j.begin();
         try j.fieldFr("hash", h);
+        try j.fieldFr("sealCommitment", commitment);
         try j.fieldPoints("publicKeys", keys_n.buf[0..keys_n.len]);
         try j.fieldFrs("potMasks", pot_fr[0..pot_n]);
         try j.fieldCts("ciphertextCards", cards_n.ptr[0..cards_n.len]);
@@ -306,7 +307,7 @@ fn writeShowdown(self: *State, crypto: *Crypto, root: std.json.Value, w: *Writer
         try j.fieldCts2("ciphertextPartials", row_slices[0..partial_rows]);
         try j.fieldFr("privateKey", key.private_key);
         try j.fieldU64s("plaintextCards", plaintext[0..cards_n.len]);
-        try j.fieldFrs("coefficients", &coeffs);
+        try j.fieldFrs("coefficients", coeffs[0..2]);
         const input = try j.finish();
         defer self.alloc.free(input);
         const proved = try backend.prove(backend.ctx, SHOWDOWN_CIRCUIT, input);
@@ -614,6 +615,21 @@ pub const Writer = struct {
             if (!self.first) try self.raw(",");
             self.first = false;
             try self.fr(limb);
+        }
+        try self.endArr();
+        self.first = save;
+    }
+
+    pub fn hex32(self: *Writer, bytes: *const [32]u8) !void {
+        try self.quote(&std.fmt.bytesToHex(bytes.*, .lower));
+    }
+
+    pub fn hex32s(self: *Writer, list: []const [32]u8) !void {
+        const save = self.first;
+        try self.beginArr();
+        for (list, 0..) |*bytes, i| {
+            if (i != 0) try self.raw(",");
+            try self.hex32(bytes);
         }
         try self.endArr();
         self.first = save;

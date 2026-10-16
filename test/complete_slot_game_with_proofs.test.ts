@@ -1,6 +1,7 @@
 import './helpers/require-player-ffi';
 import { type SlotVariant } from '../src/slot';
 import { hostShowdownCoefficients } from './helpers/host-showdown-coefficients';
+import { sealCommitment } from '../src/host-showdown-coefficients';
 import { Game } from '../src/slot-game';
 import { Player, loadSlotCircuits, type SlotCircuits } from '../src/slot-player';
 import { verify } from '../src/rapidsnark-ffi';
@@ -60,7 +61,8 @@ async function share(game: Game, players: Player[], coinBets: number[]) {
 
 async function showdown(game: Game, players: Player[], variant: SlotVariant) {
   const bettor = game.isDealer(0) ? 1 : 0;
-  players[bettor]!.setSealedCoefficients(hostShowdownCoefficients(1));
+  const sealed = hostShowdownCoefficients(2);
+  players[bettor]!.setSealedCoefficients(sealed);
   const { proof, publicSignals, plaintextCenters } = await players[bettor]!.showdownProve(
     game.publicKeys,
     game.finalShuffledDeck,
@@ -71,6 +73,7 @@ async function showdown(game: Game, players: Player[], variant: SlotVariant) {
   expect(plaintextCenters.length).toBe(game.variant);
   const result = game.verifyShowdown(proof, publicSignals, {
     publicKey: players[bettor]!.publicKey,
+    coefficientCommitment: sealCommitment(sealed),
   });
   expect(result).toBe(BigInt(publicSignals[0]!));
   expect(verify(proof, publicSignals, showdownVkPath(variant))).toBe(true);

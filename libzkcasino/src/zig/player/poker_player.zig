@@ -3,6 +3,7 @@ const math = @import("poker_math.zig");
 const base = @import("player_base.zig");
 const table = @import("table_player.zig");
 const prove = @import("../prove.zig");
+const seal = @import("../crypto/seal.zig");
 
 pub const Fr = base.Fr;
 pub const Crypto = base.Crypto;
@@ -15,7 +16,6 @@ pub const SHARE_OTHERS = math.SHARE_OTHERS;
 pub const shareHash = math.shareHash;
 pub const share = math.share;
 pub const showdownHash = math.showdownHash;
-pub const computeCoefficientCommitment = math.computeCoefficientCommitment;
 pub const compareHands = math.compareHands;
 pub const computeShowdownOutputHash = math.computeShowdownOutputHash;
 pub const computeShareOutputHash = math.computeShareOutputHash;
@@ -94,10 +94,8 @@ pub const Player = struct {
         cards: []const Ciphertext,
         partials: []const []const Ciphertext,
     ) !struct { proof: table.Proof, winner_masks: [9]u64, commitment: Fr } {
-        var coeffs: [9]Fr = undefined;
-        self.table.fillCoeffs(&coeffs);
-        const commitment = computeCoefficientCommitment(&coeffs);
-        const h = showdownHash(self.table.crypto, pot_masks, public_keys, Fr.fromU64(player_index), cards, partials);
+        const commitment = seal.commitment(self.table.sealedSlots());
+        const h = showdownHash(self.table.crypto, pot_masks, public_keys, Fr.fromU64(player_index), cards, partials, commitment);
         var plaintext: [25]u64 = undefined;
         try decryptCards(self.table.crypto, self.table.privateKey(), pot_masks[0].toU64(), cards, partials, plaintext[0..cards.len]);
         var pot_u64: [16]u64 = undefined;
@@ -109,7 +107,7 @@ pub const Player = struct {
         var j = prove.json.Json.init(self.table.alloc);
         errdefer j.deinit();
         try j.begin();
-        try j.fieldFr("hash", h);
+        try self.table.writeSealedShowdown(&j, h, 2);
         try j.fieldPoints("publicKeys", public_keys);
         try j.fieldFrs("potMasks", pot_masks);
         try j.fieldCts("ciphertextCards", cards);
@@ -118,7 +116,6 @@ pub const Player = struct {
         try j.fieldCts2("ciphertextPartials", partials);
         try j.fieldFr("privateKey", self.table.privateKey());
         try j.fieldU64s("plaintextCards", plaintext[0..cards.len]);
-        try j.fieldFrs("coefficients", &coeffs);
         const json = try j.finish();
         defer self.table.alloc.free(json);
         const proof = try self.table.proveJson(.poker_showdown_hashout_main, json);

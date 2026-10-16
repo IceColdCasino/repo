@@ -7,6 +7,10 @@ An 80-number cage. Showdown opens **20** drawn numbers. The player’s spots
 are ElGamal-encrypted before the draw is opened. Circom counts how many
 committed spots appear in the draw.
 
+The house seat shuffles the cage and does not bet. Wins are paid from the
+dealer pool. `start_hand` coverage for this kind is `bet_unit × seats`. See
+[on-chain](../on-chain.md#dealer-pool).
+
 ## Shoe
 
 | | |
@@ -14,7 +18,7 @@ committed spots appear in the draw.
 | Encoding | Number `0..79` → `BabyPbk(v+1)` |
 | Shuffle main | `shuffle_1_deck_80_main` |
 | Opened at showdown | 20 |
-| Poly-hash terms | 1 (hit count) |
+| Showdown terms | 2: `[hitCount, 0]` |
 
 House seat shuffles.
 
@@ -22,9 +26,10 @@ House seat shuffles.
 
 1. **Register / shuffle** — 80-ball shoe.
 2. **Bet commit** — `keno_bet` / `keno_bet_main` encrypts up to 20 spots.
-3. **Share** — `keno_share_hashout_main` seals partials for the 20 draws.
-4. **Showdown** — decrypt draws + spots; `keno_eval` sums matches among
-   the first `nActualBets` spots.
+3. **Share** — `keno_share_hashout_main` is `ShareHashOut(12, 20)`. The
+   public output is a Poseidon of one ciphertext-hash per other player.
+4. **Showdown** — decrypt draws and spots. The public field is
+   `(hitCount + 1) · c0 + c1`.
 
 ## Unique ZK
 
@@ -42,7 +47,9 @@ opened 20 this many times.”
 
 | Public | Private |
 |--------|---------|
-| Input hash, hit-count output hash | `sk`, 20 draws, chosen spots |
+| `hash`, `(hitCount+1)·c0 + c1`, Groth16 proof | `sk`, 20 draws, chosen spots, 14 coefficients, seal commitment |
+
+`hash` is `Poseidon(keys, playerIndex, ciphertextHash, betHash, nActualBets, sealCommitment)`. The showdown template checks that equality.
 
 ## Entrypoints
 

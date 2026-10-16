@@ -15,10 +15,12 @@ import {
   type Ciphertext,
 } from './zk-casino';
 import { padPublicKeysForShuffle } from './shuffle-common';
+import { readShuffleProof } from './shuffle-signals';
 import { Circuit } from './circuit';
 import type { Groth16Proof } from 'snarkjs';
 import assert from 'assert';
 import { GameKind } from './game-config';
+import { requireHostShowdownCoefficients, sealCommitment, sealedShowdownWitness } from './host-showdown-coefficients';
 import { tryOpenGameSession } from './player-zig-session';
 import type { PlayerSession } from './player-native-bridge';
 
@@ -134,10 +136,12 @@ export class Player {
   #sealedCoefficients: bigint[] | undefined;
   #session: PlayerSession | undefined;
   #padding: Ciphertext | undefined;
+  #house: boolean;
 
-  constructor(circuits: RouletteCircuits, variant: RouletteVariant) {
+  constructor(circuits: RouletteCircuits, variant: RouletteVariant, house = false) {
     this.#circuits = circuits;
     this.#roulette = new Roulette(variant);
+    this.#house = house;
   }
 
   private usesZig(): boolean {
@@ -152,6 +156,7 @@ export class Player {
     this.#session = await tryOpenGameSession({
       kind: GameKind.Roulette,
       variant: this.#roulette.deckSize,
+      house: this.#house,
     });
     await this.#roulette.init();
     if (this.#session) return;
@@ -188,15 +193,7 @@ export class Player {
 
   /** Host-sealed showdown coeffs. Players never generate these. */
   setSealedCoefficients(coeffs: bigint[]): void {
-    if (coeffs.length !== MAX_BETS) {
-      throw new Error(`Expected ${MAX_BETS} sealed coefficients, got ${coeffs.length}`);
-    }
-    for (let i = 0; i < MAX_BETS; i++) {
-      if (coeffs[i]! === 0n) {
-        throw new Error(`Sealed coefficient ${i} must be non-zero`);
-      }
-    }
-    this.#sealedCoefficients = [...coeffs];
+    this.#sealedCoefficients = requireHostShowdownCoefficients(coeffs);
     this.#showdownParams = undefined;
   }
 
@@ -261,7 +258,7 @@ export class Player {
     const params = this.prepareShuffle(deck, publicKeys);
     const shuffleKeys = padPublicKeysForShuffle(publicKeys);
 
-    const { ciphertexts, permutationHash } = this.#roulette.shuffle(
+    const { ciphertexts } = this.#roulette.shuffle(
       deck,
       shuffleKeys,
       params.permutationMatrix,
@@ -277,7 +274,12 @@ export class Player {
     });
 
     this.#shuffleParams = undefined;
-    return { proof, publicSignals, deck: ciphertexts, permutationHash };
+    return {
+      proof,
+      publicSignals,
+      deck: ciphertexts,
+      permutationHash: readShuffleProof(publicSignals).permutationHash,
+    };
   }
 
   private prepareBet(houseKey: PublicKey, bets: RouletteBet[]) {
@@ -322,6 +324,7 @@ export class Player {
   }
 
   async betProve(houseKey: PublicKey, bets: RouletteBet[]): Promise<BetOutput> {
+    if (this.#house) throw new Error('house player does not place bets');
     if (this.#session) {
       const plaintextBets = padBets(bets, this.#roulette.deckSize);
       const out = await this.#session.bet({
@@ -444,10 +447,7 @@ export class Player {
       );
       if (playerIndex < 0) throw new Error('Player public key not found');
 
-      if (!this.#sealedCoefficients || this.#sealedCoefficients.length !== MAX_BETS) {
-        throw new Error('showdown coefficients must come from the host');
-      }
-      const coefficients = [...this.#sealedCoefficients];
+      const coefficients = requireHostShowdownCoefficients(this.#sealedCoefficients);
 
       const paddedBets = padBets(plaintextBets, this.#roulette.deckSize);
       const hashInput = {
@@ -457,6 +457,7 @@ export class Player {
         ciphertextPartials,
         ciphertextBets,
         nActualBets,
+        sealCommitment: sealCommitment(coefficients),
       };
 
       const hash = this.#roulette.showdownHash(hashInput);
@@ -487,13 +488,12 @@ export class Player {
 
   private showdownWitnessInput(params: RouletteShowdownParams) {
     return {
-      hash: params.hash,
       ...(params.hashInput as object),
+      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCard: params.plaintextCard,
       plaintextBets: params.plaintextBets.map(b => [b[0], b[1]]),
-      coefficients: params.coefficients.map(c => c.toString()),
     };
   }
 
@@ -526,9 +526,6 @@ export class Player {
     nActualBets: number,
   ): Promise<ShowdownOutput> {
     if (this.#session) {
-      if (!this.#sealedCoefficients || this.#sealedCoefficients.length !== MAX_BETS) {
-        throw new Error('showdown coefficients must come from the host');
-      }
       const paddedBets = padBets(plaintextBets, this.#roulette.deckSize);
       const out = await this.#session.showdown({
         publicKeys,
@@ -537,7 +534,7 @@ export class Player {
         ciphertextBets,
         bets: paddedBets,
         nActualBets,
-        coefficients: this.#sealedCoefficients,
+        coefficients: requireHostShowdownCoefficients(this.#sealedCoefficients),
         privateKey: this.#key?.privateKey,
       });
       const plaintextCards = this.#roulette.decryptCards(

@@ -8,4 +8,4 @@ pragma circom 2.2.2;
 
 include "./craps_showdown.circom";
 
-component main { public [hash] } = ShowdownHashOut(12, 2, 6, 12);
+component main { public [hash] } = ShowdownHashOut(12, 2, 12);

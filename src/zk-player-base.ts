@@ -1,8 +1,10 @@
 import assert from 'assert';
 import type { Groth16Proof } from 'snarkjs';
 import { Circuit } from './circuit';
+import { requireHostShowdownCoefficients } from './host-showdown-coefficients';
 import { padPublicKeysForShuffle } from './shuffle-common';
 import { publicKeysEqual } from './zk-game-base';
+import { readShuffleProof } from './shuffle-signals';
 import type { Ciphertext, PlayerKey, PrivateKey, PublicKey } from './zk-casino';
 import type { ZkCrypto } from './zk-crypto-base';
 
@@ -47,11 +49,15 @@ export interface DeckShuffleCrypto {
     publicKeys: PublicKey[],
     permutationMatrix: bigint[],
     randomness?: bigint[],
-  ): { ciphertexts: Ciphertext[]; permutationHash: bigint };
+  ): { ciphertexts: Ciphertext[] };
 }
 
 export interface LinearShareCrypto {
-  shareHash(deck: Ciphertext[], publicKey: PublicKey, publicKeys: PublicKey[]): bigint;
+  shareHash(
+    deck: Ciphertext[],
+    publicKey: PublicKey,
+    publicKeys: PublicKey[],
+  ): bigint;
   share(
     deck: Ciphertext[],
     publicKeys: PublicKey[],
@@ -120,15 +126,9 @@ export abstract class ZkPlayer<C extends RegisterCircuitSet> {
     return this.key.privateKey;
   }
 
-  setSealedCoefficients(coeffs: bigint[], expectedLen?: number): void {
-    const need = expectedLen ?? coeffs.length;
-    if (coeffs.length !== need) {
-      throw new Error(`Expected ${need} sealed coefficients, got ${coeffs.length}`);
-    }
-    if (coeffs.some(c => c === 0n)) {
-      throw new Error('Sealed coefficient must be non-zero');
-    }
-    this.sealedCoefficients = [...coeffs];
+  /** Host-sealed showdown coefficients: all 14 Arcis seal slots. */
+  setSealedCoefficients(coeffs: bigint[]): void {
+    this.sealedCoefficients = requireHostShowdownCoefficients(coeffs);
     this.showdownParams = undefined;
   }
 
@@ -148,16 +148,8 @@ export abstract class ZkPlayer<C extends RegisterCircuitSet> {
     return playerIndex;
   }
 
-  protected requireHostCoefficients(count: number): bigint[] {
-    if (!this.sealedCoefficients || this.sealedCoefficients.length !== count) {
-      throw new Error(
-        `showdown coefficients must come from the host (expected ${count}, got ${this.sealedCoefficients?.length ?? 0})`,
-      );
-    }
-    if (this.sealedCoefficients.some((value) => value === 0n)) {
-      throw new Error('Host showdown coefficient must be non-zero');
-    }
-    return [...this.sealedCoefficients];
+  protected requireHostCoefficients(): bigint[] {
+    return requireHostShowdownCoefficients(this.sealedCoefficients);
   }
 
   protected prepareDeckShuffle(
@@ -205,7 +197,7 @@ export abstract class ZkPlayer<C extends RegisterCircuitSet> {
   ): Promise<DeckShuffleOutput> {
     const params = this.prepareDeckShuffle(crypto, deck, publicKeys, numCards);
     const shuffleKeys = padPublicKeysForShuffle(publicKeys);
-    const { ciphertexts, permutationHash } = crypto.shuffle(
+    const { ciphertexts } = crypto.shuffle(
       deck,
       shuffleKeys,
       params.permutationMatrix,
@@ -219,7 +211,12 @@ export abstract class ZkPlayer<C extends RegisterCircuitSet> {
       randomness: params.randomness,
     });
     this.shuffleParams = undefined;
-    return { proof, publicSignals, deck: ciphertexts, permutationHash };
+    return {
+      proof,
+      publicSignals,
+      deck: ciphertexts,
+      permutationHash: readShuffleProof(publicSignals).permutationHash,
+    };
   }
 
   protected prepareLinearShare(
@@ -278,7 +275,12 @@ export abstract class ZkPlayer<C extends RegisterCircuitSet> {
     cardsPerShare: number,
   ): Promise<LinearShareOutput> {
     const params = this.prepareLinearShare(crypto, deck, publicKeys, nActualPlayers, cardsPerShare);
-    const ciphertexts = crypto.share(deck, publicKeys, this.privateKey, params.cardRandomness);
+    const ciphertexts = crypto.share(
+      deck,
+      publicKeys,
+      this.privateKey,
+      params.cardRandomness,
+    );
     const { proof, publicSignals } = await circuit.prove(
       this.linearShareWitness(deck, publicKeys, params),
     ) as { proof: Groth16Proof; publicSignals: string[] };

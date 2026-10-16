@@ -1,14 +1,13 @@
 import type { BabyJub } from 'circomlibjs';
 import assert from 'node:assert';
-import { hash176Bn254 } from './hash-coeffs';
 import {
   type Ciphertext,
   type PublicKey,
 } from './zk-casino';
-import { hashRowValues } from './poseidon-chunk';
 import { ZkCrypto } from './zk-crypto-base';
 import { GameKind } from './game-config';
 import { casinoDeck } from './casino-calc';
+import { showdownTwoCoeffHash } from './showdown-sealed-coeffs';
 
 export const MAX_PLAYERS = 12;
 export const SHOE_SIZE = 6 * 52;
@@ -20,6 +19,7 @@ export interface ShowdownHashInput {
   playerIndex: bigint;
   ciphertextCards: Ciphertext[];
   ciphertextPartials: Ciphertext[][];
+  sealCommitment: bigint;
 }
 
 /// Rank 0..12 (2=0, 3=1, ..., Ace=12) — matches CardToRank in war_card.circom.
@@ -55,9 +55,15 @@ export function evaluateWar(cards: number[]): 0 | 1 | 2 {
 
 export class War extends ZkCrypto {
   protected override calcKind = GameKind.War;
+  readonly shoeDecks: 1 | 6 | 8;
+
+  constructor(shoeDecks: 1 | 6 | 8 = 6) {
+    super();
+    this.shoeDecks = shoeDecks;
+  }
 
   protected override onCryptoReady(_babyjub: BabyJub): void {
-    this.initialDeckCards = casinoDeck(this.calcKind, 52, 6);
+    this.initialDeckCards = casinoDeck(this.calcKind, 52, this.shoeDecks);
   }
 
   override generateShufflePermutation(numCards: number = SHOE_SIZE): bigint[] {
@@ -103,6 +109,7 @@ export class War extends ZkCrypto {
     assert(ciphertextPartials.every(cp => cp.length === TOTAL_CARDS));
 
     return this.calcFr('showdownHash', {
+      sealCommitment: hashInput.sealCommitment,
       publicKeys,
       playerIndex,
       cards: ciphertextCards,
@@ -110,38 +117,8 @@ export class War extends ZkCrypto {
     });
   }
 
-  /// Matches HashPermutationMatrixSixDeck in circuits/shuffle.circom.
-  hashPermutationMatrixSixDeck(permutationMatrix: bigint[]): bigint {
-    const nCards = SHOE_SIZE;
-    const rowValues: bigint[] = [];
-    for (let i = 0; i < nCards; i++) {
-      const row = permutationMatrix.slice(i * nCards, (i + 1) * nCards);
-      rowValues.push(this.bits2num(row));
-    }
-
-    const deckHashes: bigint[] = [];
-    for (let d = 0; d < 6; d++) {
-      deckHashes.push(hashRowValues(rowValues.slice(d * 52, (d + 1) * 52), (inputs) => this.poseidon(inputs)));
-    }
-
-    return this.poseidon(deckHashes);
-  }
-
   hashDeck(deck: Ciphertext[]): bigint {
     return this.hashCiphertexts(deck);
-  }
-
-  override shuffle(
-    deck: Ciphertext[],
-    publicKeys: PublicKey[],
-    permutationMatrix: bigint[],
-    randomness?: bigint[],
-  ) {
-    const { ciphertexts } = super.shuffle(deck, publicKeys, permutationMatrix, randomness);
-    return {
-      ciphertexts,
-      permutationHash: this.hashPermutationMatrixSixDeck(permutationMatrix),
-    };
   }
 
   computeRegisterOutputHash(publicKey: PublicKey, padding: Ciphertext): bigint {
@@ -160,8 +137,8 @@ export class War extends ZkCrypto {
     return this.calcFr('shareOutputHash', { ciphertexts, nActualPlayers });
   }
 
-  computeShowdownOutputHash(winner: bigint, coefficient: bigint): bigint {
-    return (winner + 1n) * coefficient;
+  computeShowdownOutputHash(winner: bigint, coefficients: readonly bigint[]): bigint {
+    return showdownTwoCoeffHash(winner, coefficients);
   }
 
   evaluateOutcome(plaintextCards: bigint[]): 0 | 1 | 2 {

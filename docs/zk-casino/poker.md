@@ -7,6 +7,11 @@ Mental-poker Texas Hold'em for 2–10 players. One 52-card deck. Street betting
 is **outside** these circuits; Circom proves shuffle, share, and a winner-mask
 showdown over encrypted holes and board.
 
+Settlement pays the pots the seats committed. There is no dealer pool.
+`init_dealer_pool` rejects this kind. Chip movement, the nine-pot rebuild,
+and `settle_all_seats` / `distribute_and_settle` are in
+[on-chain](../on-chain.md#poker).
+
 ## Shoe
 
 | | |
@@ -14,17 +19,18 @@ showdown over encrypted holes and board.
 | Encoding | Card `0..51` → `BabyPbk(v+1)` |
 | Shuffle main | `shuffle_1_deck_52_main` |
 | Opened at showdown | 25 indices (player `i` holes `2i, 2i+1`; board `20..24`) |
-| Poly-hash terms | 9 winner-mask limbs |
+| Showdown terms | 9 winner masks (`nPlayers − 1` at the 10-seat main) |
 
 ## ZK pipeline
 
 1. **Register** — shared `register_main`.
 2. **Shuffle** — each player permutes and re-encrypts the 52-card shoe.
-3. **Share** — `poker_share` / `poker_share_hashout_main` seals partials for
-   the 25 deal cards (not the unused stub).
+3. **Share** — `poker_share_hashout_main` seals partials for the 25 deal
+   cards. The public output is `Poseidon(2)` of the ten hole-card hashes
+   and `Poseidon(flop, turn, river)`. Street hashes stay inside the proof.
 4. **Showdown** — one proving player decrypts the deal, evaluates every
-   active 7-card hand, compares them, and poly-hashes **winner masks** (not
-   ranks or faces).
+   active 7-card hand, and publishes the winner masks as
+   `Σ (mask_i + 1) · coefficient_i`. Ranks and faces stay private.
 
 ## Unique ZK
 
@@ -33,12 +39,13 @@ showdown over encrypted holes and board.
 | `poker_card.circom` | Rank / suit from a 0..51 index |
 | `poker_hand_eval.circom` | Best 5-card rank from 5–7 cards (category + kickers) |
 | `poker_compare_hands.circom` | Pairwise comparison of evaluated hands |
-| `poker_showdown.circom` | Decrypt 25 cards; apply pot masks; emit 9 mask limbs |
-| `poker_polynomial_hash.circom` | Poker-sized poly-hash helper |
+| `poker_showdown.circom` | Decrypt 25 cards; apply pot masks; sum the 9 mask terms |
 
-Showdown binds **pot masks** into the Poseidon input hash so a proof for pot A
-cannot be replayed onto pot B. Folded or uneconomic seats are zeroed in the
-mask; the circuit still decrypts their hole slots when the mask bit is on.
+Showdown checks `hash === HashMain.out` inside the template. `HashMain` is
+`Poseidon(potMaskHash, playerIndex, keyHash, ciphertextHash, sealCommitment)`.
+Pot masks are split once with `Num2Bits(10)` and those bits are passed down.
+Folded or uneconomic seats are zeroed in the mask; the circuit still
+decrypts their hole slots when the mask bit is on.
 
 Unlike house games, poker has **no encrypted side-bet object**. The only
 private extras at showdown are pot membership bits and the usual key / deck
@@ -48,11 +55,10 @@ witness.
 
 | Public | Private |
 |--------|---------|
-| Poseidon input hash, poly output hash, Groth16 proof | `sk`, 25 faces, pot masks, sealed partials, sealed showdown coefficients |
+| `hash`, the winner-mask sum, Groth16 proof | `sk`, 25 faces, pot masks, sealed partials, 14 coefficients, seal commitment |
 
-The 9 output limbs are `(winner_mask[i] + 1) · sealed_coeff[i]` style terms
-consumed by settlement. Coefficients are **not** `HASH_COEFFS_900`; they are
-the showdown seal vector.
+The public field is `Σ (winner_mask[i] + 1) · coefficient[i]` over the first
+nine of the 14 sealed coefficients. Settlement consumes that one field.
 
 ## Entrypoints
 
@@ -60,9 +66,8 @@ the showdown seal vector.
 |------|------|
 | `register_main.circom` | Key |
 | `shuffle_1_deck_52_main.circom` | Shoe |
-| `poker_share_main.circom` / `poker_share_hashout_main.circom` | Partials |
-| `poker_showdown_main.circom` / `poker_showdown_hashout_main.circom` | Winners |
-| `poker_hand_eval_main.circom` / `poker_compare_hands_main.circom` | Isolated eval / compare (templates inside showdown) |
+| `poker_share_hashout_main.circom` | Partials |
+| `poker_showdown_hashout_main.circom` | Winners |
 
 ## Host test
 

@@ -2,6 +2,7 @@
 const std = @import("std");
 const zk = @import("../crypto/zk_crypto.zig");
 const hash = @import("../crypto/hash.zig");
+const seal = @import("../crypto/seal.zig");
 const baby = @import("../crypto/babyjub.zig");
 const prove = @import("../prove.zig");
 const base = @import("player_base.zig");
@@ -110,15 +111,29 @@ pub const TablePlayer = struct {
         @panic("player public key not found");
     }
 
-    pub fn fillCoeffs(self: *TablePlayer, out: []Fr) void {
+    /// The 14 host-sealed showdown coefficients. The witness and the seal
+    /// commitment use the first two. Later slots stay in the account and are
+    /// not weighted.
+    pub fn sealedSlots(self: *const TablePlayer) *const [seal.SLOTS]Fr {
         if (self.sealed.len == 0) {
             @panic("showdown coefficients must come from the host");
         }
-        if (self.sealed.len != out.len) @panic("sealed coefficient count");
-        for (self.sealed) |c| {
-            if (c.eql(Fr.zero())) @panic("host showdown coefficient must be non-zero");
-        }
-        @memcpy(out, self.sealed);
+        seal.validate(self.sealed) catch @panic("sealed showdown coefficients must be 14 values below 2^128 with bit 127 set");
+        return self.sealed[0..seal.SLOTS];
+    }
+
+    pub fn sealCommitment(self: *const TablePlayer) Fr {
+        return seal.commitment(self.sealedSlots());
+    }
+
+    /// The one public showdown hash. It already includes the seal commitment.
+
+    pub fn writeSealedShowdown(self: *const TablePlayer, j: *prove.json.Json, input_hash: Fr, n_terms: usize) !void {
+        const slots = self.sealedSlots();
+        if (n_terms == 0 or n_terms > seal.SLOTS) @panic("showdown coefficient count");
+        try j.fieldFr("hash", input_hash);
+        try j.fieldFr("sealCommitment", seal.commitment(slots));
+        try j.fieldFrs("coefficients", slots[0..n_terms]);
     }
 
     /// Blackjack action: status coefficient is host-sealed and non-zero.
@@ -158,14 +173,16 @@ pub const TablePlayer = struct {
         self.crypto.generateShuffleRandomness(n, randomness);
         const shuffled = try self.alloc.alloc(Ciphertext, n);
         errdefer self.alloc.free(shuffled);
-        const perm_hash = self.crypto.shuffle(deck, shuffle_keys, matrix, randomness, shuffled, n);
+        self.crypto.shuffle(deck, shuffle_keys, matrix, randomness, shuffled, n);
         const json = try prove.json.shuffleJson(self.alloc, h, deck, shuffle_keys, matrix, randomness);
         defer self.alloc.free(json);
         const proof = try self.engine.proveJson(id, json);
+        const perm_hash = try prove.publicSignal(self.alloc, proof.public_json, 1);
         return .{ .proof = proof, .deck = shuffled, .permutation_hash = perm_hash, .alloc = self.alloc };
     }
 
-    pub fn linearShareProve(
+    /// Share sealed to each recipient key.
+    pub fn linearShareProveHouse(
         self: *TablePlayer,
         id: CircuitId,
         deck: []const Ciphertext,
@@ -191,8 +208,8 @@ pub const TablePlayer = struct {
         errdefer self.alloc.free(rows);
         r = 0;
         while (r < rows_n) : (r += 1) rows[r] = flat[r * cols .. (r + 1) * cols];
-        self.crypto.share(deck, recipients, self.privateKey(), rand_rows, rows);
-        const json = try prove.json.linearShareJson(
+        self.crypto.shareHouse(deck, recipients, self.privateKey(), rand_rows, rows);
+        const json = try prove.json.linearShareJsonHouse(
             self.alloc,
             share_hash,
             deck,

@@ -49,6 +49,18 @@ pub fn build(b: *std.Build) void {
 
     const witness_link = b.option(std.builtin.LinkMode, "witness-link", "Witness library linkage: dynamic or static") orelse .dynamic;
     const circuit_set = b.option(CircuitSet, "circuit-set", "Witness libraries to build") orelse .all;
+    // House images prove shuffle, share, showdown, and blackjack action.
+    // They do not link roulette, craps, or keno bet circuits.
+    const house = b.option(bool, "house", "Omit bet circuits and refuse bet/card ops") orelse false;
+    if (house) {
+        switch (circuit_set) {
+            .baccarat, .blackjack, .war, .roulette, .craps, .keno, .slots => {},
+            else => @panic("house builds are one of baccarat, blackjack, war, roulette, craps, keno, slots"),
+        }
+    }
+    const house_options = b.addOptions();
+    house_options.addOption(bool, "house_build", house);
+    const house_options_mod = house_options.createModule();
     const gmp_path_opt = b.option([]const u8, "gmp-path", "Path to libgmp (.dylib, .so, or .a)");
     const gmp_path = gmp_path_opt orelse defaultGmpPath(target.result.os.tag);
 
@@ -210,7 +222,7 @@ pub fn build(b: *std.Build) void {
     };
 
     for (WITNESS_LIBS) |witness_lib| {
-        if (!circuitSetIncludes(circuit_set, witness_lib.name)) continue;
+        if (!circuitSetIncludes(circuit_set, witness_lib.name, house)) continue;
         addWitnessLib(b, .{
             .name = witness_lib.name,
             .api_file = witness_lib.api_file,
@@ -228,6 +240,8 @@ pub fn build(b: *std.Build) void {
             .gmp_explicit = gmp_path_opt != null,
             .witness_export_options_mod = witness_export_options_mod,
             .witness_poker_options_mod = witness_poker_options_mod,
+            .house_options_mod = house_options_mod,
+            .house = house,
         });
     }
 
@@ -299,6 +313,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    player_bridge_lib_mod.addImport("house_options", house_options_mod);
     player_bridge_lib_mod.addObject(fr_cpp_obj);
     player_bridge_lib_mod.addObject(fr_asm_obj);
     linkGmp(player_bridge_lib_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
@@ -331,9 +346,11 @@ pub fn build(b: *std.Build) void {
     linkGmp(player_prove_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(player_prove_mod, target, sdk);
 
+    const profile_one = b.option(bool, "profile-one", "Compile only the single-circuit profile test") orelse false;
     const player_prove_test = b.addTest(.{
         .name = "player_prove_test",
         .root_module = player_prove_mod,
+        .filters = if (profile_one) &.{"profile one circuit"} else &.{},
     });
     if (target.result.os.tag == .macos or target.result.os.tag == .ios) {
         player_prove_test.use_lld = false;
@@ -359,6 +376,8 @@ const WitnessLibOptions = struct {
     gmp_explicit: bool,
     witness_export_options_mod: *std.Build.Module,
     witness_poker_options_mod: *std.Build.Module,
+    house_options_mod: *std.Build.Module,
+    house: bool,
 };
 
 fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
@@ -382,6 +401,7 @@ fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
     }
     lib_mod.addImport("witness_export_options", opts.witness_export_options_mod);
     lib_mod.addImport("witness_poker_options", opts.witness_poker_options_mod);
+    lib_mod.addImport("house_options", opts.house_options_mod);
 
     const lib = b.addLibrary(.{
         .name = opts.name,
@@ -394,6 +414,7 @@ fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
     }
 
     for (opts.circuits) |circuit| {
+        if (opts.house and isBetCircuit(circuit)) continue;
         const subdir = circuitSubdir(circuit);
 
         var prefix_path_buf: [160]u8 = undefined;
@@ -597,13 +618,28 @@ fn linkGmp(module: *std.Build.Module, os_tag: std.Target.Os.Tag, gmp_path: []con
     module.addObjectFile(.{ .cwd_relative = gmp_path });
 }
 
-fn circuitSetIncludes(set: CircuitSet, name: []const u8) bool {
+fn isBetCircuit(name: []const u8) bool {
+    return std.mem.indexOf(u8, name, "_bet") != null;
+}
+
+fn circuitSetIncludes(set: CircuitSet, name: []const u8, house: bool) bool {
     if (std.mem.eql(u8, name, "zkcasino")) return true;
+    if (house) {
+        const card_shoes = std.mem.eql(u8, name, "zkcasino-shuffle-1-deck-52") or
+            std.mem.eql(u8, name, "zkcasino-shuffle-6-deck-52") or
+            std.mem.eql(u8, name, "zkcasino-shuffle-8-deck-52");
+        switch (set) {
+            .blackjack => if (card_shoes or std.mem.eql(u8, name, "zkcasino-blackjack")) return true,
+            .baccarat => if (card_shoes or std.mem.eql(u8, name, "zkcasino-baccarat")) return true,
+            .war => if (card_shoes or std.mem.eql(u8, name, "zkcasino-war")) return true,
+            else => {},
+        }
+    }
     return switch (set) {
         .all => true,
         .poker => std.mem.eql(u8, name, "zkcasino-shuffle-1-deck-52") or std.mem.eql(u8, name, "zkcasino-poker"),
         .blackjack => std.mem.eql(u8, name, "zkcasino-shuffle-6-deck-52") or std.mem.eql(u8, name, "zkcasino-blackjack"),
-        .baccarat => std.mem.eql(u8, name, "zkcasino-shuffle-1-deck-52") or std.mem.eql(u8, name, "zkcasino-baccarat"),
+        .baccarat => std.mem.eql(u8, name, "zkcasino-shuffle-6-deck-52") or std.mem.eql(u8, name, "zkcasino-baccarat"),
         .war => std.mem.eql(u8, name, "zkcasino-shuffle-6-deck-52") or std.mem.eql(u8, name, "zkcasino-war"),
         .roulette => std.mem.eql(u8, name, "zkcasino-shuffle-1-deck-37") or std.mem.eql(u8, name, "zkcasino-shuffle-1-deck-38") or std.mem.eql(u8, name, "zkcasino-roulette"),
         .craps => std.mem.eql(u8, name, "zkcasino-shuffle-2-dice-6") or std.mem.eql(u8, name, "zkcasino-craps"),

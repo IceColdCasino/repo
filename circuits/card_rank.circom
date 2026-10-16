@@ -9,8 +9,8 @@ pragma circom 2.2.2;
 include "./helpers.circom";
 
 // Map a n-deck shoe card index (0..(52 * n - 1))) to rank 0..12 (2=0, 3=1, ..., Ace=12).
-template CardToRank(shoeSize) {
-  var nCards = 52 * shoeSize;
+template CardToRank() {
+  var nCards = 52;
 
   signal input card;
   
@@ -23,25 +23,24 @@ template CardToRank(shoeSize) {
   component eqCheck[nCards];
   component ltOrCheck[nCards];
 
-  lt = ConstrainLt(9, 52 * shoeSize);
+  lt = ConstrainLt(9, 52);
   lt.in <== card;
 
   rankCounter[0] <== 0;
 
-  for (var d = 0; d < shoeSize; d++) {
-    for (var s = 0; s < 4; s++) {
-      for (var r = 0; r < 13; r++) {
-        var i = d * 52 + s * 13 + r;
+  for (var s = 0; s < 4; s++) {
+    for (var r = 0; r < 13; r++) {
+      var i = s * 13 + r;
 
-        eqCheck[i] = IsEqual();
-        eqCheck[i].in <== [card, i];
+      eqCheck[i] = IsEqual();
+      eqCheck[i].in <== [card, i];
 
-        ltOrCheck[i] = LessThanOR(6);
-        ltOrCheck[i].in <== [rankCounter[i], r * eqCheck[i].out];
-        rankCounter[i + 1] <== ltOrCheck[i].out;
-      }
+      ltOrCheck[i] = LessThanOR(6);
+      ltOrCheck[i].in <== [rankCounter[i], r * eqCheck[i].out];
+      rankCounter[i + 1] <== ltOrCheck[i].out;
     }
   }
+
 
   rank <== rankCounter[nCards];
 

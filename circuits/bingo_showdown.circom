@@ -8,6 +8,7 @@ pragma circom 2.2.2;
 
 include "./partials.circom";
 include "./showdown.circom";
+include "./showdown_seal.circom";
 include "./hash.circom";
 include "./bingo_card.circom";
 include "./bingo_eval.circom";
@@ -36,7 +37,9 @@ template VerifyCalledBalls(nMax, shoeSize) {
 
     babyPbk[i] = parallel BabyPbk();
     babyPbk[i].in <== plaintextCards[i] + 1;
+  }
 
+  for (var i = 0; i < nMax; i++) {
     eq[i][0] = IsEqual();
     eq[i][0].in <== [decryptedCards[i][0], babyPbk[i].Ax];
     eq[i][1] = IsEqual();
@@ -56,6 +59,7 @@ template BingoShowdownHashMain75(nPlayers, nMax, nCells) {
   signal input ciphertextCardCells[nCells][4];
   signal input patternId;
   signal input nCalled;
+  signal input sealCommitment;
 
   signal output out;
 
@@ -65,10 +69,13 @@ template BingoShowdownHashMain75(nPlayers, nMax, nCells) {
   component cardHash;
   component finalHash;
 
-  h1 = HashPublicKeys(nPlayers);
+  h1 = parallel HashPublicKeys(nPlayers);
   h1.publicKeys <== publicKeys;
 
-  h2 = Poseidon(nPlayers);
+  cardHash = parallel HashCiphertexts(nCells);
+  cardHash.ciphertext <== ciphertextCardCells;
+
+  h2 = parallel Poseidon(nPlayers);
   for (var p = 0; p < nPlayers; p++) {
     _h2[p] = parallel HashCiphertexts(nMax);
     if (p == 0) {
@@ -76,14 +83,13 @@ template BingoShowdownHashMain75(nPlayers, nMax, nCells) {
     } else {
       _h2[p].ciphertext <== ciphertextPartials[p - 1];
     }
+  }
+  for (var p = 0; p < nPlayers; p++) {
     h2.inputs[p] <== _h2[p].out;
   }
 
-  cardHash = HashCiphertexts(nCells);
-  cardHash.ciphertext <== ciphertextCardCells;
-
-  finalHash = Poseidon(6);
-  finalHash.inputs <== [h1.out, playerIndex, h2.out, cardHash.out, patternId, nCalled];
+  finalHash = Poseidon(7);
+  finalHash.inputs <== [h1.out, playerIndex, h2.out, cardHash.out, patternId, nCalled, sealCommitment];
   out <== finalHash.out;
 }
 
@@ -96,6 +102,7 @@ template BingoShowdownHashMain90(nPlayers, nMax, nCells) {
   signal input ciphertextPartials[nOthers][nMax][4];
   signal input ciphertextCardCells[nCells][4];
   signal input nCalled;
+  signal input sealCommitment;
 
   signal output out;
 
@@ -105,10 +112,13 @@ template BingoShowdownHashMain90(nPlayers, nMax, nCells) {
   component cardHash;
   component finalHash;
 
-  h1 = HashPublicKeys(nPlayers);
+  h1 = parallel HashPublicKeys(nPlayers);
   h1.publicKeys <== publicKeys;
 
-  h2 = Poseidon(nPlayers);
+  cardHash = parallel HashCiphertexts(nCells);
+  cardHash.ciphertext <== ciphertextCardCells;
+
+  h2 = parallel Poseidon(nPlayers);
   for (var p = 0; p < nPlayers; p++) {
     _h2[p] = parallel HashCiphertexts(nMax);
     if (p == 0) {
@@ -116,14 +126,13 @@ template BingoShowdownHashMain90(nPlayers, nMax, nCells) {
     } else {
       _h2[p].ciphertext <== ciphertextPartials[p - 1];
     }
+  }
+  for (var p = 0; p < nPlayers; p++) {
     h2.inputs[p] <== _h2[p].out;
   }
 
-  cardHash = HashCiphertexts(nCells);
-  cardHash.ciphertext <== ciphertextCardCells;
-
-  finalHash = Poseidon(5);
-  finalHash.inputs <== [h1.out, playerIndex, h2.out, cardHash.out, nCalled];
+  finalHash = Poseidon(6);
+  finalHash.inputs <== [h1.out, playerIndex, h2.out, cardHash.out, nCalled, sealCommitment];
   out <== finalHash.out;
 }
 
@@ -131,7 +140,10 @@ template Showdown75(nPlayers, nMax) {
   var nOthers = nPlayers - 1;
   var nCells = 25;
 
+  // Public input
   signal input hash;
+
+  // Hashed Private inputs
   signal input publicKeys[nPlayers][2];
   signal input playerIndex;
   signal input ciphertextCards[nMax][4];
@@ -139,13 +151,15 @@ template Showdown75(nPlayers, nMax) {
   signal input ciphertextCardCells[nCells][4];
   signal input patternId;
   signal input nCalled;
+  signal input sealCommitment;
 
+  // Non-hashed Private inputs
   signal input privateKey;
   signal input publicKey[2];
   signal input plaintextCards[nMax];
   signal input plaintextCells[nCells];
 
-  signal output packed;
+  signal output out;
 
   component publicKeyCheck;
   component verifyKey;
@@ -161,12 +175,12 @@ template Showdown75(nPlayers, nMax) {
   component nCalledLt;
   component nCalledGt;
 
-  publicKeyCheck = PublicKeyCheck(nPlayers);
+  publicKeyCheck = parallel PublicKeyCheck(nPlayers);
   publicKeyCheck.publicKeys <== publicKeys;
   publicKeyCheck.playerIndex <== playerIndex;
   publicKeyCheck.publicKey <== publicKey;
 
-  verifyKey = VerifyKey();
+  verifyKey = parallel VerifyKey();
   verifyKey.privateKey <== privateKey;
   verifyKey.publicKey <== publicKey;
 
@@ -177,7 +191,7 @@ template Showdown75(nPlayers, nMax) {
   nCalledLt = ConstrainLt(8, nMax + 1);
   nCalledLt.in <== nCalled;
 
-  hashMain = BingoShowdownHashMain75(nPlayers, nMax, nCells);
+  hashMain = parallel BingoShowdownHashMain75(nPlayers, nMax, nCells);
   hashMain.publicKeys <== publicKeys;
   hashMain.playerIndex <== playerIndex;
   hashMain.ciphertextCards <== ciphertextCards;
@@ -185,7 +199,6 @@ template Showdown75(nPlayers, nMax) {
   hashMain.ciphertextCardCells <== ciphertextCardCells;
   hashMain.patternId <== patternId;
   hashMain.nCalled <== nCalled;
-  hash === hashMain.out;
 
   decryptPartials = parallel DecryptPartials(nPlayers, nMax);
   decryptPartials.ciphertextPartials <== ciphertextPartials;
@@ -199,26 +212,30 @@ template Showdown75(nPlayers, nMax) {
   createOwnPartials.ciphertextCards <== ciphertextCards;
   createOwnPartials.privateKey <== privateKey;
 
+  eval = parallel Evaluate75(nMax);
+  eval.cells <== plaintextCells;
+  eval.balls <== plaintextCards;
+  eval.nCalled <== nCalled;
+  eval.patternId <== patternId;
+
+  hashMain.sealCommitment <== sealCommitment;
+  hash === hashMain.out;
+
   aggregatePartials = AggregatePartials(nPlayers, nMax);
   aggregatePartials.ownPartials <== createOwnPartials.ownPartials;
   aggregatePartials.otherPartials <== decryptPartials.partials;
   aggregatePartials.ciphertextCards <== ciphertextCards;
 
-  verifyBalls = VerifyCalledBalls(nMax, 75);
+  verifyBalls = parallel VerifyCalledBalls(nMax, 75);
   verifyBalls.plaintextCards <== plaintextCards;
   verifyBalls.decryptedCards <== aggregatePartials.decryptedCards;
   verifyBalls.nCalled <== nCalled;
 
-  verifyCells = VerifyDecryptedBets(nCells);
+  verifyCells = parallel VerifyDecryptedBets(nCells);
   verifyCells.decryptedBets <== decryptCells.decryptedBets;
   verifyCells.plaintextBets <== plaintextCells;
 
-  eval = Evaluate75(nMax);
-  eval.cells <== plaintextCells;
-  eval.balls <== plaintextCards;
-  eval.nCalled <== nCalled;
-  eval.patternId <== patternId;
-  packed <== eval.packed;
+  out <== eval.packed;
 }
 
 template Showdown90(nPlayers, nMax) {
@@ -226,19 +243,21 @@ template Showdown90(nPlayers, nMax) {
   var nCells = 27;
 
   signal input hash;
+
   signal input publicKeys[nPlayers][2];
   signal input playerIndex;
   signal input ciphertextCards[nMax][4];
   signal input ciphertextPartials[nOthers][nMax][4];
   signal input ciphertextCardCells[nCells][4];
   signal input nCalled;
+  signal input sealCommitment;
 
   signal input privateKey;
   signal input publicKey[2];
   signal input plaintextCards[nMax];
   signal input plaintextCells[nCells];
 
-  signal output packed[3];
+  signal output out[3];
 
   component publicKeyCheck;
   component verifyKey;
@@ -253,12 +272,12 @@ template Showdown90(nPlayers, nMax) {
   component nCalledLt;
   component nCalledGt;
 
-  publicKeyCheck = PublicKeyCheck(nPlayers);
+  publicKeyCheck = parallel PublicKeyCheck(nPlayers);
   publicKeyCheck.publicKeys <== publicKeys;
   publicKeyCheck.playerIndex <== playerIndex;
   publicKeyCheck.publicKey <== publicKey;
 
-  verifyKey = VerifyKey();
+  verifyKey = parallel VerifyKey();
   verifyKey.privateKey <== privateKey;
   verifyKey.publicKey <== publicKey;
 
@@ -267,14 +286,13 @@ template Showdown90(nPlayers, nMax) {
   nCalledLt = ConstrainLt(8, nMax + 1);
   nCalledLt.in <== nCalled;
 
-  hashMain = BingoShowdownHashMain90(nPlayers, nMax, nCells);
+  hashMain = parallel BingoShowdownHashMain90(nPlayers, nMax, nCells);
   hashMain.publicKeys <== publicKeys;
   hashMain.playerIndex <== playerIndex;
   hashMain.ciphertextCards <== ciphertextCards;
   hashMain.ciphertextPartials <== ciphertextPartials;
   hashMain.ciphertextCardCells <== ciphertextCardCells;
   hashMain.nCalled <== nCalled;
-  hash === hashMain.out;
 
   decryptPartials = parallel DecryptPartials(nPlayers, nMax);
   decryptPartials.ciphertextPartials <== ciphertextPartials;
@@ -288,32 +306,39 @@ template Showdown90(nPlayers, nMax) {
   createOwnPartials.ciphertextCards <== ciphertextCards;
   createOwnPartials.privateKey <== privateKey;
 
+  eval = parallel Evaluate90(nMax);
+  eval.cells <== plaintextCells;
+  eval.balls <== plaintextCards;
+  eval.nCalled <== nCalled;
+
+  hashMain.sealCommitment <== sealCommitment;
+  hash === hashMain.out;
+
   aggregatePartials = AggregatePartials(nPlayers, nMax);
   aggregatePartials.ownPartials <== createOwnPartials.ownPartials;
   aggregatePartials.otherPartials <== decryptPartials.partials;
   aggregatePartials.ciphertextCards <== ciphertextCards;
 
-  verifyBalls = VerifyCalledBalls(nMax, 90);
+  verifyBalls = parallel VerifyCalledBalls(nMax, 90);
   verifyBalls.plaintextCards <== plaintextCards;
   verifyBalls.decryptedCards <== aggregatePartials.decryptedCards;
   verifyBalls.nCalled <== nCalled;
 
-  verifyCells = VerifyDecryptedBets(nCells);
+  verifyCells = parallel VerifyDecryptedBets(nCells);
   verifyCells.decryptedBets <== decryptCells.decryptedBets;
   verifyCells.plaintextBets <== plaintextCells;
 
-  eval = Evaluate90(nMax);
-  eval.cells <== plaintextCells;
-  eval.balls <== plaintextCards;
-  eval.nCalled <== nCalled;
-  packed <== eval.packed;
+  out <== eval.packed;
 }
 
 template Showdown75HashOut(nPlayers, nMax) {
   var nOthers = nPlayers - 1;
   var nCells = 25;
 
+  // Poseidon of the hashed inputs, including the seal commitment.
   signal input hash;
+
+  // Hashed Private inputs
   signal input publicKeys[nPlayers][2];
   signal input playerIndex;
   signal input ciphertextCards[nMax][4];
@@ -321,11 +346,14 @@ template Showdown75HashOut(nPlayers, nMax) {
   signal input ciphertextCardCells[nCells][4];
   signal input patternId;
   signal input nCalled;
+  signal input sealCommitment;
+
+  // Non-hashed private inputs
   signal input privateKey;
   signal input publicKey[2];
   signal input plaintextCards[nMax];
   signal input plaintextCells[nCells];
-  signal input coefficients[1];
+  signal input coefficients[2];
 
   signal output out;
 
@@ -334,6 +362,7 @@ template Showdown75HashOut(nPlayers, nMax) {
 
   showdown = Showdown75(nPlayers, nMax);
   showdown.hash <== hash;
+  showdown.sealCommitment <== sealCommitment;
   showdown.publicKeys <== publicKeys;
   showdown.playerIndex <== playerIndex;
   showdown.ciphertextCards <== ciphertextCards;
@@ -346,9 +375,11 @@ template Showdown75HashOut(nPlayers, nMax) {
   showdown.plaintextCards <== plaintextCards;
   showdown.plaintextCells <== plaintextCells;
 
-  hashOut = ShowdownPolynomialHash(1);
-  hashOut.results <== [showdown.packed];
+  hashOut = SealedShowdownHash(2);
+  hashOut.sealCommitment <== sealCommitment;
+  hashOut.results <== [showdown.out, 0];
   hashOut.coefficients <== coefficients;
+
   out <== hashOut.out;
 }
 
@@ -356,18 +387,24 @@ template Showdown90HashOut(nPlayers, nMax) {
   var nOthers = nPlayers - 1;
   var nCells = 27;
 
+  // Poseidon of the hashed inputs, including the seal commitment.
   signal input hash;
+
+  // Hashed Private inputs
   signal input publicKeys[nPlayers][2];
   signal input playerIndex;
   signal input ciphertextCards[nMax][4];
   signal input ciphertextPartials[nOthers][nMax][4];
   signal input ciphertextCardCells[nCells][4];
   signal input nCalled;
+  signal input sealCommitment;
+
+  // Non-hashed private inputs
   signal input privateKey;
   signal input publicKey[2];
   signal input plaintextCards[nMax];
   signal input plaintextCells[nCells];
-  signal input coefficients[3];
+  signal input coefficients[2];
 
   signal output out;
 
@@ -376,6 +413,7 @@ template Showdown90HashOut(nPlayers, nMax) {
 
   showdown = Showdown90(nPlayers, nMax);
   showdown.hash <== hash;
+  showdown.sealCommitment <== sealCommitment;
   showdown.publicKeys <== publicKeys;
   showdown.playerIndex <== playerIndex;
   showdown.ciphertextCards <== ciphertextCards;
@@ -387,8 +425,15 @@ template Showdown90HashOut(nPlayers, nMax) {
   showdown.plaintextCards <== plaintextCards;
   showdown.plaintextCells <== plaintextCells;
 
-  hashOut = ShowdownPolynomialHash(3);
-  hashOut.results <== showdown.packed;
+  // Each prize is 0 or 256 + call (call is 1..90), so at most 346.
+  // 512 is above that, so one line + two lines * 512 + full house * 512^2
+  // is one coefficient. The second limb stays 0.
+  signal packedPrize;
+  packedPrize <== showdown.out[0] + showdown.out[1] * 512 + showdown.out[2] * 262144;
+
+  hashOut = SealedShowdownHash(2);
+  hashOut.sealCommitment <== sealCommitment;
+  hashOut.results <== [packedPrize, 0];
   hashOut.coefficients <== coefficients;
   out <== hashOut.out;
 }

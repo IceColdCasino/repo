@@ -7,6 +7,7 @@ import { MAX_PLAYERS, type BingoVariant } from '../src/bingo';
 import { verify } from '../src/rapidsnark-ffi';
 import path from 'path';
 import { hostShowdownCoefficients } from './helpers/host-showdown-coefficients';
+import { sealCommitment } from '../src/host-showdown-coefficients';
 
 function showdownVkPath(variant: BingoVariant) {
   return path.join(__dirname, `../zkey/bingo_showdown_${variant}_hashout_main_verification_key.json`);
@@ -67,7 +68,8 @@ async function shareChunk(game: Game, players: Player[], nActualPlayers: number,
 async function showdown(game: Game, players: Player[], nActualPlayers: number, cards: number[][]) {
   let expectedBalls: string | undefined;
   for (let p = 0; p < nActualPlayers; p++) {
-    players[p]!.setSealedCoefficients(hostShowdownCoefficients(players[p]!.variant === 90 ? 3 : 1));
+    const sealed = hostShowdownCoefficients(2);
+    players[p]!.setSealedCoefficients(sealed);
     const { proof, publicSignals, plaintextBalls } = await players[p]!.showdownProve(
       game.publicKeys,
       game.showdownCiphertextCards(),
@@ -79,7 +81,10 @@ async function showdown(game: Game, players: Player[], nActualPlayers: number, c
     );
     if (expectedBalls === undefined) {
       expectedBalls = plaintextBalls.join(',');
-      const result = game.verifyShowdown(proof, publicSignals, { publicKey: players[p]!.publicKey });
+      const result = game.verifyShowdown(proof, publicSignals, {
+        publicKey: players[p]!.publicKey,
+        coefficientCommitment: sealCommitment(sealed),
+      });
       expect(result).toBe(BigInt(publicSignals[0]!));
     } else {
       expect(plaintextBalls.join(',')).toBe(expectedBalls);
@@ -113,7 +118,11 @@ async function runGame(variant: BingoVariant, nActualPlayers: number) {
   expect(game.phase).toBe('Share');
 
   for (let p = 0; p < nActualPlayers; p++) {
-    players[p]!.preloadShare(game.chunkDeck(0), game.publicKeysShare(p), nActualPlayers);
+    players[p]!.preloadShare(
+      game.chunkDeck(0),
+      game.publicKeysShare(p),
+      nActualPlayers,
+    );
   }
   await shareChunk(game, players, nActualPlayers, 0);
   expect(game.phase).toBe('Showdown');

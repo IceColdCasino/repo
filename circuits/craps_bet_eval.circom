@@ -6,6 +6,7 @@ Patent Pending USPTO Application Number 19/811,546
 
 pragma circom 2.2.2;
 
+include "circuits/bitify.circom";
 include "./helpers.circom";
 
 // Per-bet result encoding (profit in 30ths so 9:5 / 7:6 / 3:2 stay integer):
@@ -283,6 +284,10 @@ template EvalDontPass() {
 
   hit <== coWin + ptWin;
   lose <== coLose + ptLose;
+  // Come-out 12 is a push on Don't Pass: it is neither a win nor a loss.
+  signal twelvePush;
+  twelvePush <== comeOut * isTwelve;
+  twelvePush * (hit + lose) === 0;
 
   settle = CrapsKeepLoseWin();
   settle.hit <== hit;
@@ -463,8 +468,28 @@ template EvalOdds() {
   active = IsEqual();
   active.in <== [type, 4];
 
-  family <-- modifier \ 6;
-  idx <-- modifier % 6;
+  // modifier is a 6-bit bet field, so family * 6 + idx has one solution.
+  component modBits = Num2Bits(6);
+  modBits.in <== modifier;
+  component modEq[64];
+  signal famTerm[64];
+  signal idxTerm[64];
+  signal famSum[64];
+  signal idxSum[64];
+  for (var i = 0; i < 64; i++) {
+    modEq[i] = IsEqual();
+    modEq[i].in <== [modifier, i];
+    famTerm[i] <== modEq[i].out * (i \ 6);
+    idxTerm[i] <== modEq[i].out * (i % 6);
+  }
+  famSum[0] <== famTerm[0];
+  idxSum[0] <== idxTerm[0];
+  for (var i = 1; i < 64; i++) {
+    famSum[i] <== famSum[i - 1] + famTerm[i];
+    idxSum[i] <== idxSum[i - 1] + idxTerm[i];
+  }
+  family <== famSum[63];
+  idx <== idxSum[63];
   modifier === family * 6 + idx;
 
   idxBound = ConstrainLt(3, 6);
@@ -1052,7 +1077,9 @@ template EvaluateCrapsBets(nBets) {
 
     lessThan[i] = LessThan(4);
     lessThan[i].in <== [i, nActualBets];
+  }
 
+  for (var i = 0; i < nBets; i++) {
     out[i] <== evaluateBets[i].out * lessThan[i].out;
   }
 }

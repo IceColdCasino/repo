@@ -1,6 +1,7 @@
 import './helpers/require-player-ffi';
 import { MAX_PLAYERS, MAX_BETS, type RouletteBet, type RouletteVariant } from '../src/roulette';
 import { hostShowdownCoefficients } from './helpers/host-showdown-coefficients';
+import { sealCommitment } from '../src/host-showdown-coefficients';
 import { Game } from '../src/roulette-game';
 import { Player, loadRouletteCircuits, type RouletteCircuits } from '../src/roulette-player';
 import { verify } from '../src/rapidsnark-ffi';
@@ -137,7 +138,8 @@ async function showdown(
     const ciphertextBets = game.getEncryptedBetsForPlayer(p);
     const nActualBets = game.getNActualBetsForPlayer(p);
 
-    player.setSealedCoefficients(hostShowdownCoefficients(MAX_BETS));
+    const sealed = hostShowdownCoefficients(2);
+    player.setSealedCoefficients(sealed);
     console.time(`Showdown Prove ${p}`);
     const { proof, publicSignals, publicKey, plaintextCard, payouts } =
       await player.showdownProve(
@@ -156,7 +158,10 @@ async function showdown(
       expectedCard = plaintextCard;
 
       console.time(`Game Verify Showdown ${p}`);
-      const result = game.verifyShowdown(proof, publicSignals, { publicKey });
+      const result = game.verifyShowdown(proof, publicSignals, {
+        publicKey,
+        coefficientCommitment: sealCommitment(sealed),
+      });
       console.timeEnd(`Game Verify Showdown ${p}`);
       expect(result).toBe(BigInt(publicSignals[0]!));
     } else {

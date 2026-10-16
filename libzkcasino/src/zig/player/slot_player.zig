@@ -2,7 +2,6 @@ const std = @import("std");
 const poseidon = @import("../crypto/poseidon.zig");
 const hash = @import("../crypto/hash.zig");
 const baby = @import("../crypto/babyjub.zig");
-const poly = @import("../crypto/poly_hash.zig");
 const base = @import("player_base.zig");
 const eval = @import("slot_eval.zig");
 const table = @import("table_player.zig");
@@ -14,10 +13,10 @@ pub const Ciphertext = base.Ciphertext;
 pub const PublicKey = base.PublicKey;
 
 pub fn shareHash(crypto: *const Crypto, cts: []const Ciphertext, pk: PublicKey, others: []const PublicKey) Fr {
-    return poseidon.hash(&.{
+    return hash.shareInputHashHouse(
         crypto.hashCiphertexts(cts),
         hash.hashPublicKeys2(&.{ pk, others[0] }),
-    });
+    );
 }
 
 pub fn showdownHash(
@@ -27,6 +26,7 @@ pub fn showdownHash(
     cards: []const Ciphertext,
     partials: []const []const Ciphertext,
     bet: Ciphertext,
+    seal_commitment: Fr,
 ) Fr {
     const h1 = hash.hashPublicKeys2(public_keys);
     var h2_in: [4]Fr = undefined;
@@ -34,7 +34,7 @@ pub fn showdownHash(
     var p: usize = 0;
     while (p < partials.len) : (p += 1) h2_in[p + 1] = crypto.hashCiphertexts(partials[p]);
     const h2 = poseidon.hash(h2_in[0 .. 1 + partials.len]);
-    return poseidon.hash(&.{ h1, player_index, h2, crypto.hashCiphertexts(&.{bet}) });
+    return poseidon.hash(&.{ h1, player_index, h2, crypto.hashCiphertexts(&.{bet}), seal_commitment });
 }
 
 pub fn encryptCoinBet(crypto: *const Crypto, coin_bet: u64, pk: PublicKey, r: Fr) Ciphertext {
@@ -54,22 +54,12 @@ pub fn hashIndependentPermutations(matrices: []const []const u8, stop_count: usi
     return poseidon.hash(hashes[0..matrices.len]);
 }
 
-fn hashIndependentPermutationsMats(matrix: []const u8, n_reels: usize, n_stops: usize) Fr {
-    var hashes: [5]Fr = undefined;
-    var i: usize = 0;
-    while (i < n_reels) : (i += 1) {
-        const start = i * n_stops * n_stops;
-        hashes[i] = hash.hashPermutationMatrix(matrix[start .. start + n_stops * n_stops], n_stops);
-    }
-    return poseidon.hash(hashes[0..n_reels]);
-}
-
 pub const evaluateThreeReelStops = eval.evaluateThreeReelStops;
 pub const evaluateFiveReelStops = eval.evaluateFiveReelStops;
 
 pub fn computeShareOutputHash(values: []const Fr, n_reels: u32, n_actual: u32) Fr {
-    if (n_reels == 3) return poly.hashRecipientMajor(values, 1, 3, 2, n_actual);
-    return poly.hashRecipientMajor(values, 1, 5, 2, n_actual);
+    _ = n_actual;
+    return hash.hashRecipientCiphertexts(values, 1, @intCast(n_reels));
 }
 
 pub const Player = struct {
@@ -121,7 +111,7 @@ pub const Player = struct {
             const rand = randomness[r * n_stops .. (r + 1) * n_stops];
             self.table.crypto.generateShufflePermutation(n_stops, m);
             self.table.crypto.generateShuffleRandomness(n_stops, rand);
-            _ = self.table.crypto.shuffle(
+            self.table.crypto.shuffle(
                 reels[r],
                 keys,
                 m,
@@ -146,7 +136,7 @@ pub const Player = struct {
         return .{
             .proof = proof,
             .deck = shuffled,
-            .permutation_hash = hashIndependentPermutationsMats(matrix, n_reels, n_stops),
+            .permutation_hash = try prove.publicSignal(self.table.alloc, proof.public_json, 1),
             .alloc = self.table.alloc,
         };
     }
@@ -161,7 +151,7 @@ pub const Player = struct {
         var rand_const: [4][]const Fr = undefined;
         var i: usize = 0;
         while (i < keys.len) : (i += 1) rand_const[i] = card_rand.rows[i];
-        self.table.crypto.share(centers, keys, self.table.privateKey(), rand_const[0..keys.len], out_grid.rows);
+        self.table.crypto.shareHouse(centers, keys, self.table.privateKey(), rand_const[0..keys.len], out_grid.rows);
 
         var j = prove.json.Json.init(self.table.alloc);
         errdefer j.deinit();
@@ -191,15 +181,13 @@ pub const Player = struct {
         coin_bet: u64,
     ) !table.Proof {
         const idx = self.table.indexOfSelf(public_keys);
-        var coeffs: [1]Fr = undefined;
-        self.table.fillCoeffs(&coeffs);
-        const h = showdownHash(self.table.crypto, public_keys, Fr.fromU64(idx), cards, partials, enc_bet);
+        const h = showdownHash(self.table.crypto, public_keys, Fr.fromU64(idx), cards, partials, enc_bet, self.table.sealCommitment());
         var centers: [5]u64 = undefined;
         try self.table.crypto.decryptCards(self.table.privateKey(), cards, partials, centers[0..cards.len]);
         var j = prove.json.Json.init(self.table.alloc);
         errdefer j.deinit();
         try j.begin();
-        try j.fieldFr("hash", h);
+        try self.table.writeSealedShowdown(&j, h, 2);
         try j.fieldPoints("publicKeys", public_keys);
         try j.fieldU64("playerIndex", idx);
         try j.fieldCts("ciphertextCards", cards);
@@ -209,7 +197,6 @@ pub const Player = struct {
         try j.fieldFr("privateKey", self.table.privateKey());
         try j.fieldU64s("plaintextCards", centers[0..cards.len]);
         try j.fieldU64("coinBet", coin_bet);
-        try j.fieldFrs("coefficients", &coeffs);
         const json = try j.finish();
         defer self.table.alloc.free(json);
         return self.table.proveJson(if (self.n_reels == 5) .slot_showdown_5_reel_hashout_main else .slot_showdown_3_reel_hashout_main, json);

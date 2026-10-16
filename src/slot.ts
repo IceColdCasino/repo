@@ -1,6 +1,5 @@
 import type { BabyJub } from 'circomlibjs';
 import assert from 'node:assert';
-import { hash12Bn254, hash20Bn254 } from './hash-coeffs';
 import {
   type Ciphertext,
   type PlaintextCard,
@@ -11,6 +10,7 @@ import { hashPublicKeys2 } from './shuffle-common';
 import { ZkCrypto } from './zk-crypto-base';
 import { GameKind } from './game-config';
 import { casinoDeck } from './casino-calc';
+import { showdownTwoCoeffHash } from './showdown-sealed-coeffs';
 import {
   evaluateFiveReelStops,
   evaluateThreeReelStops,
@@ -31,6 +31,7 @@ export interface ShowdownHashInput {
   ciphertextCards: Ciphertext[];
   ciphertextPartials: Ciphertext[][];
   ciphertextBet: Ciphertext;
+  sealCommitment: bigint;
 }
 
 export function parseSlotSharePublicSignals(publicSignals: string[]): {
@@ -83,7 +84,11 @@ export class Slot extends ZkCrypto {
     return this.generateShuffleRandomness(N_STOPS);
   }
 
-  override shareHash(ciphertext: Ciphertext[], publicKey: PublicKey, publicKeys: PublicKey[]) {
+  override shareHash(
+    ciphertext: Ciphertext[],
+    publicKey: PublicKey,
+    publicKeys: PublicKey[],
+  ) {
     return this.calcFr('shareHash', {
       deck: ciphertext,
       publicKey,
@@ -98,6 +103,7 @@ export class Slot extends ZkCrypto {
     assert(ciphertextPartials.length === N_OTHERS);
 
     return this.calcFr('showdownHash', {
+      sealCommitment: hashInput.sealCommitment,
       publicKeys,
       playerIndex,
       cards: ciphertextCards,
@@ -161,8 +167,8 @@ export class Slot extends ZkCrypto {
     });
   }
 
-  computeShowdownOutputHash(payout: number, coefficient: bigint): bigint {
-    return (BigInt(payout) + 1n) * coefficient;
+  computeShowdownOutputHash(payout: number, coefficients: readonly bigint[]): bigint {
+    return showdownTwoCoeffHash(BigInt(payout), coefficients);
   }
 
   override decryptCards(

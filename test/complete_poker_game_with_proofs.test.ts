@@ -4,6 +4,7 @@ import { Game } from '../src/poker-game';
 import { Player } from '../src/poker-player';
 import { preloadCircuits, type Circuits } from '../src/circuit-manager';
 import { hostShowdownCoefficients } from './helpers/host-showdown-coefficients';
+import { sealCommitment } from '../src/host-showdown-coefficients';
 
 async function register(nActualPlayers: number, circuits: Circuits, game: Game) {
   const players: Player[] = [];
@@ -46,7 +47,11 @@ async function shuffle(game: Game, players: Player[]) {
   }
 }
 
-async function share(game: Game, players: Player[], toFold: (p: number) => boolean = (p: number) => false) {
+async function share(
+  game: Game,
+  players: Player[],
+  toFold: (p: number) => boolean = (p: number) => false,
+) {
   for (let p = 0; p < game.nPlayers; p++) {
     const player = players[p]!;
 
@@ -59,6 +64,7 @@ async function share(game: Game, players: Player[], toFold: (p: number) => boole
     console.timeEnd(`Share Partials Prove ${p}`);
 
     console.time(`Game Share Partials ${p}`);
+    game.postShareStake(p, game.requiredShareStake());
     if (toFold(p)) {
       game.fold(proof, publicSignals, { publicKey: player.publicKey, ciphertexts });
     } else {
@@ -73,19 +79,25 @@ async function showdown(game: Game, players: Player[]) {
   for (let p = 0; p < game.nPlayers; p++) {
     const player = players[p]!;
     
-    player.setSealedCoefficients(hostShowdownCoefficients(MAX_PLAYERS - 1));
+    const sealed = hostShowdownCoefficients(2);
+    player.setSealedCoefficients(sealed);
     console.time(`Showdown Prove ${p}`);
     const { proof, publicSignals, publicKey, winnerMasks, coefficientCommitment } = await player.showdownProve(
       p,
       game.publicKeys,
       game.potMasks,
       game.finalShuffledDeck,
-      game.getCiphertextPartialsForPlayer(p)
+      game.getCiphertextPartialsForPlayer(p),
     );
     console.timeEnd(`Showdown Prove ${p}`);
     
+    expect(coefficientCommitment).toBe(sealCommitment(sealed));
     console.time(`Game Verify Showdown ${p}`);
-    const result = game.verifyShowdown(proof, publicSignals, { winnerMasks, publicKey, coefficientCommitment });
+    const result = game.verifyShowdown(proof, publicSignals, {
+      winnerMasks,
+      publicKey,
+      coefficientCommitment: sealCommitment(sealed),
+    });
     console.timeEnd(`Game Verify Showdown ${p}`);
     
     if (lastResult) {
@@ -130,7 +142,11 @@ async function runGame(nActualPlayers = 2, toFold: (p: number) => boolean = () =
   console.time('Preload all share partials');
   for (let p = 0; p < nActualPlayers; p++) {
     console.time(`  Preload Share Partials ${p}`);
-    players[p]!.preloadShare(game.finalShuffledDeck, game.publicKeysShare(p), nActualPlayers);
+    players[p]!.preloadShare(
+      game.finalShuffledDeck,
+      game.publicKeysShare(p),
+      nActualPlayers,
+    );
     console.timeEnd(`  Preload Share Partials ${p}`);
   }
   console.timeEnd('Preload all share partials');
@@ -161,18 +177,20 @@ async function runGame(nActualPlayers = 2, toFold: (p: number) => boolean = () =
   expect(game.phase).toBe('Complete');
 }
 
-test('Complete Game with 2 players', async () => {
-  await runGame();
-}, 600_000);
+describe('Complete Poker Game with Proofs', () => {
+  test('2 players', async () => {
+    await runGame();
+  }, 600_000);
 
-test('Complete Game with 3 players, 1 folds', async () => {
-  await runGame(3, p => p === 0);
-}, 600_000);
+  test('3 players, 1 folds', async () => {
+    await runGame(3, p => p === 0);
+  }, 600_000);
 
-test('Complete Game with 10 players, 5 fold', async () => {
-  await runGame(10, p => p % 2 === 0);
-}, 900_000);
+  test('10 players, 5 fold', async () => {
+    await runGame(10, p => p % 2 === 0);
+  }, 900_000);
 
-test('Complete Game with 10 players', async () => {
-  await runGame(10);
-}, 900_000);
+  test('10 players', async () => {
+    await runGame(10);
+  }, 900_000);
+});

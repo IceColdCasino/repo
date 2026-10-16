@@ -26,11 +26,17 @@ template Evaluate(nBets, nSelection) {
   for (var i = 0; i < nBets; i++) {
     lt[i] = LessThan(5);
     lt[i].in <== [i, nActualBets];
+  }
 
+  for (var i = 0; i < nBets; i++) {
     for (var j = 0; j < nSelection; j++) {
       eq[i * nSelection + j] = IsEqual();
       eq[i * nSelection + j].in <== [plaintextBets[i], plaintextValues[j]];
+    }
+  }
 
+  for (var i = 0; i < nBets; i++) {
+    for (var j = 0; j < nSelection; j++) {
       matches[i * nSelection + j + 1] <== matches[i * nSelection + j] + eq[i * nSelection + j].out * lt[i].out;
     }
   }

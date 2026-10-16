@@ -1,0 +1,11 @@
+[package]
+name = "shared-zk-ids"
+version = "0.1.0"
+edition = "2021"
+description = "Program IDs and proof-receipt layout shared by poker and light-casino (no Anchor)"
+
+[lib]
+name = "shared_zk_ids"
+path = "src/lib.rs"
+
+[dependencies]

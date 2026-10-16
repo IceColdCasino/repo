@@ -1,6 +1,5 @@
 import type { BabyJub } from 'circomlibjs';
 import assert from 'node:assert';
-import { hash44Bn254 } from './hash-coeffs';
 import {
   type Ciphertext,
   type PlaintextCard,
@@ -14,6 +13,7 @@ import {
 } from './zk-crypto-base';
 import { GameKind } from './game-config';
 import { casinoDeck } from './casino-calc';
+import { packRouletteMultipliers, showdownTwoCoeffHash } from './showdown-sealed-coeffs';
 
 export type RouletteVariant = 37 | 38;
 
@@ -38,6 +38,7 @@ export interface ShowdownHashInput {
   ciphertextPartials: Ciphertext[][];
   ciphertextBets: Ciphertext[];
   nActualBets: number;
+  sealCommitment: bigint;
 }
 
 const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
@@ -325,6 +326,7 @@ export class Roulette extends ZkCrypto {
     assert(ciphertextBets.length === MAX_BETS);
 
     return this.calcFr('showdownHash', {
+      sealCommitment: hashInput.sealCommitment,
       publicKeys,
       playerIndex,
       cards: ciphertextCards,
@@ -371,11 +373,9 @@ export class Roulette extends ZkCrypto {
 
   computeShowdownOutputHash(payouts: number[], coefficients: bigint[]): bigint {
     assert(payouts.length === MAX_BETS);
-    assert(coefficients.length === MAX_BETS);
-    let h = 0n;
-    for (let i = 0; i < MAX_BETS; i++) {
-      h += (BigInt(payouts[i]!) + 1n) * coefficients[i]!;
-    }
-    return h;
+    return showdownTwoCoeffHash(
+      packRouletteMultipliers(payouts.map((payout) => BigInt(payout))),
+      coefficients,
+    );
   }
 }

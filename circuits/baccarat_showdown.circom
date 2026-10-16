@@ -11,21 +11,23 @@ include "./elgamal.circom";
 include "./partials.circom";
 include "./deck.circom";
 include "./showdown.circom";
+include "./showdown_seal.circom";
 include "./baccarat_hand_eval.circom";
 
-template Showdown(nPlayers, shoeSize) {
+template Showdown(nPlayers) {
   var nOthers = nPlayers - 1;
   var nTotalCards = 6;
 
   // Public input
   signal input hash;
 
-  // Hashed private inputs
+  // Hashed Private inputs
   signal input publicKeys[nPlayers][2];
   signal input playerIndex;
   signal input ciphertextCards[nTotalCards][4];
   signal input ciphertextPartials[nOthers][nTotalCards][4];
-  
+  signal input sealCommitment;
+
   // Non-hashed private inputs
   signal input privateKey;
   signal input publicKey[2];
@@ -41,15 +43,17 @@ template Showdown(nPlayers, shoeSize) {
   component verifyDecryptedCards;
   component handEval;
 
-  verifyKey = VerifyKey();
+  verifyKey = parallel VerifyKey();
   verifyKey.privateKey <== privateKey;
   verifyKey.publicKey <== publicKey;
 
-  hashMain = HashMain(nPlayers, nTotalCards);
+  hashMain = parallel HashMain(nPlayers, nTotalCards);
   hashMain.publicKeys <== publicKeys;
   hashMain.playerIndex <== playerIndex;
   hashMain.ciphertextCards <== ciphertextCards;
   hashMain.ciphertextPartials <== ciphertextPartials;
+  hashMain.sealCommitment <== sealCommitment;
+
   hash === hashMain.out;
 
   decryptPartials = parallel DecryptPartials(nPlayers, nTotalCards);
@@ -60,47 +64,49 @@ template Showdown(nPlayers, shoeSize) {
   createOwnPartials.ciphertextCards <== ciphertextCards;
   createOwnPartials.privateKey <== privateKey;
 
+  handEval = parallel EvaluateHands();
+  handEval.cards <== plaintextCards;
+
   aggregatePartials = AggregatePartials(nPlayers, nTotalCards);
   aggregatePartials.ownPartials <== createOwnPartials.ownPartials;
   aggregatePartials.otherPartials <== decryptPartials.partials;
   aggregatePartials.ciphertextCards <== ciphertextCards;
 
-  verifyDecryptedCards = VerifyDecryptedCards(nTotalCards, shoeSize, 52);
+  verifyDecryptedCards = parallel VerifyDecryptedCards(nTotalCards, 52);
   verifyDecryptedCards.plaintextCards <== plaintextCards;
   verifyDecryptedCards.decryptedCards <== aggregatePartials.decryptedCards;
-
-  handEval = EvaluateHands(shoeSize);
-  handEval.cards <== plaintextCards;
 
   out <== handEval.winner;
 }
 
-template ShowdownHashOut(nPlayers, shoeSize) {
+template ShowdownHashOut(nPlayers) {
   var nOthers = nPlayers - 1;
   var nTotalCards = 6;
 
-  // Public input
+  // Poseidon of the hashed inputs, including the seal commitment.
   signal input hash;
 
-  // Hashed private inputs
+  // Hashed Private inputs
   signal input publicKeys[nPlayers][2];
   signal input playerIndex;
   signal input ciphertextCards[nTotalCards][4];
   signal input ciphertextPartials[nOthers][nTotalCards][4];
+  signal input sealCommitment;
 
   // Non-hashed private inputs
   signal input privateKey;
   signal input publicKey[2];
   signal input plaintextCards[nTotalCards];
-  signal input coefficients[1];
+  signal input coefficients[2];
 
   signal output out;
 
   component showdown;
   component hashOut;
 
-  showdown = Showdown(nPlayers, shoeSize);
+  showdown = Showdown(nPlayers);
   showdown.hash <== hash;
+  showdown.sealCommitment <== sealCommitment;
   showdown.publicKeys <== publicKeys;
   showdown.playerIndex <== playerIndex;
   showdown.ciphertextCards <== ciphertextCards;
@@ -109,8 +115,9 @@ template ShowdownHashOut(nPlayers, shoeSize) {
   showdown.privateKey <== privateKey;
   showdown.plaintextCards <== plaintextCards;
 
-  hashOut = ShowdownPolynomialHash(1);
-  hashOut.results <== [showdown.out];
+  hashOut = SealedShowdownHash(2);
+  hashOut.sealCommitment <== sealCommitment;
+  hashOut.results <== [showdown.out, 0];
   hashOut.coefficients <== coefficients;
 
   out <== hashOut.out;

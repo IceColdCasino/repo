@@ -3,7 +3,6 @@ import {
   MAX_SHARE_CARDS,
   CHUNK_SHARE_CARDS,
   N_SHARE_CHUNKS,
-  SHOE_SIZE,
   MAX_HANDS,
   MAX_CARDS_PER_HAND,
   MAX_DEALER_CARDS,
@@ -22,10 +21,13 @@ import {
 } from './blackjack';
 import { type PlayerKey, type PublicKey, type Ciphertext } from './zk-casino';
 import { padPublicKeysForShuffle } from './shuffle-common';
+import { readShuffleProof } from './shuffle-signals';
 import { Circuit, type DeepArray, type NumberLike } from './circuit';
 import type { Groth16Proof } from 'snarkjs';
 import assert from 'assert';
 import { GameKind } from './game-config';
+import { requireHostShowdownCoefficients, sealCommitment, sealedShowdownWitness } from './host-showdown-coefficients';
+import { showdownTwoCoeffHash } from './showdown-sealed-coeffs';
 import { tryOpenGameSession, shuffleVariant } from './player-zig-session';
 import type { PlayerSession } from './player-native-bridge';
 
@@ -91,8 +93,6 @@ export interface ActionOutput {
   actionHash: bigint;
   publicKey: PublicKey;
   isDealer: boolean;
-  /** Circuit output: Ace upcard when isDealer, else false. */
-  dealerUpIsAce: boolean;
 }
 
 export interface ShowdownProofInput {
@@ -145,7 +145,11 @@ export class Player {
     deck: Ciphertext[];
   } | undefined;
 
-  #shareChunkParams = new Map<string, { hash: bigint; randomness: bigint[][]; chunkIndex: number }>();
+  #shareChunkParams = new Map<string, {
+    hash: bigint;
+    randomness: bigint[][];
+    chunkIndex: number;
+  }>();
 
   #showdownParams: {
     hash: bigint;
@@ -157,29 +161,25 @@ export class Player {
     handIndex: number;
     outcome: HandOutcome;
     outcomesHash: bigint;
-    coefficient: bigint;
+    coefficients: bigint[];
   } | undefined;
   #sealedCoefficients: bigint[] | undefined;
   #session: PlayerSession | undefined;
   #padding: Ciphertext | undefined;
+  #house: boolean;
 
-  constructor(circuits: BlackjackCircuits) {
+  constructor(circuits: BlackjackCircuits, house = false) {
     this.#circuits = circuits;
+    this.#house = house;
   }
 
   private usesZig(): boolean {
     return this.#session !== undefined;
   }
 
-  /** Host-sealed coefficients. Showdown uses one; action uses two. Players never generate these. */
+  /** Host-sealed showdown coefficients (all 14 seal slots). The polynomial uses the first two. */
   setSealedCoefficients(coeffs: bigint[]): void {
-    if (coeffs.length !== 1 && coeffs.length !== 2) {
-      throw new Error(`Expected 1 or 2 sealed coefficients, got ${coeffs.length}`);
-    }
-    if (coeffs[0] === 0n) {
-      throw new Error('Sealed coefficient must be non-zero');
-    }
-    this.#sealedCoefficients = [...coeffs];
+    this.#sealedCoefficients = requireHostShowdownCoefficients(coeffs);
     this.#showdownParams = undefined;
   }
 
@@ -187,6 +187,7 @@ export class Player {
     this.#session = await tryOpenGameSession({
       kind: GameKind.Blackjack,
       variant: shuffleVariant(this.#circuits.shuffle.circuitName),
+      house: this.#house,
     });
     await this.#blackjack.init();
     if (this.#session) return;
@@ -248,8 +249,8 @@ export class Player {
   private prepareShuffle(deck: Ciphertext[], publicKeys: PublicKey[]) {
     const hash = this.#blackjack.shuffleHash(deck, publicKeys);
     if (!this.#shuffleParams || this.#shuffleParams.hash !== hash) {
-      const permutationMatrix = this.#blackjack.generateShufflePermutation(SHOE_SIZE);
-      const randomness = this.#blackjack.generateShuffleRandomness(SHOE_SIZE);
+      const permutationMatrix = this.#blackjack.generateShufflePermutation(deck.length);
+      const randomness = this.#blackjack.generateShuffleRandomness(deck.length);
       this.#shuffleParams = { hash, permutationMatrix, randomness, deck };
     }
     return this.#shuffleParams;
@@ -280,7 +281,7 @@ export class Player {
     }
     const params = this.prepareShuffle(deck, publicKeys);
     const shuffleKeys = padPublicKeysForShuffle(publicKeys);
-    const { ciphertexts, permutationHash } = this.#blackjack.shuffle(
+    const { ciphertexts } = this.#blackjack.shuffle(
       deck,
       shuffleKeys,
       params.permutationMatrix,
@@ -296,7 +297,12 @@ export class Player {
     });
 
     this.#shuffleParams = undefined;
-    return { proof, publicSignals, deck: ciphertexts, permutationHash };
+    return {
+      proof,
+      publicSignals,
+      deck: ciphertexts,
+      permutationHash: readShuffleProof(publicSignals).permutationHash,
+    };
   }
 
   prepareShareChunkParams(
@@ -536,6 +542,7 @@ export class Player {
       const selectedCiphertextPartials = ciphertextPartials.map(partials =>
         sourceIndices.map(index => partials[index]!),
       );
+      const coefficients = requireHostShowdownCoefficients(this.#sealedCoefficients);
       const selectedHashInput = {
         publicKeys,
         playerIndex: BigInt(playerIndex),
@@ -543,13 +550,10 @@ export class Player {
         ciphertextPartials: selectedCiphertextPartials,
         playerCardCount,
         dealerCardCount,
+        sealCommitment: sealCommitment(coefficients),
       };
       const selectedHash = this.#blackjack.showdownHash(selectedHashInput);
-      if (!this.#sealedCoefficients?.[0]) {
-        throw new Error('showdown coefficients must come from the host');
-      }
-      const coefficient = this.#sealedCoefficients[0];
-      const outcomesHash = this.#blackjack.computePlayerShowdownOutputHash(outcome, coefficient);
+      const outcomesHash = this.#blackjack.computePlayerShowdownOutputHash(outcome, coefficients);
 
       this.#showdownParams = {
         hash: selectedHash,
@@ -561,7 +565,7 @@ export class Player {
         handIndex,
         outcome,
         outcomesHash,
-        coefficient,
+        coefficients,
       };
     }
     return this.#showdownParams;
@@ -590,18 +594,21 @@ export class Player {
     plaintextCards: bigint[];
     playerCardCount: number;
     dealerCardCount: number;
-    coefficient: bigint;
+    coefficients: bigint[];
   }) {
     return {
-      hash: params.hash,
       ...(params.hashInput as object),
+      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCards: params.plaintextCards,
       playerCardCount: params.playerCardCount,
       dealerCardCount: params.dealerCardCount,
-      coefficients: [params.coefficient.toString()],
     };
+  }
+
+  upcardActionHash(upcard: Ciphertext, partials: Ciphertext[]) {
+    return this.#blackjack.upcardHash(upcard, partials);
   }
 
   decryptShareCards(ciphertextCards: Ciphertext[], ciphertextPartials: Ciphertext[][]) {
@@ -614,6 +621,7 @@ export class Player {
     ciphertextCards: Ciphertext[],
     ciphertextPartials: Ciphertext[][],
     sourceIndices: number[],
+    upcardIndex: number,
     opts: boolean | ActionProveOptions = {},
   ): ActionProofInput {
     // Back-compat: actionProve(..., canSplit: boolean)
@@ -643,29 +651,39 @@ export class Player {
     const selectedCiphertextPartials = ciphertextPartials.map(partials =>
       paddedSourceIndices.map(index => partials[index]!),
     );
+    const coefficients = requireHostShowdownCoefficients(this.#sealedCoefficients);
+    const commitment = sealCommitment(coefficients);
+    const upcardCiphertext = availableCiphertextCards[upcardIndex]!;
+    const upcardPartials = ciphertextPartials.map((partials) => partials[upcardIndex]!);
+    const upcardPlaintext = allPlaintextCards[upcardIndex]!;
+    const insuranceEligible = rankToHardValue(cardToRank(Number(upcardPlaintext))).isAce;
+    if (isDealer && upcardPlaintext !== plaintextCards[0]) {
+      throw new Error('dealer action upcard must be the first dealer card');
+    }
     const hash = this.#blackjack.actionHash(
       publicKeys,
       selectedCiphertextCards,
       selectedCiphertextPartials,
       sourceIndices.length,
-      { canSplit, hitSoft17, isDealer },
+      {
+        canSplit,
+        hitSoft17,
+        isDealer,
+        upcard: upcardCiphertext,
+        upcardPartials,
+        insuranceEligible,
+        sealCommitment: commitment,
+      },
     );
     const status = isDealer
       ? this.#blackjack.evaluateDealerActionStatus(faceCards, sourceIndices.length, hitSoft17)
       : this.#blackjack.evaluateActionStatus(faceCards, sourceIndices.length, canSplit);
-    const randomCoeffs = this.#blackjack.generateShowdownCoefficients();
-    const statusCoeff = randomCoeffs[0]!;
-    // Ace term: random on dealer path (binds Ace into poly hash); 0 on player path.
-    const aceCoeff = isDealer ? randomCoeffs[1]! : 0n;
-    const dealerUpIsAce = isDealer
-      && rankToHardValue(cardToRank(faceCards[0]!)).isAce;
-    const aceFlag = dealerUpIsAce ? 1n : 0n;
-    const actionHash =
-      (BigInt(status) + 1n) * statusCoeff + (aceFlag + 1n) * aceCoeff;
+    const actionHash = showdownTwoCoeffHash(BigInt(status), coefficients);
 
     return {
       input: {
         hash,
+        sealCommitment: commitment.toString(),
         publicKeys,
         publicKey: this.publicKey,
         ciphertextCards: selectedCiphertextCards,
@@ -676,7 +694,11 @@ export class Player {
         canSplit: canSplit ? 1 : 0,
         hitSoft17: hitSoft17 ? 1 : 0,
         isDealer: isDealer ? 1 : 0,
-        coefficients: [statusCoeff.toString(), aceCoeff.toString()],
+        upcardCiphertext,
+        upcardPartials,
+        insuranceEligible: insuranceEligible ? 1 : 0,
+        upcardPlaintext,
+        coefficients: coefficients.slice(0, 2).map((c) => c.toString()),
       },
       status,
       actionHash,
@@ -690,21 +712,20 @@ export class Player {
     ciphertextCards: Ciphertext[],
     ciphertextPartials: Ciphertext[][],
     sourceIndices: number[],
+    upcardIndex: number,
     opts: boolean | ActionProveOptions = {},
   ): Promise<ActionOutput> {
     if (this.#session) {
       const options: ActionProveOptions =
         typeof opts === 'boolean' ? { canSplit: opts, isDealer: false } : opts;
       const isDealer = options.isDealer ?? false;
-      const coefficients = this.#sealedCoefficients;
-      if (!coefficients || coefficients.length !== 2) {
-        throw new Error('action coefficients must come from the host');
-      }
+      const coefficients = requireHostShowdownCoefficients(this.#sealedCoefficients);
       const out = await this.#session.action({
         publicKeys,
         cards: ciphertextCards,
         partials: ciphertextPartials,
         sourceIndices,
+        upcardIndex,
         cardCount: sourceIndices.length,
         canSplit: isDealer ? false : (options.canSplit ?? false),
         hitSoft17: isDealer ? (options.hitSoft17 ?? false) : false,
@@ -719,7 +740,6 @@ export class Player {
         actionHash: BigInt(out.publicSignals[0]!),
         publicKey: out.publicKey,
         isDealer,
-        dealerUpIsAce: BigInt(out.publicSignals[1]!) === 1n,
       };
     }
     const prepared = this.createActionProofInput(
@@ -727,13 +747,14 @@ export class Player {
       ciphertextCards,
       ciphertextPartials,
       sourceIndices,
+      upcardIndex,
       opts,
     );
     const { proof, publicSignals } = await this.#circuits.action.prove(prepared.input);
-    // Public signals: [statusHash, dealerUpIsAce, inputHash]
-    if (publicSignals.length < 3) {
+    // Public signals: [statusHash, inputHash]
+    if (publicSignals.length < 2) {
       throw new Error(
-        `blackjack action expects 3 public signals, got ${publicSignals.length}`,
+        `blackjack action expects 2 public signals, got ${publicSignals.length}`,
       );
     }
     return {
@@ -743,7 +764,6 @@ export class Player {
       actionHash: prepared.actionHash,
       publicKey: prepared.publicKey,
       isDealer: prepared.isDealer,
-      dealerUpIsAce: BigInt(publicSignals[1]!) === 1n,
     };
   }
 
@@ -796,7 +816,6 @@ export class Player {
         plaintextCards: bigint[];
         playerCardCount: number;
         dealerCardCount: number;
-        coefficients: string[];
       };
       const out = await this.#session.showdown({
         publicKeys,
@@ -805,7 +824,7 @@ export class Player {
         plaintextCards: input.plaintextCards,
         playerCardCount: input.playerCardCount,
         dealerCardCount: input.dealerCardCount,
-        coefficients: input.coefficients.map(BigInt),
+        coefficients: requireHostShowdownCoefficients(this.#sealedCoefficients),
         privateKey: this.#key?.privateKey,
       });
       this.clearShowdownParams();

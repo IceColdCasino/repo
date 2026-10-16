@@ -11,6 +11,7 @@ include "./elgamal.circom";
 include "./partials.circom";
 include "./deck.circom";
 include "./showdown.circom";
+include "./showdown_seal.circom";
 include "./blackjack_constants.circom";
 include "./blackjack_hand_eval.circom";
 
@@ -25,7 +26,7 @@ template VerifyShoeDecryptedCards(nTotalCards) {
   component isEqual[nTotalCards][2];
   component ltUsed[nTotalCards];
 
-  deck = InstantiateDeck(nTotalCards, shoeSize(), 52);
+  deck = InstantiateDeck(nTotalCards, 52);
   deck.cards <== plaintextCards;
 
   for (var c = 0; c < nTotalCards; c++) {
@@ -56,6 +57,7 @@ template BlackjackShowdownHashMain(nPlayers, nTotalCards) {
   signal input ciphertextPartials[nOthers][nTotalCards][4];
   signal input playerCardCount;
   signal input dealerCardCount;
+  signal input sealCommitment;
 
   signal output out;
 
@@ -64,10 +66,10 @@ template BlackjackShowdownHashMain(nPlayers, nTotalCards) {
   component h2;
   component finalHash;
 
-  h1 = HashPublicKeys(nPlayers);
+  h1 = parallel HashPublicKeys(nPlayers);
   h1.publicKeys <== publicKeys;
 
-  h2 = Poseidon(nPlayers);
+  h2 = parallel Poseidon(nPlayers);
 
   for (var p = 0; p < nPlayers; p++) {
     _h2[p] = parallel HashCiphertexts(nTotalCards);
@@ -76,16 +78,19 @@ template BlackjackShowdownHashMain(nPlayers, nTotalCards) {
     } else {
       _h2[p].ciphertext <== ciphertextPartials[p - 1];
     }
+  }
+  for (var p = 0; p < nPlayers; p++) {
     h2.inputs[p] <== _h2[p].out;
   }
 
-  finalHash = Poseidon(5);
+  finalHash = Poseidon(6);
   finalHash.inputs <== [
     playerCardCount,
     dealerCardCount,
     h1.out,
     playerIndex,
-    h2.out
+    h2.out,
+    sealCommitment
   ];
 
   out <== finalHash.out;
@@ -100,15 +105,16 @@ template Showdown(nPlayers) {
   // Public input
   signal input hash;
 
-  // Hashed private inputs
+  // Hashed Private inputs
   signal input publicKeys[nPlayers][2];
   signal input playerIndex;
   signal input ciphertextCards[nTotalCards][4];
   signal input ciphertextPartials[nOthers][nTotalCards][4];
   signal input playerCardCount;
   signal input dealerCardCount;
+  signal input sealCommitment;
 
-  // Non-hashed private inputs
+  // Non-hashed Private inputs
   signal input privateKey;
   signal input publicKey[2];
   signal input plaintextCards[nTotalCards];
@@ -124,22 +130,23 @@ template Showdown(nPlayers) {
   component verifyDecryptedCards;
   component handEval;
 
-  publicKeyCheck = PublicKeyCheck(nPlayers);
+  publicKeyCheck = parallel PublicKeyCheck(nPlayers);
   publicKeyCheck.publicKeys <== publicKeys;
   publicKeyCheck.playerIndex <== playerIndex;
   publicKeyCheck.publicKey <== publicKey;
 
-  verifyKey = VerifyKey();
+  verifyKey = parallel VerifyKey();
   verifyKey.privateKey <== privateKey;
   verifyKey.publicKey <== publicKey;
 
-  hashMain = BlackjackShowdownHashMain(nPlayers, nTotalCards);
+  hashMain = parallel BlackjackShowdownHashMain(nPlayers, nTotalCards);
   hashMain.publicKeys <== publicKeys;
   hashMain.playerIndex <== playerIndex;
   hashMain.ciphertextCards <== ciphertextCards;
   hashMain.ciphertextPartials <== ciphertextPartials;
   hashMain.playerCardCount <== playerCardCount;
   hashMain.dealerCardCount <== dealerCardCount;
+  hashMain.sealCommitment <== sealCommitment;
   hash === hashMain.out;
 
   decryptPartials = parallel DecryptPartials(nPlayers, nTotalCards);
@@ -150,20 +157,20 @@ template Showdown(nPlayers) {
   createOwnPartials.ciphertextCards <== ciphertextCards;
   createOwnPartials.privateKey <== privateKey;
 
+  handEval = parallel EvaluateHand();
+  handEval.cards <== plaintextCards;
+  handEval.playerCardCount <== playerCardCount;
+  handEval.dealerCardCount <== dealerCardCount;
+
   aggregatePartials = AggregatePartials(nPlayers, nTotalCards);
   aggregatePartials.ownPartials <== createOwnPartials.ownPartials;
   aggregatePartials.otherPartials <== decryptPartials.partials;
   aggregatePartials.ciphertextCards <== ciphertextCards;
 
-  verifyDecryptedCards = VerifyShoeDecryptedCards(nTotalCards);
+  verifyDecryptedCards = parallel VerifyShoeDecryptedCards(nTotalCards);
   verifyDecryptedCards.plaintextCards <== plaintextCards;
   verifyDecryptedCards.decryptedCards <== aggregatePartials.decryptedCards;
   verifyDecryptedCards.nUsedCards <== playerCardCount + dealerCardCount;
-
-  handEval = EvaluateHand();
-  handEval.cards <== plaintextCards;
-  handEval.playerCardCount <== playerCardCount;
-  handEval.dealerCardCount <== dealerCardCount;
 
   out <== handEval.out;
 }
@@ -171,22 +178,23 @@ template Showdown(nPlayers) {
 template ShowdownHashOut(nPlayers) {
   var nTotalCards = maxOneHandShowdownCards();
 
-  // Public input
+  // Poseidon of the hashed inputs, including the seal commitment.
   signal input hash;
 
-  // Hashed private inputs
+  // Hashed Private inputs
   signal input publicKeys[nPlayers][2];
   signal input playerIndex;
   signal input ciphertextCards[nTotalCards][4];
   signal input ciphertextPartials[nPlayers - 1][nTotalCards][4];
   signal input playerCardCount;
   signal input dealerCardCount;
+  signal input sealCommitment;
 
-  // Non-hashed private inputs
+  // Non-hashed Private inputs
   signal input privateKey;
   signal input publicKey[2];
   signal input plaintextCards[nTotalCards];
-  signal input coefficients[1];
+  signal input coefficients[2];
 
   signal output out;
 
@@ -195,6 +203,7 @@ template ShowdownHashOut(nPlayers) {
 
   showdown = Showdown(nPlayers);
   showdown.hash <== hash;
+  showdown.sealCommitment <== sealCommitment;
   showdown.publicKeys <== publicKeys;
   showdown.playerIndex <== playerIndex;
   showdown.publicKey <== publicKey;
@@ -205,8 +214,9 @@ template ShowdownHashOut(nPlayers) {
   showdown.playerCardCount <== playerCardCount;
   showdown.dealerCardCount <== dealerCardCount;
 
-  hashOut = ShowdownPolynomialHash(1);
-  hashOut.results <== [showdown.out];
+  hashOut = SealedShowdownHash(2);
+  hashOut.sealCommitment <== sealCommitment;
+  hashOut.results <== [showdown.out, 0];
   hashOut.coefficients <== coefficients;
 
   out <== hashOut.out;

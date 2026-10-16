@@ -1,0 +1,2 @@
+[target.sbf-solana-solana]
+rustflags = ["--cfg", "getrandom_backend=\"custom\""]

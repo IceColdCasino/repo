@@ -19,4 +19,3 @@ function maxHands() { return 4; }           // max 3 splits → 4 hands (layout 
 function maxCardsPerHand() { return 11; }    // per-hand cap
 function maxDealerCards() { return 13; }     // configurable S17 (12) / H17 (13)
 function maxOneHandShowdownCards() { return maxCardsPerHand() + maxDealerCards(); } // 24
-function shoeSize() { return 8; }

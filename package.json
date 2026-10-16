@@ -4,6 +4,19 @@
   "type": "module",
   "scripts": {
     "test:games": "bun test test/complete_*_game_with_proofs.test.ts",
+    "test:e2e:poker": "bun test test/e2e/full-game-zk-arcis-poker-2player.test.ts",
+    "test:e2e:blackjack": "bun test test/e2e/full-game-zk-arcis-blackjack-2player.test.ts",
+    "test:e2e:baccarat": "bun test test/e2e/full-game-zk-arcis-baccarat-2player.test.ts",
+    "test:e2e:war": "bun test test/e2e/full-game-zk-arcis-war-2player.test.ts",
+    "test:e2e:roulette": "bun test test/e2e/full-game-zk-arcis-roulette-2player.test.ts",
+    "test:e2e:craps": "bun test test/e2e/full-game-zk-arcis-craps-2player.test.ts",
+    "test:e2e:keno": "bun test test/e2e/full-game-zk-arcis-keno-2player.test.ts",
+    "test:e2e:slots": "bun test test/e2e/full-game-zk-arcis-slots-2player.test.ts",
+    "test:e2e:bingo": "bun test test/e2e/full-game-zk-arcis-bingo-2player.test.ts",
+    "test:e2e:devnet": "set -a; [ -f .env.devnet ] && . ./.env.devnet; set +a; E2E_CLUSTER=devnet bun test --max-concurrency=1 --timeout=1800000 test/e2e/full-game-zk-arcis-*-2player.test.ts",
+    "test:e2e:devnet:keno": "set -a; [ -f .env.devnet ] && . ./.env.devnet; set +a; E2E_CLUSTER=devnet bun test --timeout=1800000 test/e2e/full-game-zk-arcis-keno-2player.test.ts",
+    "test:house": "bun test --max-concurrency=1 --timeout=120000 test/house.test.ts",
+    "test:e2e:house": "bun test --max-concurrency=1 --timeout=7200000 test/e2e/house-image.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
   },
   "devDependencies": {
@@ -11,9 +24,13 @@
     "@types/circomlibjs": "^0.1.6",
     "@types/node": "^26.6.2",
     "@types/snarkjs": "^0.7.9",
+    "circomlib": "^2.0.5",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "circomlib": "^2.0.5"
+    "@arcium-hq/client": "0.14.1",
+    "@coral-xyz/anchor": "^0.32.1",
+    "@lightprotocol/stateless.js": "^0.23.3",
+    "@solana/spl-token": "^0.4.14"
   }
 }

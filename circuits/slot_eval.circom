@@ -68,6 +68,29 @@ template ReelWindow(nStops) {
   below <== accBelow[nStops];
 }
 
+// Center stop only. The 3-reel game pays the middle line, so the neighbors
+// computed by ReelWindow are not part of this circuit.
+template ReelCenter(nStops) {
+  signal input centerIndex;
+  signal input strip[nStops];
+
+  signal output center;
+
+  component eq[nStops];
+  component indexLt = ConstrainLt(5, nStops);
+  signal acc[nStops + 1];
+
+  indexLt.in <== centerIndex;
+  acc[0] <== 0;
+  for (var i = 0; i < nStops; i++) {
+    eq[i] = IsEqual();
+    eq[i].in[0] <== centerIndex;
+    eq[i].in[1] <== i;
+    acc[i + 1] <== acc[i] + eq[i].out * strip[i];
+  }
+  center <== acc[nStops];
+}
+
 template IsSymbol(value) {
   signal input in;
   signal output out;
@@ -233,7 +256,7 @@ template EvaluateThreeReelStops() {
   signal symbols[3];
 
   for (var r = 0; r < 3; r++) {
-    window[r] = ReelWindow(nStops);
+    window[r] = ReelCenter(nStops);
     window[r].centerIndex <== centers[r];
     for (var i = 0; i < nStops; i++) {
       window[r].strip[i] <== strip[i];
@@ -457,14 +480,18 @@ template EvaluateFiveReelWindow() {
   signal linePay[10];
   signal acc[11];
 
-  acc[0] <== 0;
   for (var line = 0; line < 10; line++) {
-    lineEval[line] = EvaluatePaylineBothWays();
+    lineEval[line] = parallel EvaluatePaylineBothWays();
     for (var r = 0; r < 5; r++) {
       var row = lines[line][r];
       lineEval[line].symbols[r] <== expand.out[r][row];
     }
+  }
+  for (var line = 0; line < 10; line++) {
     linePay[line] <== lineEval[line].out;
+  }
+  acc[0] <== 0;
+  for (var line = 0; line < 10; line++) {
     acc[line + 1] <== acc[line] + linePay[line];
   }
 

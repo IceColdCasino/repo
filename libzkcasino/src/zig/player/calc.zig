@@ -4,7 +4,7 @@ const ops = @import("bridge_ops.zig");
 const zk = @import("../crypto/zk_crypto.zig");
 const hash = @import("../crypto/hash.zig");
 const poseidon = @import("../crypto/poseidon.zig");
-const poly = @import("../crypto/poly_hash.zig");
+const seal = @import("../crypto/seal.zig");
 const poker = @import("poker_math.zig");
 const war = @import("war_player.zig");
 const baccarat = @import("baccarat_player.zig");
@@ -77,8 +77,45 @@ pub fn run(alloc: std.mem.Allocator, crypto: *const Crypto, kind_u: u32, root: s
         try writeFr(w, try shareOutputHash(alloc, kind, root));
         return;
     }
+    if (std.mem.eql(u8, name, "shareStreetHashes")) {
+        try writeShareStreetHashes(alloc, kind, root, w);
+        return;
+    }
+    if (std.mem.eql(u8, name, "shareCardHashes")) {
+        try writeShareCardHashes(alloc, kind, root, w);
+        return;
+    }
+    if (std.mem.eql(u8, name, "shareBallHashes")) {
+        try writeShareBallHashes(alloc, kind, root, w);
+        return;
+    }
+    if (std.mem.eql(u8, name, "cardShareHash")) {
+        try writeFr(w, try cardShareHash(alloc, kind, root));
+        return;
+    }
+    if (std.mem.eql(u8, name, "ballShareHash")) {
+        try writeFr(w, try ballShareHash(alloc, kind, root));
+        return;
+    }
     if (std.mem.eql(u8, name, "showdownHash")) {
         try writeFr(w, try showdownHash(alloc, crypto, kind, root));
+        return;
+    }
+    if (std.mem.eql(u8, name, "sealCommitment")) {
+        var coeffs: [seal.SLOTS]Fr = undefined;
+        try ops.parseFrList(root.object.get("coefficients") orelse return error.MissingHostCoefficients, &coeffs);
+        try seal.validate(&coeffs);
+        try writeFr(w, seal.commitment(&coeffs));
+        return;
+    }
+    if (std.mem.eql(u8, name, "sealedShowdownHash")) {
+        const input_hash = try ops.parseFr(root.object.get("inputHash") orelse return error.MissingHash);
+        const commitment = try ops.parseFr(root.object.get("commitment") orelse return error.MissingCommitment);
+        try writeFr(w, seal.publicHash(input_hash, commitment));
+        return;
+    }
+    if (std.mem.eql(u8, name, "sealAccount")) {
+        try writeSealAccount(alloc, root, w);
         return;
     }
     if (std.mem.eql(u8, name, "betHash")) {
@@ -108,6 +145,46 @@ fn writeFr(w: *Writer, value: Fr) !void {
     try w.endObj();
 }
 
+/// Decode a hex `SealedShowdownCoefficients` account. `commitment` is the
+/// Poseidon of the revealed rows, and the showdown input hash uses that value.
+/// With `coefficients`, the decrypted slots must produce the same hash.
+fn writeSealAccount(alloc: std.mem.Allocator, root: std.json.Value, w: *Writer) !void {
+    const hex = ops.asDec(root.object.get("data") orelse return error.MissingSealAccount);
+    const data = try alloc.alloc(u8, hex.len / 2);
+    defer alloc.free(data);
+    const account = try seal.parseAccount(try std.fmt.hexToBytes(data, hex));
+    if (root.object.get("coefficients")) |raw| {
+        if (!account.written) return error.SealAccountNotWritten;
+        var coeffs: [seal.SLOTS]Fr = undefined;
+        try ops.parseFrList(raw, &coeffs);
+        try seal.validate(&coeffs);
+        if (!seal.commitment(&coeffs).eql(account.commitment)) return error.SealCoefficientsMismatch;
+    }
+
+    try w.beginObj();
+    try w.okTrue();
+    try w.key("written");
+    try w.raw(if (account.written) "true" else "false");
+    try w.key("gameId");
+    try w.hex32(&account.game_id);
+    try w.key("playerIndex");
+    try w.writeU64(account.player_index);
+    try w.key("nActive");
+    try w.writeU64(account.n_active);
+    try w.key("ciphertexts");
+    try w.hex32s(&account.ciphertexts);
+    try w.key("encryptionPubkey");
+    try w.hex32(&account.encryption_pubkey);
+    try w.key("nonce");
+    var nonce_buf: [40]u8 = undefined;
+    try w.quote(std.fmt.bufPrint(&nonce_buf, "{d}", .{account.nonce}) catch unreachable);
+    if (account.written) {
+        try w.key("commitment");
+        try w.fr(account.commitment);
+    }
+    try w.endObj();
+}
+
 fn writeInitialDeck(alloc: std.mem.Allocator, root: std.json.Value, w: *Writer) !void {
     const count = try ops.parseU64(root.object.get("count") orelse return error.MissingCount);
     const decks = if (root.object.get("decks")) |raw| try ops.parseU64(raw) else 1;
@@ -115,7 +192,10 @@ fn writeInitialDeck(alloc: std.mem.Allocator, root: std.json.Value, w: *Writer) 
     const n: usize = @intCast(count * decks);
     const deck = try alloc.alloc(Ciphertext, n);
     defer alloc.free(deck);
-    if (decks == 1) {
+    // A 52-card count with 6 or 8 decks is `0..51` repeated once per deck.
+    if (count == 52 and (decks == 6 or decks == 8)) {
+        zk.fillRepeatedRank(deck, @intCast(decks), 52);
+    } else if (decks == 1) {
         zk.fillIdentity(deck);
     } else {
         zk.fillRepeatedRank(deck, @intCast(decks), @intCast(count));
@@ -162,12 +242,13 @@ fn shareHash(alloc: std.mem.Allocator, crypto: *const Crypto, kind: Kind, root: 
     const others_n = try takeKeys(root);
     const deck = deck_n.ptr[0..deck_n.len];
     const others = others_n.buf[0..others_n.len];
+    if (kind == .poker) {
+        const mask = try ops.parseU64(root.object.get("cardMask") orelse return error.MissingCardMask);
+        if (others.len != poker.SHARE_OTHERS) return error.ShareOthersCount;
+        return poker.shareHash(crypto, deck, mask, pk, others);
+    }
     return switch (kind) {
-        .poker => blk: {
-            const mask = try ops.parseU64(root.object.get("cardMask") orelse return error.MissingCardMask);
-            if (others.len != poker.SHARE_OTHERS) return error.ShareOthersCount;
-            break :blk poker.shareHash(crypto, deck, mask, pk, others);
-        },
+        .poker => unreachable,
         .war => war.shareHash(crypto, deck, pk, others),
         .baccarat => baccarat.shareHash(crypto, deck, pk, others),
         .blackjack => blackjack.shareHash(crypto, deck, pk, others),
@@ -183,8 +264,14 @@ fn shareHash(alloc: std.mem.Allocator, crypto: *const Crypto, kind: Kind, root: 
             if (others.len < 1) return error.ShareOthersCount;
             break :blk slot.shareHash(crypto, deck, pk, others);
         },
-        .bingo => crypto.shareHash(deck, pk, others),
-        else => crypto.shareHash(deck, pk, others),
+        .craps => blk: {
+            var keys12: [12]PublicKey = undefined;
+            for (&keys12) |*k| k.* = PublicKey.identity();
+            keys12[0] = pk;
+            @memcpy(keys12[1 .. 1 + others.len], others);
+            break :blk hash.shareInputHashHouse(crypto.hashCiphertexts(deck), hash.hashPublicKeys12(keys12[0..12]));
+        },
+        .bingo => bingo.shareHash(crypto, deck, pk, others),
     };
 }
 
@@ -198,8 +285,8 @@ fn shareOutputHash(alloc: std.mem.Allocator, kind: Kind, root: std.json.Value) !
         .poker => poker.computeShareOutputHash(values, n_actual),
         .war => war.computeShareOutputHash(values, n_actual),
         .baccarat => baccarat.computeShareOutputHash(values, n_actual),
-        .blackjack => poly.hashRecipientMajor(values, 7, 16, 8, n_actual),
-        .roulette => poly.hashRecipientMajor(values, 11, 1, 12, n_actual),
+        .blackjack => blackjack.computeShareOutputHash(values, n_actual),
+        .roulette => hash.hashRecipientCiphertexts(values, 11, 1),
         .craps => craps.computeShareOutputHash(values, n_actual),
         .keno => keno.computeShareOutputHash(values, n_actual),
         .bingo => bingo.computeShareOutputHash(values, n_actual),
@@ -208,6 +295,133 @@ fn shareOutputHash(alloc: std.mem.Allocator, kind: Kind, root: std.json.Value) !
             break :blk slot.computeShareOutputHash(values, reels, n_actual);
         },
     };
+}
+
+fn writeShareStreetHashes(alloc: std.mem.Allocator, kind: Kind, root: std.json.Value, w: *Writer) !void {
+    if (kind == .baccarat) {
+        var grid = try parseGrid(alloc, root.object.get("ciphertexts") orelse return error.MissingCiphertexts);
+        defer grid.deinit(alloc);
+        const values = try flattenGrid(alloc, grid.rows);
+        defer alloc.free(values);
+        if (values.len != baccarat.SHARE_OTHERS * baccarat.TOTAL_CARDS * 4) return error.ShareOthersCount;
+        var streets: [baccarat.STREET_COUNT]Fr = undefined;
+        baccarat.shareStreetHashes(values, &streets);
+        try w.beginObj();
+        try w.okTrue();
+        try w.key("streets");
+        try w.raw("[");
+        for (streets, 0..) |street, i| {
+            if (i != 0) try w.raw(",");
+            try w.fr(street);
+        }
+        try w.raw("]");
+        try w.key("value");
+        try w.fr(baccarat.finalShareHash(&streets));
+        try w.endObj();
+        return;
+    }
+    if (kind != .poker) return error.InvalidGameKind;
+    var grid = try parseGrid(alloc, root.object.get("ciphertexts") orelse return error.MissingCiphertexts);
+    defer grid.deinit(alloc);
+    const values = try flattenGrid(alloc, grid.rows);
+    defer alloc.free(values);
+    if (values.len != poker.SHARE_OTHERS * poker.TOTAL_CARDS * 4) return error.ShareOthersCount;
+    var streets: [poker.STREET_COUNT]Fr = undefined;
+    poker.shareStreetHashes(values, &streets);
+    try w.beginObj();
+    try w.okTrue();
+    try w.key("streets");
+    try w.raw("[");
+    for (streets, 0..) |street, i| {
+        if (i != 0) try w.raw(",");
+        try w.fr(street);
+    }
+    try w.raw("]");
+    try w.key("value");
+    try w.fr(poker.finalShareHash(&streets));
+    try w.endObj();
+}
+
+fn writeShareCardHashes(alloc: std.mem.Allocator, kind: Kind, root: std.json.Value, w: *Writer) !void {
+    if (kind != .blackjack) return error.InvalidGameKind;
+    var grid = try parseGrid(alloc, root.object.get("ciphertexts") orelse return error.MissingCiphertexts);
+    defer grid.deinit(alloc);
+    const values = try flattenGrid(alloc, grid.rows);
+    defer alloc.free(values);
+    if (values.len != blackjack.SHARE_OTHERS * blackjack.CHUNK_SHARE_CARDS * 4) return error.ShareOthersCount;
+    var cards: [blackjack.CHUNK_SHARE_CARDS]Fr = undefined;
+    blackjack.shareCardHashes(values, &cards);
+    try w.beginObj();
+    try w.okTrue();
+    try w.key("cards");
+    try w.raw("[");
+    for (cards, 0..) |card, i| {
+        if (i != 0) try w.raw(",");
+        try w.fr(card);
+    }
+    try w.raw("]");
+    try w.key("value");
+    try w.fr(blackjack.finalShareHash(&cards));
+    try w.endObj();
+}
+
+fn writeShareBallHashes(alloc: std.mem.Allocator, kind: Kind, root: std.json.Value, w: *Writer) !void {
+    if (kind != .bingo) return error.InvalidGameKind;
+    var grid = try parseGrid(alloc, root.object.get("ciphertexts") orelse return error.MissingCiphertexts);
+    defer grid.deinit(alloc);
+    const values = try flattenGrid(alloc, grid.rows);
+    defer alloc.free(values);
+    if (values.len != bingo.SHARE_OTHERS * bingo.CHUNK_BALLS * 4) return error.ShareOthersCount;
+    var balls: [bingo.CHUNK_BALLS]Fr = undefined;
+    bingo.shareBallHashes(values, &balls);
+    try w.beginObj();
+    try w.okTrue();
+    try w.key("balls");
+    try w.raw("[");
+    for (balls, 0..) |ball, i| {
+        if (i != 0) try w.raw(",");
+        try w.fr(ball);
+    }
+    try w.raw("]");
+    try w.key("value");
+    try w.fr(bingo.finalShareHash(&balls));
+    try w.endObj();
+}
+
+fn cardShareHash(alloc: std.mem.Allocator, kind: Kind, root: std.json.Value) !Fr {
+    if (kind != .blackjack) return error.InvalidGameKind;
+    const column_n = try ops.parseCtList(alloc, root.object.get("column") orelse return error.MissingCiphertexts);
+    defer alloc.free(column_n.ptr[0..column_n.len]);
+    const column = column_n.ptr[0..column_n.len];
+    if (column.len != blackjack.SHARE_OTHERS) return error.ShareOthersCount;
+    var values: [blackjack.SHARE_OTHERS * 4]Fr = undefined;
+    var n: usize = 0;
+    for (column) |ct| {
+        const limbs = ct.limbs();
+        inline for (0..4) |k| {
+            values[n] = limbs[k];
+            n += 1;
+        }
+    }
+    return blackjack.hashCardColumn(values[0..n]);
+}
+
+fn ballShareHash(alloc: std.mem.Allocator, kind: Kind, root: std.json.Value) !Fr {
+    if (kind != .bingo) return error.InvalidGameKind;
+    const column_n = try ops.parseCtList(alloc, root.object.get("column") orelse return error.MissingCiphertexts);
+    defer alloc.free(column_n.ptr[0..column_n.len]);
+    const column = column_n.ptr[0..column_n.len];
+    if (column.len != bingo.SHARE_OTHERS) return error.ShareOthersCount;
+    var values: [bingo.SHARE_OTHERS * 4]Fr = undefined;
+    var n: usize = 0;
+    for (column) |ct| {
+        const limbs = ct.limbs();
+        inline for (0..4) |k| {
+            values[n] = limbs[k];
+            n += 1;
+        }
+    }
+    return bingo.hashBallColumn(values[0..n]);
 }
 
 fn showdownHash(alloc: std.mem.Allocator, crypto: *const Crypto, kind: Kind, root: std.json.Value) !Fr {
@@ -220,18 +434,19 @@ fn showdownHash(alloc: std.mem.Allocator, crypto: *const Crypto, kind: Kind, roo
     defer grid.deinit(alloc);
     const cards = cards_n.ptr[0..cards_n.len];
     const partials = grid.rows;
+    const seal_commitment = try ops.parseFr(root.object.get("sealCommitment") orelse return error.MissingCommitment);
     return switch (kind) {
         .poker => blk: {
             var masks: [16]Fr = undefined;
             const n = try ops.parseFrListCount(root.object.get("potMasks") orelse return error.MissingPotMasks, &masks);
-            break :blk poker.showdownHash(crypto, masks[0..n], keys, player_index, cards, partials);
+            break :blk poker.showdownHash(crypto, masks[0..n], keys, player_index, cards, partials, seal_commitment);
         },
-        .war => war.showdownHash(crypto, keys, player_index, cards, partials),
-        .baccarat => baccarat.showdownHash(crypto, keys, player_index, cards, partials),
+        .war => war.showdownHash(crypto, keys, player_index, cards, partials, seal_commitment),
+        .baccarat => baccarat.showdownHash(crypto, keys, player_index, cards, partials, seal_commitment),
         .blackjack => blk: {
             const player_cards = try ops.parseU64(root.object.get("playerCardCount") orelse return error.MissingCardCount);
             const dealer_cards = try ops.parseU64(root.object.get("dealerCardCount") orelse return error.MissingCardCount);
-            break :blk blackjack.showdownHash(crypto, keys, player_index, cards, partials, player_cards, dealer_cards);
+            break :blk blackjack.showdownHash(crypto, keys, player_index, cards, partials, player_cards, dealer_cards, seal_commitment);
         },
         .roulette, .keno => blk: {
             const bets_n = try ops.parseCtList(alloc, root.object.get("bets") orelse return error.MissingBets);
@@ -239,9 +454,9 @@ fn showdownHash(alloc: std.mem.Allocator, crypto: *const Crypto, kind: Kind, roo
             const n_actual = try ops.parseU64(root.object.get("nActualBets") orelse return error.MissingNActual);
             const bets = bets_n.ptr[0..bets_n.len];
             break :blk if (kind == .roulette)
-                roulette.showdownHash(crypto, keys, player_index, cards, partials, bets, n_actual)
+                roulette.showdownHash(crypto, keys, player_index, cards, partials, bets, n_actual, seal_commitment)
             else
-                keno.showdownHash(crypto, keys, player_index, cards, partials, bets, n_actual);
+                keno.showdownHash(crypto, keys, player_index, cards, partials, bets, n_actual, seal_commitment);
         },
         .craps => blk: {
             const bets_n = try ops.parseCtList(alloc, root.object.get("bets") orelse return error.MissingBets);
@@ -249,18 +464,18 @@ fn showdownHash(alloc: std.mem.Allocator, crypto: *const Crypto, kind: Kind, roo
             const n_actual = try ops.parseU64(root.object.get("nActualBets") orelse return error.MissingNActual);
             const phase = try ops.parseU64(root.object.get("phase") orelse return error.MissingPhase);
             const point = try ops.parseU64(root.object.get("point") orelse return error.MissingPoint);
-            break :blk craps.showdownHash(crypto, keys, player_index, cards, partials, bets_n.ptr[0..bets_n.len], n_actual, phase, point);
+            break :blk craps.showdownHash(crypto, keys, player_index, cards, partials, bets_n.ptr[0..bets_n.len], n_actual, phase, point, seal_commitment);
         },
         .slots => blk: {
             const bet = try ops.parseCt(root.object.get("ciphertextBet") orelse return error.MissingBet);
-            break :blk slot.showdownHash(crypto, keys, player_index, cards, partials, bet);
+            break :blk slot.showdownHash(crypto, keys, player_index, cards, partials, bet, seal_commitment);
         },
         .bingo => blk: {
             const cells_n = try ops.parseCtList(alloc, root.object.get("ciphertextCardCells") orelse return error.MissingCells);
             defer alloc.free(cells_n.ptr[0..cells_n.len]);
             const n_called = try ops.parseU64(root.object.get("nCalled") orelse return error.MissingNCalled);
             const pattern = if (root.object.get("patternId")) |raw| try ops.parseU64(raw) else null;
-            break :blk bingo.showdownHash(crypto, keys, player_index, cards, partials, cells_n.ptr[0..cells_n.len], n_called, pattern);
+            break :blk bingo.showdownHash(crypto, keys, player_index, cards, partials, cells_n.ptr[0..cells_n.len], n_called, pattern, seal_commitment);
         },
     };
 }
@@ -310,6 +525,11 @@ fn actionHash(alloc: std.mem.Allocator, crypto: *const Crypto, root: std.json.Va
     const can_split = ops.parseBool(root.object.get("canSplit"), false);
     const hit_soft_17 = ops.parseBool(root.object.get("hitSoft17"), false);
     const is_dealer = ops.parseBool(root.object.get("isDealer"), false);
+    const insurance_eligible = ops.parseBool(root.object.get("insuranceEligible"), false);
+    const upcard = try ops.parseCt(root.object.get("upcard") orelse return error.MissingUpcard);
+    var up_partials: [16]Ciphertext = undefined;
+    const n_up = try ops.parseCtListInto(root.object.get("upcardPartials") orelse return error.MissingUpcard, &up_partials);
+    const seal_commitment = try ops.parseFr(root.object.get("sealCommitment") orelse return error.MissingCommitment);
     return blackjack.actionHash(
         crypto,
         keys_n.buf[0..keys_n.len],
@@ -319,6 +539,10 @@ fn actionHash(alloc: std.mem.Allocator, crypto: *const Crypto, root: std.json.Va
         can_split,
         hit_soft_17,
         is_dealer,
+        upcard,
+        up_partials[0..n_up],
+        insurance_eligible,
+        seal_commitment,
     );
 }
 

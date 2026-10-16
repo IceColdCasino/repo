@@ -40,6 +40,45 @@ function decCt(value: unknown): Ciphertext {
   return [dec(value[0]), dec(value[1]), dec(value[2]), dec(value[3])] as Ciphertext;
 }
 
+export function casinoShareCards(
+  kind: number,
+  fields: Record<string, unknown>,
+  variant = 0,
+): { finalHash: bigint; cards: bigint[] } {
+  const result = call(kind, variant, 'shareCardHashes', fields);
+  if (!Array.isArray(result.cards)) throw new Error('calc shareCardHashes returned no cards');
+  return {
+    finalHash: dec(result.value),
+    cards: result.cards.map(dec),
+  };
+}
+
+export function casinoShareBalls(
+  kind: number,
+  fields: Record<string, unknown>,
+  variant = 0,
+): { finalHash: bigint; balls: bigint[] } {
+  const result = call(kind, variant, 'shareBallHashes', fields);
+  if (!Array.isArray(result.balls)) throw new Error('calc shareBallHashes returned no balls');
+  return {
+    finalHash: dec(result.value),
+    balls: result.balls.map(dec),
+  };
+}
+
+export function casinoShareStreets(
+  kind: number,
+  fields: Record<string, unknown>,
+  variant = 0,
+): { finalHash: bigint; streets: bigint[] } {
+  const result = call(kind, variant, 'shareStreetHashes', fields);
+  if (!Array.isArray(result.streets)) throw new Error('calc shareStreetHashes returned no streets');
+  return {
+    finalHash: dec(result.value),
+    streets: result.streets.map(dec),
+  };
+}
+
 export function casinoFr(
   kind: number,
   fn: string,
@@ -47,6 +86,52 @@ export function casinoFr(
   variant = 0,
 ): bigint {
   return dec(call(kind, variant, fn, fields).value);
+}
+
+/** `SealedShowdownCoefficients` as libzkcasino decodes it. */
+export interface SealedShowdownAccount {
+  /** Raw account data, for re-checking decrypted coefficients against the rows. */
+  data: Uint8Array;
+  /** The Arcis callback has written the ciphertexts and all four rows. */
+  written: boolean;
+  gameId: Uint8Array;
+  playerIndex: number;
+  nActive: number;
+  coefficientsCiphertext: Uint8Array[];
+  encryptionPubkey: Uint8Array;
+  nonce: bigint;
+  /** Poseidon of the four rows, once written. Light binds the showdown proof to it. */
+  coefficientCommitment?: bigint;
+}
+
+function hexBytes(value: unknown): Uint8Array {
+  return Uint8Array.from(Buffer.from(value as string, 'hex'));
+}
+
+/**
+ * Decode a seal account in libzkcasino. With `coefficients`, libzkcasino also
+ * checks that the decrypted slots produce the account rows.
+ */
+export function casinoSealAccount(
+  data: Uint8Array,
+  coefficients?: readonly bigint[],
+): SealedShowdownAccount {
+  const result = call(0, 0, 'sealAccount', {
+    data: Buffer.from(data).toString('hex'),
+    ...(coefficients ? { coefficients } : {}),
+  });
+  if (!Array.isArray(result.ciphertexts)) throw new Error('calc sealAccount returned no ciphertexts');
+  return {
+    data,
+    written: result.written === true,
+    gameId: hexBytes(result.gameId),
+    playerIndex: Number(result.playerIndex),
+    nActive: Number(result.nActive),
+    coefficientsCiphertext: result.ciphertexts.map(hexBytes),
+    encryptionPubkey: hexBytes(result.encryptionPubkey),
+    nonce: dec(result.nonce),
+    ...(result.commitment !== undefined ? { coefficientCommitment: dec(result.commitment) } : {}),
+  };
 }
 
 export function casinoDeck(kind: number, count: number, decks = 1, variant = 0): Ciphertext[] {

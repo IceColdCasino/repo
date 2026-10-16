@@ -7,6 +7,10 @@ Two dice, six faces each, stored **die-major** in the shoe (die 0 at index
 0, die 1 at index 6). Circom opens two faces, evaluates come-out vs point,
 and settles a vector of encrypted table bets.
 
+The house seat rolls and does not bet. Wins are paid from the dealer pool.
+`start_hand` coverage for this kind is `bet_unit × seats`. See
+[on-chain](../on-chain.md#dealer-pool).
+
 ## Shoe
 
 | | |
@@ -14,7 +18,7 @@ and settles a vector of encrypted table bets.
 | Encoding | Face `0..5` per die → `BabyPbk(v+1)` |
 | Shuffle main | `shuffle_2_dice_6_main` (also `craps_shuffle.circom`) |
 | Opened at showdown | 2 (share indices `[0, 6]`) |
-| Poly-hash terms | 14 (12 bet codes + table action + `pointOut`) |
+| Showdown terms | 14 (12 bet codes + table action + `pointOut`) |
 
 House seat shuffles.
 
@@ -22,11 +26,14 @@ House seat shuffles.
 
 1. **Register / shuffle** — two independent 6-face strips.
 2. **Bet commit** — `craps_bet` / `craps_bet_main` encrypts table bets.
-3. **Share** — `craps_share_hashout_main` seals the two die `c0` partials.
-4. **Showdown** — decrypt dice and bets; `CrapsEval` + `craps_bet_eval`.
+3. **Share** — `craps_share_hashout_main` is `ShareHashOut(12, 2)`. The
+   public output is a Poseidon of one ciphertext-hash per other player.
+4. **Showdown** — decrypt dice and bets. The public field uses all 14
+   sealed coefficients: 12 bet codes, the table action, and `pointOut`.
 
-Phase and point are **hashed into the showdown input** (`nActualBets`,
-`phase`, `point`) so a come-out proof cannot be replayed on a point roll.
+Phase and point are hashed as `Poseidon(nBets, phase, point)`, and that
+field is an input of `hash`, so a come-out proof cannot be replayed on a
+point roll.
 
 ## Unique ZK
 
@@ -45,7 +52,9 @@ state inside Circom.
 
 | Public | Private |
 |--------|---------|
-| Input hash (includes phase/point), 14-limb output hash | `sk`, two faces, bet tickets, intermediate totals |
+| `hash`, the 14-term sum, Groth16 proof | `sk`, two faces, bet tickets, intermediate totals, 14 coefficients, seal commitment |
+
+`hash` is `Poseidon(keys, playerIndex, ciphertextHash, betHash, tableBind, sealCommitment)`. The showdown template checks that equality.
 
 ## Entrypoints
 

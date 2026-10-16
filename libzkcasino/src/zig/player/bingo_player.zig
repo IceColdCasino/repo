@@ -1,7 +1,7 @@
 const std = @import("std");
 const poseidon = @import("../crypto/poseidon.zig");
 const hash = @import("../crypto/hash.zig");
-const poly = @import("../crypto/poly_hash.zig");
+const elg = @import("../crypto/elgamal.zig");
 const base = @import("player_base.zig");
 const bingo_eval = @import("bingo_eval.zig");
 const table = @import("table_player.zig");
@@ -16,6 +16,38 @@ pub fn cardHash(pk: PublicKey, n_cells: u64) Fr {
     return poseidon.hash(&.{ pk.x, pk.y, Fr.fromU64(n_cells) });
 }
 
+pub fn shareHash(
+    crypto: *const Crypto,
+    cts: []const Ciphertext,
+    pk: PublicKey,
+    others: []const PublicKey,
+) Fr {
+    var keys: [12]PublicKey = undefined;
+    keys[0] = pk;
+    @memcpy(keys[1 .. 1 + others.len], others);
+    const pk_hash = hash.hashPublicKeysN(keys[0 .. 1 + others.len]);
+    return poseidon.hash(&.{ crypto.hashCiphertexts(cts), pk_hash });
+}
+
+pub fn share(
+    crypto: *const Crypto,
+    cts: []const Ciphertext,
+    recipients: []const PublicKey,
+    sk: Fr,
+    randomness: []const []const Fr,
+    out: [][]Ciphertext,
+) void {
+    _ = crypto;
+    var p: usize = 0;
+    while (p < recipients.len) : (p += 1) {
+        var c: usize = 0;
+        while (c < cts.len) : (c += 1) {
+            const partial = elg.createPartial(sk, cts[c]);
+            out[p][c] = elg.reencryptPartial(partial, recipients[p], randomness[p][c], false);
+        }
+    }
+}
+
 pub fn showdownHash(
     crypto: *const Crypto,
     public_keys: []const PublicKey,
@@ -25,6 +57,7 @@ pub fn showdownHash(
     card_cells: []const Ciphertext,
     n_called: u64,
     pattern_id: ?u64,
+    seal_commitment: Fr,
 ) Fr {
     const h1 = hash.hashPublicKeys12(public_keys);
     var h2_in: [13]Fr = undefined;
@@ -34,9 +67,9 @@ pub fn showdownHash(
     const h2 = poseidon.hash(h2_in[0 .. 1 + partials.len]);
     const card_h = crypto.hashCiphertexts(card_cells);
     if (pattern_id) |pid| {
-        return poseidon.hash(&.{ h1, player_index, h2, card_h, Fr.fromU64(pid), Fr.fromU64(n_called) });
+        return poseidon.hash(&.{ h1, player_index, h2, card_h, Fr.fromU64(pid), Fr.fromU64(n_called), seal_commitment });
     }
-    return poseidon.hash(&.{ h1, player_index, h2, card_h, Fr.fromU64(n_called) });
+    return poseidon.hash(&.{ h1, player_index, h2, card_h, Fr.fromU64(n_called), seal_commitment });
 }
 
 pub fn commitCard(crypto: *const Crypto, cells: []const u8, pk: PublicKey, randomness: []const Fr, out: []Ciphertext) void {
@@ -49,8 +82,43 @@ pub const evaluate75 = bingo_eval.evaluate75;
 pub const evaluate90 = bingo_eval.evaluate90;
 pub const sample75 = bingo_eval.sample75;
 
+pub const CHUNK_BALLS: usize = 5;
+pub const SHARE_OTHERS: usize = 11;
+
+/// Poseidon of one ball's recipient-major partials (11 seats × 4 limbs).
+pub fn ballHashFromFlat(values: []const Fr, ball: usize) Fr {
+    std.debug.assert(values.len == SHARE_OTHERS * CHUNK_BALLS * 4);
+    std.debug.assert(ball < CHUNK_BALLS);
+    var buf: [SHARE_OTHERS * 4]Fr = undefined;
+    var n: usize = 0;
+    var recipient: usize = 0;
+    while (recipient < SHARE_OTHERS) : (recipient += 1) {
+        const at = recipient * CHUNK_BALLS * 4 + ball * 4;
+        buf[n..][0..4].* = values[at..][0..4].*;
+        n += 4;
+    }
+    return hash.hashFieldElements(buf[0..n]);
+}
+
+pub fn shareBallHashes(values: []const Fr, out: *[CHUNK_BALLS]Fr) void {
+    for (out, 0..) |*slot, ball| slot.* = ballHashFromFlat(values, ball);
+}
+
+/// Poseidon of the five ball hashes. Five inputs fit the on-chain hasher.
+pub fn finalShareHash(balls: *const [CHUNK_BALLS]Fr) Fr {
+    return poseidon.hash(balls);
+}
+
 pub fn computeShareOutputHash(values: []const Fr, n_actual: u32) Fr {
-    return poly.hashRecipientMajor(values, 11, 5, 12, n_actual);
+    _ = n_actual;
+    var balls: [CHUNK_BALLS]Fr = undefined;
+    shareBallHashes(values, &balls);
+    return finalShareHash(&balls);
+}
+
+pub fn hashBallColumn(values: []const Fr) Fr {
+    std.debug.assert(values.len == SHARE_OTHERS * 4);
+    return hash.hashFieldElements(values);
 }
 
 pub const Player = struct {
@@ -77,9 +145,37 @@ pub const Player = struct {
         return self.table.shuffleProve(if (self.variant == 90) .shuffle_1_deck_90_main else .shuffle_1_deck_75_main, deck, keys);
     }
 
-    pub fn shareProve(self: *Player, deck: []const Ciphertext, keys: []const PublicKey, n_actual: u32) !table.ShareOut {
-        const h = self.table.crypto.shareHash(deck, self.table.publicKey(), keys);
-        return self.table.linearShareProve(.bingo_share_hashout_main, deck, keys, n_actual, h);
+    pub fn shareProve(
+        self: *Player,
+        deck: []const Ciphertext,
+        keys: []const PublicKey,
+        n_actual: u32,
+    ) !table.ShareOut {
+        const h = shareHash(self.table.crypto, deck, self.table.publicKey(), keys);
+        const alloc = self.table.alloc;
+        const grid = try table.allocFrGrid(alloc, keys.len, deck.len, &self.table.crypto.rng);
+        defer alloc.free(grid.rows);
+        defer alloc.free(grid.flat);
+        const out_grid = try table.allocGrid(alloc, keys.len, deck.len);
+        var rand_const: [16][]const Fr = undefined;
+        var i: usize = 0;
+        while (i < keys.len) : (i += 1) rand_const[i] = grid.rows[i];
+        share(self.table.crypto, deck, keys, self.table.privateKey(), rand_const[0..keys.len], out_grid.rows);
+
+        var j = prove.json.Json.init(alloc);
+        errdefer j.deinit();
+        try j.begin();
+        try j.fieldFr("hash", h);
+        try j.fieldCts("ciphertext", deck);
+        try j.fieldPoint("publicKey", self.table.publicKey());
+        try j.fieldPoints("publicKeys", keys);
+        try j.fieldU64("nActualPlayers", n_actual);
+        try j.fieldFr("privateKey", self.table.privateKey());
+        try j.fieldFrGrid("randomness", rand_const[0..keys.len]);
+        const json = try j.finish();
+        defer alloc.free(json);
+        const proof = try self.table.proveJson(.bingo_share_hashout_main, json);
+        return .{ .proof = proof, .rows = out_grid.rows, .flat = out_grid.flat, .alloc = alloc };
     }
 
     pub fn cardProve(self: *Player, cells: []const u8) !table.Proof {
@@ -110,14 +206,11 @@ pub const Player = struct {
         pattern_id: u64,
     ) !table.Proof {
         const idx = self.table.indexOfSelf(public_keys);
-        const need: usize = if (self.variant == 90) 3 else 1;
-        var coeff_buf: [3]Fr = undefined;
-        self.table.fillCoeffs(coeff_buf[0..need]);
-        const h = showdownHash(self.table.crypto, public_keys, Fr.fromU64(idx), cards, partials, card_cells, n_called, if (self.variant == 75) pattern_id else null);
+        const h = showdownHash(self.table.crypto, public_keys, Fr.fromU64(idx), cards, partials, card_cells, n_called, if (self.variant == 75) pattern_id else null, self.table.sealCommitment());
         var j = prove.json.Json.init(self.table.alloc);
         errdefer j.deinit();
         try j.begin();
-        try j.fieldFr("hash", h);
+        try self.table.writeSealedShowdown(&j, h, 2);
         try j.fieldPoints("publicKeys", public_keys);
         try j.fieldU64("playerIndex", idx);
         try j.fieldCts("ciphertextCards", cards);
@@ -135,7 +228,6 @@ pub const Player = struct {
         try self.table.crypto.decryptCards(self.table.privateKey(), cards[0..called], partials, plain[0..called]);
         try j.fieldU64s("plaintextCards", plain);
         try j.fieldBytes("plaintextCells", cells);
-        try j.fieldFrs("coefficients", coeff_buf[0..need]);
         const json = try j.finish();
         defer self.table.alloc.free(json);
         return self.table.proveJson(if (self.variant == 90) .bingo_showdown_90_hashout_main else .bingo_showdown_75_hashout_main, json);

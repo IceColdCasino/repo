@@ -599,56 +599,62 @@ void HashPublicKeys_295_create_parallel(uint soffset,uint coffset,Circom_CalcWit
 void HashPublicKeys_295_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
 void HashMain_296_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
 void HashMain_296_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
-void ApplyPermutations_297_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void ApplyPermutations_297_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
-void IsZero_298_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void IsZero_298_run(uint ctx_index,Circom_CalcWit* ctx);
-void Num2Bits_299_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void Num2Bits_299_run(uint ctx_index,Circom_CalcWit* ctx);
-void Edwards2Montgomery_300_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void Edwards2Montgomery_300_run(uint ctx_index,Circom_CalcWit* ctx);
-void MontgomeryDouble_301_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void MontgomeryDouble_301_run(uint ctx_index,Circom_CalcWit* ctx);
-void MultiMux3_302_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void MultiMux3_302_run(uint ctx_index,Circom_CalcWit* ctx);
-void MontgomeryAdd_303_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void MontgomeryAdd_303_run(uint ctx_index,Circom_CalcWit* ctx);
-void WindowMulFix_304_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void WindowMulFix_304_run(uint ctx_index,Circom_CalcWit* ctx);
-void Montgomery2Edwards_305_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void Montgomery2Edwards_305_run(uint ctx_index,Circom_CalcWit* ctx);
-void SegmentMulFix_306_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void SegmentMulFix_306_run(uint ctx_index,Circom_CalcWit* ctx);
-void SegmentMulFix_307_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void SegmentMulFix_307_run(uint ctx_index,Circom_CalcWit* ctx);
-void EscalarMulFix_308_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void EscalarMulFix_308_run(uint ctx_index,Circom_CalcWit* ctx);
-void Multiplexor2_309_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void Multiplexor2_309_run(uint ctx_index,Circom_CalcWit* ctx);
-void BitElementMulAny_310_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void BitElementMulAny_310_run(uint ctx_index,Circom_CalcWit* ctx);
-void SegmentMulAny_311_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void SegmentMulAny_311_run(uint ctx_index,Circom_CalcWit* ctx);
-void SegmentMulAny_312_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void SegmentMulAny_312_run(uint ctx_index,Circom_CalcWit* ctx);
-void EscalarMulAny_313_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void EscalarMulAny_313_run(uint ctx_index,Circom_CalcWit* ctx);
-void AddRandomness_314_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void AddRandomness_314_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
-void AddRandomnessN_315_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void AddRandomnessN_315_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
-void HashRowValueChunk_316_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void HashRowValueChunk_316_run(uint ctx_index,Circom_CalcWit* ctx);
-void HashPermutationMatrix_317_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void HashPermutationMatrix_317_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
-void Shuffle_318_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
-void Shuffle_318_run(uint ctx_index,Circom_CalcWit* ctx);
+void PermuteOneRow_297_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void PermuteOneRow_297_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
+void MatrixColumnSum_298_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void MatrixColumnSum_298_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
+void ApplyPermutations_299_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void ApplyPermutations_299_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
+void RowBitsToNum_300_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void RowBitsToNum_300_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
+void HashRowValueChunk_301_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void HashRowValueChunk_301_run(uint ctx_index,Circom_CalcWit* ctx);
+void HashPermutationMatrix_302_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void HashPermutationMatrix_302_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
+void IsZero_303_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void IsZero_303_run(uint ctx_index,Circom_CalcWit* ctx);
+void Num2Bits_304_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void Num2Bits_304_run(uint ctx_index,Circom_CalcWit* ctx);
+void Edwards2Montgomery_305_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void Edwards2Montgomery_305_run(uint ctx_index,Circom_CalcWit* ctx);
+void MontgomeryDouble_306_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void MontgomeryDouble_306_run(uint ctx_index,Circom_CalcWit* ctx);
+void MultiMux3_307_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void MultiMux3_307_run(uint ctx_index,Circom_CalcWit* ctx);
+void MontgomeryAdd_308_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void MontgomeryAdd_308_run(uint ctx_index,Circom_CalcWit* ctx);
+void WindowMulFix_309_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void WindowMulFix_309_run(uint ctx_index,Circom_CalcWit* ctx);
+void Montgomery2Edwards_310_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void Montgomery2Edwards_310_run(uint ctx_index,Circom_CalcWit* ctx);
+void SegmentMulFix_311_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void SegmentMulFix_311_run(uint ctx_index,Circom_CalcWit* ctx);
+void SegmentMulFix_312_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void SegmentMulFix_312_run(uint ctx_index,Circom_CalcWit* ctx);
+void EscalarMulFix_313_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void EscalarMulFix_313_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
+void Multiplexor2_314_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void Multiplexor2_314_run(uint ctx_index,Circom_CalcWit* ctx);
+void BitElementMulAny_315_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void BitElementMulAny_315_run(uint ctx_index,Circom_CalcWit* ctx);
+void SegmentMulAny_316_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void SegmentMulAny_316_run(uint ctx_index,Circom_CalcWit* ctx);
+void SegmentMulAny_317_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void SegmentMulAny_317_run(uint ctx_index,Circom_CalcWit* ctx);
+void EscalarMulAny_318_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void EscalarMulAny_318_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
+void AddRandomness_319_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void AddRandomness_319_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
+void AddRandomnessN_320_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void AddRandomnessN_320_run_parallel(uint ctx_index,Circom_CalcWit* ctx);
+void Shuffle_321_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather);
+void Shuffle_321_run(uint ctx_index,Circom_CalcWit* ctx);
 void POSEIDON_C_0(Circom_CalcWit* ctx,FrElement* lvar,uint componentFather,FrElement* destination,int destination_size);
 void POSEIDON_S_1(Circom_CalcWit* ctx,FrElement* lvar,uint componentFather,FrElement* destination,int destination_size);
 void POSEIDON_M_2(Circom_CalcWit* ctx,FrElement* lvar,uint componentFather,FrElement* destination,int destination_size);
 void POSEIDON_P_3(Circom_CalcWit* ctx,FrElement* lvar,uint componentFather,FrElement* destination,int destination_size);
 void BASE8_4(Circom_CalcWit* ctx,FrElement* lvar,uint componentFather,FrElement* destination,int destination_size);
-Circom_TemplateFunction _functionTable[319] = { 
+Circom_TemplateFunction _functionTable[322] = { 
 BabyAdd_0_run,
 NULL,
 NULL,
@@ -947,28 +953,31 @@ NULL,
 NULL,
 NULL,
 NULL,
-IsZero_298_run,
-Num2Bits_299_run,
-Edwards2Montgomery_300_run,
-MontgomeryDouble_301_run,
-MultiMux3_302_run,
-MontgomeryAdd_303_run,
-WindowMulFix_304_run,
-Montgomery2Edwards_305_run,
-SegmentMulFix_306_run,
-SegmentMulFix_307_run,
-EscalarMulFix_308_run,
-Multiplexor2_309_run,
-BitElementMulAny_310_run,
-SegmentMulAny_311_run,
-SegmentMulAny_312_run,
-EscalarMulAny_313_run,
 NULL,
 NULL,
-HashRowValueChunk_316_run,
 NULL,
-Shuffle_318_run };
-Circom_TemplateFunction _functionTableParallel[319] = { 
+HashRowValueChunk_301_run,
+NULL,
+IsZero_303_run,
+Num2Bits_304_run,
+Edwards2Montgomery_305_run,
+MontgomeryDouble_306_run,
+MultiMux3_307_run,
+MontgomeryAdd_308_run,
+WindowMulFix_309_run,
+Montgomery2Edwards_310_run,
+SegmentMulFix_311_run,
+SegmentMulFix_312_run,
+NULL,
+Multiplexor2_314_run,
+BitElementMulAny_315_run,
+SegmentMulAny_316_run,
+SegmentMulAny_317_run,
+NULL,
+NULL,
+NULL,
+Shuffle_321_run };
+Circom_TemplateFunction _functionTableParallel[322] = { 
 NULL,
 AggregatePublicKey_1_run_parallel,
 NoFixedPoints_2_run_parallel,
@@ -1266,7 +1275,12 @@ NULL,
 HashDeck_294_run_parallel,
 HashPublicKeys_295_run_parallel,
 HashMain_296_run_parallel,
-ApplyPermutations_297_run_parallel,
+PermuteOneRow_297_run_parallel,
+MatrixColumnSum_298_run_parallel,
+ApplyPermutations_299_run_parallel,
+RowBitsToNum_300_run_parallel,
+NULL,
+HashPermutationMatrix_302_run_parallel,
 NULL,
 NULL,
 NULL,
@@ -1277,28 +1291,26 @@ NULL,
 NULL,
 NULL,
 NULL,
+EscalarMulFix_313_run_parallel,
 NULL,
 NULL,
 NULL,
 NULL,
-NULL,
-NULL,
-AddRandomness_314_run_parallel,
-AddRandomnessN_315_run_parallel,
-NULL,
-HashPermutationMatrix_317_run_parallel,
+EscalarMulAny_318_run_parallel,
+AddRandomness_319_run_parallel,
+AddRandomnessN_320_run_parallel,
 NULL };
-uint get_main_input_signal_start() {return 150;}
+uint get_main_input_signal_start() {return 3;}
 
 uint get_main_input_signal_no() {return 1579;}
 
-uint get_total_signal_no() {return 741328;}
+uint get_total_signal_no() {return 790121;}
 
-uint get_number_of_components() {return 78711;}
+uint get_number_of_components() {return 82579;}
 
 uint get_size_of_input_hashmap() {return 256;}
 
-uint get_size_of_witness() {return 132152;}
+uint get_size_of_witness() {return 139454;}
 
 uint get_size_of_constants() {return 25031;}
 
@@ -148327,7 +148339,10 @@ assert(Fr_isTrue(&expaux[0]));
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -148391,7 +148406,7 @@ PFrElement aux_dest = &lvar[1];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[6]); // line circom 207
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[6]); // line circom 212
 while(Fr_isTrue(&expaux[0])){
 {
 uint cmp_index_ref = ((1 * Fr_toInt(&lvar[1])) + 0);
@@ -148468,11 +148483,11 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 {
 PFrElement aux_dest = &lvar[1];
 // load src
-Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 207
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 212
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[6]); // line circom 207
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[6]); // line circom 212
 }
 {
 {
@@ -148502,7 +148517,10 @@ ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
 for (uint i = 0; i < 11; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -148547,7 +148565,7 @@ PFrElement aux_dest = &lvar[1];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 257
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 316
 while(Fr_isTrue(&expaux[0])){
 {
 PFrElement aux_dest = &signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 1369)];
@@ -148558,11 +148576,11 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + (((37 * Fr_toInt(&lvar[1])) + (1 
 {
 PFrElement aux_dest = &lvar[1];
 // load src
-Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 257
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 316
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 257
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 316
 }
 {
 PFrElement aux_dest = &signalValues[mySignalStart + 1406];
@@ -148576,29 +148594,29 @@ PFrElement aux_dest = &lvar[1];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 264
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 323
 while(Fr_isTrue(&expaux[0])){
 {
 PFrElement aux_dest = &signalValues[mySignalStart + ((1 * (Fr_toInt(&lvar[1]) + 1)) + 1406)];
 // load src
-Fr_add(&expaux[0],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 1406)],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 1369)]); // line circom 265
+Fr_add(&expaux[0],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 1406)],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 1369)]); // line circom 324
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
 {
 PFrElement aux_dest = &lvar[1];
 // load src
-Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 264
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 323
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 264
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 323
 }
 {
 {{
-Fr_eq(&expaux[0],&signalValues[mySignalStart + 1443],&circuitConstants[5]); // line circom 270
+Fr_eq(&expaux[0],&signalValues[mySignalStart + 1443],&circuitConstants[5]); // line circom 329
 }}
-if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 270. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
+if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 329. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
 assert(Fr_isTrue(&expaux[0]));
 }
 for (uint i = 0; i < 0; i++) {
@@ -148613,7 +148631,10 @@ ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -149695,7 +149716,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[177]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -149748,7 +149772,10 @@ Fr_copy(aux_dest,&expaux[0]);
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -150830,7 +150857,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[177]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -151942,7 +151972,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[177]); // line circom 32
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -153024,7 +153057,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[177]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -154106,7 +154142,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[177]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -155188,7 +155227,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[177]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -156300,7 +156342,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[177]); // line circom 32
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -166158,7 +166203,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -176016,7 +176064,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -185874,7 +185925,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -195732,7 +195786,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -205590,7 +205647,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -215448,7 +215508,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -225306,7 +225369,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -235164,7 +235230,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -245022,7 +245091,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -254880,7 +254952,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -264738,7 +264813,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -274596,7 +274674,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -284454,7 +284535,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -294312,7 +294396,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -304170,7 +304257,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -314028,7 +314118,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -323886,7 +323979,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -333744,7 +333840,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -343602,7 +343701,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -353460,7 +353562,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -363318,7 +363423,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -373176,7 +373284,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -383034,7 +383145,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -392892,7 +393006,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -402750,7 +402867,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -412608,7 +412728,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -422466,7 +422589,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -432324,7 +432450,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -442182,7 +442311,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -452040,7 +452172,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -461898,7 +462033,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -471756,7 +471894,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -481614,7 +481755,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -491472,7 +491616,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -501330,7 +501477,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -511188,7 +511338,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -521046,7 +521199,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -530904,7 +531060,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -540762,7 +540921,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -550620,7 +550782,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -560478,7 +560643,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -570336,7 +570504,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -580194,7 +580365,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -590052,7 +590226,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -599910,7 +600087,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -609768,7 +609948,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -619626,7 +619809,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -629484,7 +629670,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -639342,7 +639531,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -649200,7 +649392,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -659058,7 +659253,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -668916,7 +669114,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -678774,7 +678975,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -688632,7 +688836,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -698490,7 +698697,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -708348,7 +708558,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -718206,7 +718419,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -728064,7 +728280,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -737922,7 +738141,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -747780,7 +748002,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -757638,7 +757863,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -767496,7 +767724,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -777354,7 +777585,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -787212,7 +787446,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -797070,7 +797307,10 @@ Fr_lt(&expaux[0],&lvar[1628],&circuitConstants[177]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -798152,7 +798392,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[177]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -799234,7 +799477,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[177]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -800316,7 +800562,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[177]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -801411,7 +801660,10 @@ Fr_copy(aux_dest,&lvar[171]);
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -801428,7 +801680,7 @@ ctx->componentMemory[coffset].subcomponents = new uint[250]{0};
 void PoseidonEx_80_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
-FrElement expaux[2];
+FrElement expaux[3];
 FrElement lvar[2181];
 u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
 std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
@@ -813990,7 +814242,10 @@ Fr_lt(&expaux[0],&lvar[2179],&circuitConstants[3]); // line circom 188
 }
 for (uint i = 0; i < 250; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -814105,7 +814360,10 @@ ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
 for (uint i = 0; i < 1; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -814773,7 +815031,10 @@ Fr_lt(&expaux[0],&lvar[102],&circuitConstants[2065]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -815441,7 +815702,10 @@ Fr_lt(&expaux[0],&lvar[102],&circuitConstants[2065]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -815689,7 +815953,10 @@ Fr_lt(&expaux[0],&lvar[27],&circuitConstants[2065]); // line circom 32
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -816357,7 +816624,10 @@ Fr_lt(&expaux[0],&lvar[102],&circuitConstants[2065]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -817025,7 +817295,10 @@ Fr_lt(&expaux[0],&lvar[102],&circuitConstants[2065]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -817693,7 +817966,10 @@ Fr_lt(&expaux[0],&lvar[102],&circuitConstants[2065]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -817941,7 +818217,10 @@ Fr_lt(&expaux[0],&lvar[27],&circuitConstants[2065]); // line circom 32
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -821289,7 +821568,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -824637,7 +824919,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -827985,7 +828270,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -831333,7 +831621,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -834681,7 +834972,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -838029,7 +838323,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -841377,7 +841674,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -844725,7 +845025,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -848073,7 +848376,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -851421,7 +851727,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -854769,7 +855078,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -858117,7 +858429,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -861465,7 +861780,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -864813,7 +865131,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -868161,7 +868482,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -871509,7 +871833,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -874857,7 +875184,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -878205,7 +878535,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -881553,7 +881886,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -884901,7 +885237,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -888249,7 +888588,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -891597,7 +891939,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -894945,7 +895290,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -898293,7 +898641,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -901641,7 +901992,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -904989,7 +905343,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -908337,7 +908694,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -911685,7 +912045,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -915033,7 +915396,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -918381,7 +918747,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -921729,7 +922098,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -925077,7 +925449,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -928425,7 +928800,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -931773,7 +932151,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -935121,7 +935502,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -938469,7 +938853,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -941817,7 +942204,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -945165,7 +945555,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -948513,7 +948906,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -951861,7 +952257,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -955209,7 +955608,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -958557,7 +958959,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -961905,7 +962310,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -965253,7 +965661,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -968601,7 +969012,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -971949,7 +972363,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -975297,7 +975714,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -978645,7 +979065,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -981993,7 +982416,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -985341,7 +985767,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -988689,7 +989118,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -992037,7 +992469,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -995385,7 +995820,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -998733,7 +999171,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1002081,7 +1002522,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1005429,7 +1005873,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1008777,7 +1009224,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1012125,7 +1012575,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1015473,7 +1015926,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1018821,7 +1019277,10 @@ Fr_lt(&expaux[0],&lvar[543],&circuitConstants[2065]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1019489,7 +1019948,10 @@ Fr_lt(&expaux[0],&lvar[102],&circuitConstants[2065]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1020157,7 +1020619,10 @@ Fr_lt(&expaux[0],&lvar[102],&circuitConstants[2065]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1020825,7 +1021290,10 @@ Fr_lt(&expaux[0],&lvar[102],&circuitConstants[2065]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1021056,7 +1021524,10 @@ Fr_copy(aux_dest,&lvar[27]);
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1021073,7 +1021544,7 @@ ctx->componentMemory[coffset].subcomponents = new uint[176]{0};
 void PoseidonEx_153_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
-FrElement expaux[2];
+FrElement expaux[3];
 FrElement lvar[723];
 u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
 std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
@@ -1026494,7 +1026965,10 @@ Fr_lt(&expaux[0],&lvar[721],&circuitConstants[3]); // line circom 188
 }
 for (uint i = 0; i < 176; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1026609,7 +1027083,10 @@ ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
 for (uint i = 0; i < 1; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1026705,7 +1027182,10 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 for (uint i = 0; i < 1; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1027205,7 +1027685,10 @@ Fr_lt(&expaux[0],&lvar[74],&circuitConstants[2056]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1027705,7 +1028188,10 @@ Fr_lt(&expaux[0],&lvar[74],&circuitConstants[2056]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1027827,7 +1028313,10 @@ Fr_lt(&expaux[0],&lvar[6],&circuitConstants[2056]); // line circom 32
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1028327,7 +1028816,10 @@ Fr_lt(&expaux[0],&lvar[74],&circuitConstants[2056]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1028827,7 +1029319,10 @@ Fr_lt(&expaux[0],&lvar[74],&circuitConstants[2056]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1029327,7 +1029822,10 @@ Fr_lt(&expaux[0],&lvar[74],&circuitConstants[2056]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1029449,7 +1029947,10 @@ Fr_lt(&expaux[0],&lvar[6],&circuitConstants[2056]); // line circom 32
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1030562,7 +1031063,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1031675,7 +1032179,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1032788,7 +1033295,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1033901,7 +1034411,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1035014,7 +1035527,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1036127,7 +1036643,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1037240,7 +1037759,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1038353,7 +1038875,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1039466,7 +1039991,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1040579,7 +1041107,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1041692,7 +1042223,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1042805,7 +1043339,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1043918,7 +1044455,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1045031,7 +1045571,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1046144,7 +1046687,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1047257,7 +1047803,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1048370,7 +1048919,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1049483,7 +1050035,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1050596,7 +1051151,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1051709,7 +1052267,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1052822,7 +1053383,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1053935,7 +1054499,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1055048,7 +1055615,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1056161,7 +1056731,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1057274,7 +1057847,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1058387,7 +1058963,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1059500,7 +1060079,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1060613,7 +1061195,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1061726,7 +1062311,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1062839,7 +1063427,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1063952,7 +1064543,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1065065,7 +1065659,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1066178,7 +1066775,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1067291,7 +1067891,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1068404,7 +1069007,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1069517,7 +1070123,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1070630,7 +1071239,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1071743,7 +1072355,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1072856,7 +1073471,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1073969,7 +1074587,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1075082,7 +1075703,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1076195,7 +1076819,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1077308,7 +1077935,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1078421,7 +1079051,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1079534,7 +1080167,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1080647,7 +1081283,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1081760,7 +1082399,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1082873,7 +1083515,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1083986,7 +1084631,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1085099,7 +1085747,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1086212,7 +1086863,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1087325,7 +1087979,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1088438,7 +1089095,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1089551,7 +1090211,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1090664,7 +1091327,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1091777,7 +1092443,10 @@ Fr_lt(&expaux[0],&lvar[171],&circuitConstants[2056]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1092277,7 +1092946,10 @@ Fr_lt(&expaux[0],&lvar[74],&circuitConstants[2056]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1092777,7 +1093449,10 @@ Fr_lt(&expaux[0],&lvar[74],&circuitConstants[2056]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1093277,7 +1093952,10 @@ Fr_lt(&expaux[0],&lvar[74],&circuitConstants[2056]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1093382,7 +1094060,10 @@ Fr_copy(aux_dest,&lvar[6]);
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1093399,7 +1094080,7 @@ ctx->componentMemory[coffset].subcomponents = new uint[144]{0};
 void PoseidonEx_222_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
-FrElement expaux[2];
+FrElement expaux[3];
 FrElement lvar[275];
 u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
 std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
@@ -1096327,7 +1097008,10 @@ Fr_lt(&expaux[0],&lvar[273],&circuitConstants[3]); // line circom 188
 }
 for (uint i = 0; i < 144; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1096441,7 +1097125,10 @@ ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
 for (uint i = 0; i < 1; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1096995,7 +1097682,10 @@ Fr_lt(&expaux[0],&lvar[83],&circuitConstants[2059]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1097549,7 +1098239,10 @@ Fr_lt(&expaux[0],&lvar[83],&circuitConstants[2059]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1097701,7 +1098394,10 @@ Fr_lt(&expaux[0],&lvar[11],&circuitConstants[2059]); // line circom 32
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1098255,7 +1098951,10 @@ Fr_lt(&expaux[0],&lvar[83],&circuitConstants[2059]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1098809,7 +1099508,10 @@ Fr_lt(&expaux[0],&lvar[83],&circuitConstants[2059]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1099363,7 +1100065,10 @@ Fr_lt(&expaux[0],&lvar[83],&circuitConstants[2059]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1099515,7 +1100220,10 @@ Fr_lt(&expaux[0],&lvar[11],&circuitConstants[2059]); // line circom 32
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1101333,7 +1102041,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1103151,7 +1103862,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1104969,7 +1105683,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1106787,7 +1107504,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1108605,7 +1109325,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1110423,7 +1111146,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1112241,7 +1112967,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1114059,7 +1114788,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1115877,7 +1116609,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1117695,7 +1118430,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1119513,7 +1120251,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1121331,7 +1122072,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1123149,7 +1123893,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1124967,7 +1125714,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1126785,7 +1127535,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1128603,7 +1129356,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1130421,7 +1131177,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1132239,7 +1132998,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1134057,7 +1134819,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1135875,7 +1136640,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1137693,7 +1138461,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1139511,7 +1140282,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1141329,7 +1142103,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1143147,7 +1143924,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1144965,7 +1145745,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1146783,7 +1147566,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1148601,7 +1149387,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1150419,7 +1151208,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1152237,7 +1153029,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1154055,7 +1154850,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1155873,7 +1156671,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1157691,7 +1158492,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1159509,7 +1160313,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1161327,7 +1162134,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1163145,7 +1163955,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1164963,7 +1165776,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1166781,7 +1167597,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1168599,7 +1169418,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1170417,7 +1171239,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1172235,7 +1173060,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1174053,7 +1174881,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1175871,7 +1176702,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1177689,7 +1178523,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1179507,7 +1180344,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1181325,7 +1182165,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1183143,7 +1183986,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1184961,7 +1185807,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1186779,7 +1187628,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1188597,7 +1189449,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1190415,7 +1191270,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1192233,7 +1193091,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1194051,7 +1194912,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1195869,7 +1196733,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1197687,7 +1198554,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1199505,7 +1200375,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1201323,7 +1202196,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1203141,7 +1204017,10 @@ Fr_lt(&expaux[0],&lvar[288],&circuitConstants[2059]); // line circom 62
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1203695,7 +1204574,10 @@ Fr_lt(&expaux[0],&lvar[83],&circuitConstants[2059]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1204249,7 +1205131,10 @@ Fr_lt(&expaux[0],&lvar[83],&circuitConstants[2059]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1204803,7 +1205688,10 @@ Fr_lt(&expaux[0],&lvar[83],&circuitConstants[2059]); // line circom 22
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1204938,7 +1205826,10 @@ Fr_copy(aux_dest,&lvar[11]);
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1204955,7 +1205846,7 @@ ctx->componentMemory[coffset].subcomponents = new uint[154]{0};
 void PoseidonEx_292_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
-FrElement expaux[2];
+FrElement expaux[3];
 FrElement lvar[413];
 u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
 std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
@@ -1208669,7 +1209560,10 @@ Fr_lt(&expaux[0],&lvar[411],&circuitConstants[3]); // line circom 188
 }
 for (uint i = 0; i < 154; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1208765,7 +1209659,10 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 for (uint i = 0; i < 1; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1208910,7 +1209807,7 @@ PFrElement aux_dest = &lvar[4];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[4],&circuitConstants[7]); // line circom 136
+Fr_lt(&expaux[0],&lvar[4],&circuitConstants[7]); // line circom 167
 while(Fr_isTrue(&expaux[0])){
 {
 PFrElement aux_dest = &lvar[5];
@@ -1208918,7 +1209815,7 @@ PFrElement aux_dest = &lvar[5];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2062]); // line circom 137
+Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2062]); // line circom 168
 while(Fr_isTrue(&expaux[0])){
 {
 PFrElement aux_dest = &signalValues[mySignalStart + ((1 * ((Fr_toInt(&lvar[4]) * 4) + Fr_toInt(&lvar[5]))) + 149)];
@@ -1208929,20 +1209826,20 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + (((4 * Fr_toInt(&lvar[4])) + (1 *
 {
 PFrElement aux_dest = &lvar[5];
 // load src
-Fr_add(&expaux[0],&lvar[5],&circuitConstants[3]); // line circom 137
+Fr_add(&expaux[0],&lvar[5],&circuitConstants[3]); // line circom 168
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2062]); // line circom 137
+Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2062]); // line circom 168
 }
 {
 PFrElement aux_dest = &lvar[4];
 // load src
-Fr_add(&expaux[0],&lvar[4],&circuitConstants[3]); // line circom 136
+Fr_add(&expaux[0],&lvar[4],&circuitConstants[3]); // line circom 167
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[4],&circuitConstants[7]); // line circom 136
+Fr_lt(&expaux[0],&lvar[4],&circuitConstants[7]); // line circom 167
 }
 {
 PFrElement aux_dest = &lvar[4];
@@ -1208950,9 +1209847,9 @@ PFrElement aux_dest = &lvar[4];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[4],&circuitConstants[177]); // line circom 142
+Fr_lt(&expaux[0],&lvar[4],&circuitConstants[177]); // line circom 173
 while(Fr_isTrue(&expaux[0])){
-Fr_lt(&expaux[0],&lvar[4],&circuitConstants[4]); // line circom 143
+Fr_lt(&expaux[0],&lvar[4],&circuitConstants[4]); // line circom 174
 if(Fr_isTrue(&expaux[0])){
 {
 PFrElement aux_dest = &lvar[5];
@@ -1208974,7 +1209871,7 @@ PFrElement aux_dest = &lvar[6];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[6],&lvar[5]); // line circom 145
+Fr_lt(&expaux[0],&lvar[6],&lvar[5]); // line circom 176
 while(Fr_isTrue(&expaux[0])){
 {
 uint cmp_index_ref = ((1 * Fr_toInt(&lvar[4])) + 0);
@@ -1209007,20 +1209904,20 @@ ctx->numThread++;
 {
 PFrElement aux_dest = &lvar[6];
 // load src
-Fr_add(&expaux[0],&lvar[6],&circuitConstants[3]); // line circom 145
+Fr_add(&expaux[0],&lvar[6],&circuitConstants[3]); // line circom 176
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[6],&lvar[5]); // line circom 145
+Fr_lt(&expaux[0],&lvar[6],&lvar[5]); // line circom 176
 }
 {
 PFrElement aux_dest = &lvar[4];
 // load src
-Fr_add(&expaux[0],&lvar[4],&circuitConstants[3]); // line circom 142
+Fr_add(&expaux[0],&lvar[4],&circuitConstants[3]); // line circom 173
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[4],&circuitConstants[177]); // line circom 142
+Fr_lt(&expaux[0],&lvar[4],&circuitConstants[177]); // line circom 173
 }
 {
 PFrElement aux_dest = &lvar[4];
@@ -1209034,9 +1209931,9 @@ PFrElement aux_dest = &lvar[5];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2056]); // line circom 159
+Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2056]); // line circom 190
 while(Fr_isTrue(&expaux[0])){
-Fr_lt(&expaux[0],&lvar[5],&circuitConstants[3]); // line circom 160
+Fr_lt(&expaux[0],&lvar[5],&circuitConstants[3]); // line circom 191
 if(Fr_isTrue(&expaux[0])){
 {
 PFrElement aux_dest = &lvar[6];
@@ -1209058,7 +1209955,7 @@ PFrElement aux_dest = &lvar[7];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[7],&lvar[6]); // line circom 162
+Fr_lt(&expaux[0],&lvar[7],&lvar[6]); // line circom 193
 while(Fr_isTrue(&expaux[0])){
 {
 uint cmp_index_ref = ((1 * Fr_toInt(&lvar[5])) + 13);
@@ -1209107,20 +1210004,20 @@ ctx->numThread++;
 {
 PFrElement aux_dest = &lvar[7];
 // load src
-Fr_add(&expaux[0],&lvar[7],&circuitConstants[3]); // line circom 162
+Fr_add(&expaux[0],&lvar[7],&circuitConstants[3]); // line circom 193
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[7],&lvar[6]); // line circom 162
+Fr_lt(&expaux[0],&lvar[7],&lvar[6]); // line circom 193
 }
 {
 PFrElement aux_dest = &lvar[5];
 // load src
-Fr_add(&expaux[0],&lvar[5],&circuitConstants[3]); // line circom 159
+Fr_add(&expaux[0],&lvar[5],&circuitConstants[3]); // line circom 190
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2056]); // line circom 159
+Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2056]); // line circom 190
 }
 {
 PFrElement aux_dest = &lvar[5];
@@ -1209128,7 +1210025,7 @@ PFrElement aux_dest = &lvar[5];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2056]); // line circom 167
+Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2056]); // line circom 198
 while(Fr_isTrue(&expaux[0])){
 {
 uint cmp_index_ref = 15;
@@ -1209163,11 +1210060,11 @@ Poseidon_293_run(mySubcomponents[cmp_index_ref],ctx);
 {
 PFrElement aux_dest = &lvar[5];
 // load src
-Fr_add(&expaux[0],&lvar[5],&circuitConstants[3]); // line circom 167
+Fr_add(&expaux[0],&lvar[5],&circuitConstants[3]); // line circom 198
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2056]); // line circom 167
+Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2056]); // line circom 198
 }
 {
 {
@@ -1209202,7 +1210099,10 @@ ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
 for (uint i = 0; i < 16; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1209259,7 +1210159,7 @@ Poseidon_293_create(mySignalStart+25,0+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[2] = 0+ctx_index+1;
 }
 {
-if (!Fr_isTrue(&circuitConstants[3])) std::cout << "Failed assert in template/function " << myTemplateName << " line 71. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
+if (!Fr_isTrue(&circuitConstants[3])) std::cout << "Failed assert in template/function " << myTemplateName << " line 73. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
 assert(Fr_isTrue(&circuitConstants[3]));
 }
 {
@@ -1209280,7 +1210180,7 @@ PFrElement aux_dest = &lvar[3];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2068]); // line circom 84
+Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2068]); // line circom 86
 while(Fr_isTrue(&expaux[0])){
 {
 uint cmp_index_ref = 0;
@@ -1209343,11 +1210243,11 @@ ctx->numThread++;
 {
 PFrElement aux_dest = &lvar[3];
 // load src
-Fr_add(&expaux[0],&lvar[3],&circuitConstants[3]); // line circom 84
+Fr_add(&expaux[0],&lvar[3],&circuitConstants[3]); // line circom 86
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2068]); // line circom 84
+Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2068]); // line circom 86
 }
 {
 uint cmp_index_ref = 2;
@@ -1209439,7 +1210339,10 @@ ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
 for (uint i = 0; i < 3; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
@@ -1209623,28 +1210526,31 @@ ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
 for (uint i = 0; i < 3; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void ApplyPermutations_297_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+void PermuteOneRow_297_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
 ctx->componentMemory[coffset].templateId = 297;
-ctx->componentMemory[coffset].templateName = "ApplyPermutations";
+ctx->componentMemory[coffset].templateName = "PermuteOneRow";
 ctx->componentMemory[coffset].signalStart = soffset;
-ctx->componentMemory[coffset].inputCounter = 1517;
+ctx->componentMemory[coffset].inputCounter = 185;
 ctx->componentMemory[coffset].componentName = componentName;
 ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[0];
-ctx->componentMemory[coffset].outputIsSet = new bool[148]();
-ctx->componentMemory[coffset].mutexes = new std::mutex[148];
-ctx->componentMemory[coffset].cvs = new std::condition_variable[148];
+ctx->componentMemory[coffset].outputIsSet = new bool[4]();
+ctx->componentMemory[coffset].mutexes = new std::mutex[4];
+ctx->componentMemory[coffset].cvs = new std::condition_variable[4];
 }
 
-void ApplyPermutations_297_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
+void PermuteOneRow_297_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[3];
-FrElement lvar[4];
+FrElement lvar[3];
 u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
 std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
 std::string myComponentName = ctx->componentMemory[ctx_index].componentName;
@@ -1209663,112 +1210569,79 @@ PFrElement aux_dest = &lvar[0];
 Fr_copy(aux_dest,&circuitConstants[7]);
 }
 {
+PFrElement aux_dest = &signalValues[mySignalStart + 189];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+{
 PFrElement aux_dest = &lvar[1];
 // load src
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 210
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 243
 while(Fr_isTrue(&expaux[0])){
 {
-PFrElement aux_dest = &signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + 0) + 1665)];
+PFrElement aux_dest = &signalValues[mySignalStart + ((1 * (Fr_toInt(&lvar[1]) + 1)) + 189)];
 // load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-{
-PFrElement aux_dest = &lvar[2];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 212
-while(Fr_isTrue(&expaux[0])){
-{
-PFrElement aux_dest = &signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + (1 * (Fr_toInt(&lvar[2]) + 1))) + 1665)];
-// load src
-Fr_add(&expaux[0],&signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 1665)],&signalValues[mySignalStart + (((37 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 148)]); // line circom 213
+Fr_add(&expaux[0],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 189)],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 4)]); // line circom 244
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
 {
-PFrElement aux_dest = &lvar[2];
+PFrElement aux_dest = &signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 227)];
 // load src
-Fr_add(&expaux[0],&lvar[2],&circuitConstants[3]); // line circom 212
+Fr_sub(&expaux[0],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 4)],&circuitConstants[3]); // line circom 245
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 212
-}
 {
+Fr_mul(&expaux[1],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 4)],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 227)]); // line circom 246
 {{
-Fr_eq(&expaux[0],&signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + 37) + 1665)],&circuitConstants[3]); // line circom 215
+Fr_eq(&expaux[0],&expaux[1],&circuitConstants[5]); // line circom 246
 }}
-if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 215. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
+if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 246. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
 assert(Fr_isTrue(&expaux[0]));
 }
 {
 PFrElement aux_dest = &lvar[1];
 // load src
-Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 210
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 243
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 210
-}
-{
-PFrElement aux_dest = &lvar[1];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 218
-while(Fr_isTrue(&expaux[0])){
-{
-PFrElement aux_dest = &signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + 0) + 3071)];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-{
-PFrElement aux_dest = &lvar[2];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 220
-while(Fr_isTrue(&expaux[0])){
-{
-PFrElement aux_dest = &signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + (1 * (Fr_toInt(&lvar[2]) + 1))) + 3071)];
-// load src
-Fr_add(&expaux[0],&signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 3071)],&signalValues[mySignalStart + (((37 * Fr_toInt(&lvar[2])) + (1 * Fr_toInt(&lvar[1]))) + 148)]); // line circom 221
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-{
-PFrElement aux_dest = &lvar[2];
-// load src
-Fr_add(&expaux[0],&lvar[2],&circuitConstants[3]); // line circom 220
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 220
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 243
 }
 {
 {{
-Fr_eq(&expaux[0],&signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + 37) + 3071)],&circuitConstants[3]); // line circom 223
+Fr_eq(&expaux[0],&signalValues[mySignalStart + 226],&circuitConstants[3]); // line circom 248
 }}
-if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 223. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
+if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 248. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
 assert(Fr_isTrue(&expaux[0]));
 }
 {
 PFrElement aux_dest = &lvar[1];
 // load src
-Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 218
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[2062]); // line circom 250
+while(Fr_isTrue(&expaux[0])){
+{
+PFrElement aux_dest = &signalValues[mySignalStart + ((0 + (1 * Fr_toInt(&lvar[1]))) + 264)];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 250
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 218
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[2062]); // line circom 250
 }
 {
 PFrElement aux_dest = &lvar[1];
@@ -1209776,7 +1210649,7 @@ PFrElement aux_dest = &lvar[1];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 226
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 253
 while(Fr_isTrue(&expaux[0])){
 {
 PFrElement aux_dest = &lvar[2];
@@ -1209784,40 +1210657,298 @@ PFrElement aux_dest = &lvar[2];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 227
+Fr_lt(&expaux[0],&lvar[2],&circuitConstants[2062]); // line circom 254
 while(Fr_isTrue(&expaux[0])){
 {
-PFrElement aux_dest = &signalValues[mySignalStart + (((37 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 4477)];
+PFrElement aux_dest = &signalValues[mySignalStart + (((4 * (Fr_toInt(&lvar[1]) + 1)) + (1 * Fr_toInt(&lvar[2]))) + 264)];
 // load src
-Fr_sub(&expaux[0],&signalValues[mySignalStart + (((37 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 148)],&circuitConstants[3]); // line circom 228
+Fr_mul(&expaux[1],&signalValues[mySignalStart + (((4 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 41)],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 4)]); // line circom 255
+Fr_add(&expaux[0],&signalValues[mySignalStart + (((4 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 264)],&expaux[1]); // line circom 255
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
 {
-Fr_mul(&expaux[1],&signalValues[mySignalStart + (((37 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 148)],&signalValues[mySignalStart + (((37 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 4477)]); // line circom 229
+PFrElement aux_dest = &lvar[2];
+// load src
+Fr_add(&expaux[0],&lvar[2],&circuitConstants[3]); // line circom 254
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[2],&circuitConstants[2062]); // line circom 254
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 253
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 253
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[2062]); // line circom 258
+while(Fr_isTrue(&expaux[0])){
+{
+{
+PFrElement aux_dest = &signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 0)];
+// load src
+// end load src
+Fr_copy(aux_dest,&signalValues[mySignalStart + ((148 + (1 * Fr_toInt(&lvar[1]))) + 264)]);
+ctx->componentMemory[ctx_index].mutexes[((1 * Fr_toInt(&lvar[1])) + 0)].lock();
+ctx->componentMemory[ctx_index].outputIsSet[((1 * Fr_toInt(&lvar[1])) + 0)]=true;
+ctx->componentMemory[ctx_index].mutexes[((1 * Fr_toInt(&lvar[1])) + 0)].unlock();
+ctx->componentMemory[ctx_index].cvs[((1 * Fr_toInt(&lvar[1])) + 0)].notify_all();
+}
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 258
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[2062]); // line circom 258
+}
+for (uint i = 0; i < 4; i++) {
+ctx->componentMemory[ctx_index].mutexes[i].lock();
+ctx->componentMemory[ctx_index].outputIsSet[i]=true;
+ctx->componentMemory[ctx_index].mutexes[i].unlock();
+ctx->componentMemory[ctx_index].cvs[i].notify_all();
+}
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+for (uint i = 0; i < 0; i++){
+uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
+}
+}
+
+void MatrixColumnSum_298_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 298;
+ctx->componentMemory[coffset].templateName = "MatrixColumnSum";
+ctx->componentMemory[coffset].signalStart = soffset;
+ctx->componentMemory[coffset].inputCounter = 37;
+ctx->componentMemory[coffset].componentName = componentName;
+ctx->componentMemory[coffset].idFather = componentFather;
+ctx->componentMemory[coffset].subcomponents = new uint[0];
+ctx->componentMemory[coffset].outputIsSet = new bool[1]();
+ctx->componentMemory[coffset].mutexes = new std::mutex[1];
+ctx->componentMemory[coffset].cvs = new std::condition_variable[1];
+}
+
+void MatrixColumnSum_298_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
+FrElement* circuitConstants = ctx->circuitConstants;
+FrElement* signalValues = ctx->signalValues;
+FrElement expaux[2];
+FrElement lvar[2];
+u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
+std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
+std::string myComponentName = ctx->componentMemory[ctx_index].componentName;
+u64 myFather = ctx->componentMemory[ctx_index].idFather;
+u64 myId = ctx_index;
+u32* mySubcomponents = ctx->componentMemory[ctx_index].subcomponents;
+bool* mySubcomponentsParallel = ctx->componentMemory[ctx_index].subcomponentsParallel;
+std::string* listOfTemplateMessages = ctx->listOfTemplateMessages;
+uint sub_component_aux;
+uint index_multiple_eq;
+int cmp_index_ref_load = -1;
+{
+PFrElement aux_dest = &lvar[0];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[7]);
+}
+{
+PFrElement aux_dest = &signalValues[mySignalStart + 38];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 270
+while(Fr_isTrue(&expaux[0])){
+{
+PFrElement aux_dest = &signalValues[mySignalStart + ((1 * (Fr_toInt(&lvar[1]) + 1)) + 38)];
+// load src
+Fr_add(&expaux[0],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 38)],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 1)]); // line circom 271
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 270
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 270
+}
+{
+{
+PFrElement aux_dest = &signalValues[mySignalStart + 0];
+// load src
+// end load src
+Fr_copy(aux_dest,&signalValues[mySignalStart + 75]);
+ctx->componentMemory[ctx_index].mutexes[0].lock();
+ctx->componentMemory[ctx_index].outputIsSet[0]=true;
+ctx->componentMemory[ctx_index].mutexes[0].unlock();
+ctx->componentMemory[ctx_index].cvs[0].notify_all();
+}
+}
+{
 {{
-Fr_eq(&expaux[0],&expaux[1],&circuitConstants[5]); // line circom 229
+Fr_eq(&expaux[0],&signalValues[mySignalStart + 0],&circuitConstants[3]); // line circom 274
 }}
-if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 229. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
+if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 274. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
 assert(Fr_isTrue(&expaux[0]));
 }
-{
-PFrElement aux_dest = &lvar[2];
-// load src
-Fr_add(&expaux[0],&lvar[2],&circuitConstants[3]); // line circom 227
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
+for (uint i = 0; i < 1; i++) {
+ctx->componentMemory[ctx_index].mutexes[i].lock();
+ctx->componentMemory[ctx_index].outputIsSet[i]=true;
+ctx->componentMemory[ctx_index].mutexes[i].unlock();
+ctx->componentMemory[ctx_index].cvs[i].notify_all();
 }
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 227
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+for (uint i = 0; i < 0; i++){
+uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
+}
+}
+
+void ApplyPermutations_299_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 299;
+ctx->componentMemory[coffset].templateName = "ApplyPermutations";
+ctx->componentMemory[coffset].signalStart = soffset;
+ctx->componentMemory[coffset].inputCounter = 1517;
+ctx->componentMemory[coffset].componentName = componentName;
+ctx->componentMemory[coffset].idFather = componentFather;
+ctx->componentMemory[coffset].subcomponents = new uint[74]{0};
+ctx->componentMemory[coffset].sbct = new std::thread[74];
+ctx->componentMemory[coffset].subcomponentsParallel = new bool[74];
+ctx->componentMemory[coffset].outputIsSet = new bool[148]();
+ctx->componentMemory[coffset].mutexes = new std::mutex[148];
+ctx->componentMemory[coffset].cvs = new std::condition_variable[148];
+}
+
+void ApplyPermutations_299_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
+FrElement* circuitConstants = ctx->circuitConstants;
+FrElement* signalValues = ctx->signalValues;
+FrElement expaux[2];
+FrElement lvar[3];
+u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
+std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
+std::string myComponentName = ctx->componentMemory[ctx_index].componentName;
+u64 myFather = ctx->componentMemory[ctx_index].idFather;
+u64 myId = ctx_index;
+u32* mySubcomponents = ctx->componentMemory[ctx_index].subcomponents;
+bool* mySubcomponentsParallel = ctx->componentMemory[ctx_index].subcomponentsParallel;
+std::string* listOfTemplateMessages = ctx->listOfTemplateMessages;
+uint sub_component_aux;
+uint index_multiple_eq;
+int cmp_index_ref_load = -1;
+{
+PFrElement aux_dest = &lvar[0];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[7]);
+}
+{
+uint aux_create = 0;
+int aux_cmp_num = 37+ctx_index+1;
+uint csoffset = mySignalStart+4477;
+uint aux_dimensions[1] = {37};
+for (uint i = 0; i < 37; i++) {
+std::string new_cmp_name = "rows"+ctx->generate_position_array(aux_dimensions, 1, i);
+PermuteOneRow_297_create_parallel(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+mySubcomponents[aux_create+ i] = aux_cmp_num;
+csoffset += 416 ;
+aux_cmp_num += 1;
+}
+}
+{
+uint aux_create = 37;
+int aux_cmp_num = 0+ctx_index+1;
+uint csoffset = mySignalStart+1665;
+uint aux_dimensions[1] = {37};
+for (uint i = 0; i < 37; i++) {
+std::string new_cmp_name = "cols"+ctx->generate_position_array(aux_dimensions, 1, i);
+MatrixColumnSum_298_create_parallel(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+mySubcomponents[aux_create+ i] = aux_cmp_num;
+csoffset += 76 ;
+aux_cmp_num += 1;
+}
 }
 {
 PFrElement aux_dest = &lvar[1];
 // load src
-Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 226
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 286
+while(Fr_isTrue(&expaux[0])){
+{
+uint cmp_index_ref = ((1 * Fr_toInt(&lvar[1])) + 0);
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 4];
+// load src
+// end load src
+Fr_copyn(aux_dest,&signalValues[mySignalStart + ((37 * Fr_toInt(&lvar[1])) + 148)],37);
+}
+// run sub component if needed
+if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 37)){
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(PermuteOneRow_297_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+
+}
+}
+{
+uint cmp_index_ref = ((1 * Fr_toInt(&lvar[1])) + 0);
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 41];
+// load src
+// end load src
+Fr_copyn(aux_dest,&signalValues[mySignalStart + 1517],148);
+}
+// run sub component if needed
+if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 148)){
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(PermuteOneRow_297_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+
+}
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 286
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 226
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 286
 }
 {
 PFrElement aux_dest = &lvar[1];
@@ -1209825,7 +1210956,7 @@ PFrElement aux_dest = &lvar[1];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 233
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 292
 while(Fr_isTrue(&expaux[0])){
 {
 PFrElement aux_dest = &lvar[2];
@@ -1209833,71 +1210964,73 @@ PFrElement aux_dest = &lvar[2];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[2062]); // line circom 234
+Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 294
 while(Fr_isTrue(&expaux[0])){
 {
-PFrElement aux_dest = &signalValues[mySignalStart + ((((152 * Fr_toInt(&lvar[1])) + 0) + (1 * Fr_toInt(&lvar[2]))) + 5846)];
+uint cmp_index_ref = ((1 * Fr_toInt(&lvar[1])) + 37);
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + ((1 * Fr_toInt(&lvar[2])) + 1)];
 // load src
 // end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
+Fr_copy(aux_dest,&signalValues[mySignalStart + (((37 * Fr_toInt(&lvar[2])) + (1 * Fr_toInt(&lvar[1]))) + 148)]);
+}
+// run sub component if needed
+if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(MatrixColumnSum_298_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+
+}
 }
 {
 PFrElement aux_dest = &lvar[2];
 // load src
-Fr_add(&expaux[0],&lvar[2],&circuitConstants[3]); // line circom 234
+Fr_add(&expaux[0],&lvar[2],&circuitConstants[3]); // line circom 294
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[2062]); // line circom 234
+Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 294
 }
 {
-PFrElement aux_dest = &lvar[2];
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 292
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 292
+}
+{
+PFrElement aux_dest = &lvar[1];
 // load src
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 238
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 299
 while(Fr_isTrue(&expaux[0])){
-{
-PFrElement aux_dest = &lvar[3];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2062]); // line circom 239
-while(Fr_isTrue(&expaux[0])){
-{
-PFrElement aux_dest = &signalValues[mySignalStart + ((((152 * Fr_toInt(&lvar[1])) + (4 * (Fr_toInt(&lvar[2]) + 1))) + (1 * Fr_toInt(&lvar[3]))) + 5846)];
-// load src
-Fr_mul(&expaux[1],&signalValues[mySignalStart + (((4 * Fr_toInt(&lvar[2])) + (1 * Fr_toInt(&lvar[3]))) + 1517)],&signalValues[mySignalStart + (((37 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 148)]); // line circom 240
-Fr_add(&expaux[0],&signalValues[mySignalStart + ((((152 * Fr_toInt(&lvar[1])) + (4 * Fr_toInt(&lvar[2]))) + (1 * Fr_toInt(&lvar[3]))) + 5846)],&expaux[1]); // line circom 240
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-{
-PFrElement aux_dest = &lvar[3];
-// load src
-Fr_add(&expaux[0],&lvar[3],&circuitConstants[3]); // line circom 239
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2062]); // line circom 239
-}
-{
-PFrElement aux_dest = &lvar[2];
-// load src
-Fr_add(&expaux[0],&lvar[2],&circuitConstants[3]); // line circom 238
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 238
-}
 {
 {
 PFrElement aux_dest = &signalValues[mySignalStart + ((4 * Fr_toInt(&lvar[1])) + 0)];
 // load src
+cmp_index_ref_load = ((1 * Fr_toInt(&lvar[1])) + 0);
+cmp_index_ref_load = ((1 * Fr_toInt(&lvar[1])) + 0);
+{
+int aux2 = 0;
+for (int i = 0; i < 4; i++) {
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+std::unique_lock<std::mutex> lk(ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].mutexes[aux2 + i]);
+ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].cvs[aux2 + i].wait(lk, [ctx,mySubcomponents,cmp_index_ref_load,aux2, i]() {return ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].outputIsSet[aux2 + i];});
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+}
 // end load src
-Fr_copyn(aux_dest,&signalValues[mySignalStart + (((152 * Fr_toInt(&lvar[1])) + 148) + 5846)],4);
+Fr_copyn(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * Fr_toInt(&lvar[1])) + 0)]].signalStart + 0],4);
 {
 for (int i = 0; i < 4; i++) {
 ctx->componentMemory[ctx_index].mutexes[((4 * Fr_toInt(&lvar[1])) + 0)+i].lock();
@@ -1209911,11 +1211044,58 @@ ctx->componentMemory[ctx_index].cvs[((4 * Fr_toInt(&lvar[1])) + 0)+i].notify_all
 {
 PFrElement aux_dest = &lvar[1];
 // load src
-Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 233
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 299
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 233
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 299
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 302
+while(Fr_isTrue(&expaux[0])){
+{
+cmp_index_ref_load = ((1 * Fr_toInt(&lvar[1])) + 37);
+cmp_index_ref_load = ((1 * Fr_toInt(&lvar[1])) + 37);
+{
+int aux2 = 0;
+for (int i = 0; i < 1; i++) {
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+std::unique_lock<std::mutex> lk(ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].mutexes[aux2 + i]);
+ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].cvs[aux2 + i].wait(lk, [ctx,mySubcomponents,cmp_index_ref_load,aux2, i]() {return ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].outputIsSet[aux2 + i];});
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+}
+{{
+Fr_eq(&expaux[0],&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * Fr_toInt(&lvar[1])) + 37)]].signalStart + 0],&circuitConstants[3]); // line circom 303
+}}
+if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 303. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
+assert(Fr_isTrue(&expaux[0]));
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 302
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 302
+}
+{
+for (uint i = 0; i < 74; i++) {
+if (ctx->componentMemory[ctx_index].sbct[i].joinable()) {
+ctx->componentMemory[ctx_index].sbct[i].join();
+}
+}
 }
 for (uint i = 0; i < 148; i++) {
 ctx->componentMemory[ctx_index].mutexes[i].lock();
@@ -1209927,14 +1211107,510 @@ ctx->numThreadMutex.lock();
 ctx->numThread--;
 ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
-for (uint i = 0; i < 0; i++){
+for (uint i = 0; i < 74; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void IsZero_298_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 298;
+void RowBitsToNum_300_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 300;
+ctx->componentMemory[coffset].templateName = "RowBitsToNum";
+ctx->componentMemory[coffset].signalStart = soffset;
+ctx->componentMemory[coffset].inputCounter = 37;
+ctx->componentMemory[coffset].componentName = componentName;
+ctx->componentMemory[coffset].idFather = componentFather;
+ctx->componentMemory[coffset].subcomponents = new uint[0];
+ctx->componentMemory[coffset].outputIsSet = new bool[1]();
+ctx->componentMemory[coffset].mutexes = new std::mutex[1];
+ctx->componentMemory[coffset].cvs = new std::condition_variable[1];
+}
+
+void RowBitsToNum_300_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
+FrElement* circuitConstants = ctx->circuitConstants;
+FrElement* signalValues = ctx->signalValues;
+FrElement expaux[3];
+FrElement lvar[2];
+u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
+std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
+std::string myComponentName = ctx->componentMemory[ctx_index].componentName;
+u64 myFather = ctx->componentMemory[ctx_index].idFather;
+u64 myId = ctx_index;
+u32* mySubcomponents = ctx->componentMemory[ctx_index].subcomponents;
+bool* mySubcomponentsParallel = ctx->componentMemory[ctx_index].subcomponentsParallel;
+std::string* listOfTemplateMessages = ctx->listOfTemplateMessages;
+uint sub_component_aux;
+uint index_multiple_eq;
+int cmp_index_ref_load = -1;
+{
+PFrElement aux_dest = &lvar[0];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[7]);
+}
+{
+PFrElement aux_dest = &signalValues[mySignalStart + 38];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 73
+while(Fr_isTrue(&expaux[0])){
+{
+PFrElement aux_dest = &signalValues[mySignalStart + ((1 * (Fr_toInt(&lvar[1]) + 1)) + 38)];
+// load src
+Fr_mul(&expaux[1],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 38)],&circuitConstants[2056]); // line circom 74
+Fr_add(&expaux[0],&expaux[1],&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 1)]); // line circom 74
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 73
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 73
+}
+{
+{
+PFrElement aux_dest = &signalValues[mySignalStart + 0];
+// load src
+// end load src
+Fr_copy(aux_dest,&signalValues[mySignalStart + 75]);
+ctx->componentMemory[ctx_index].mutexes[0].lock();
+ctx->componentMemory[ctx_index].outputIsSet[0]=true;
+ctx->componentMemory[ctx_index].mutexes[0].unlock();
+ctx->componentMemory[ctx_index].cvs[0].notify_all();
+}
+}
+for (uint i = 0; i < 1; i++) {
+ctx->componentMemory[ctx_index].mutexes[i].lock();
+ctx->componentMemory[ctx_index].outputIsSet[i]=true;
+ctx->componentMemory[ctx_index].mutexes[i].unlock();
+ctx->componentMemory[ctx_index].cvs[i].notify_all();
+}
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+for (uint i = 0; i < 0; i++){
+uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
+}
+}
+
+void HashRowValueChunk_301_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 301;
+ctx->componentMemory[coffset].templateName = "HashRowValueChunk";
+ctx->componentMemory[coffset].signalStart = soffset;
+ctx->componentMemory[coffset].inputCounter = 37;
+ctx->componentMemory[coffset].componentName = componentName;
+ctx->componentMemory[coffset].idFather = componentFather;
+ctx->componentMemory[coffset].subcomponents = new uint[5]{0};
+ctx->componentMemory[coffset].sbct = new std::thread[5];
+ctx->componentMemory[coffset].subcomponentsParallel = new bool[5];
+}
+
+void HashRowValueChunk_301_run(uint ctx_index,Circom_CalcWit* ctx){
+FrElement* circuitConstants = ctx->circuitConstants;
+FrElement* signalValues = ctx->signalValues;
+FrElement expaux[2];
+FrElement lvar[6];
+u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
+std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
+std::string myComponentName = ctx->componentMemory[ctx_index].componentName;
+u64 myFather = ctx->componentMemory[ctx_index].idFather;
+u64 myId = ctx_index;
+u32* mySubcomponents = ctx->componentMemory[ctx_index].subcomponents;
+bool* mySubcomponentsParallel = ctx->componentMemory[ctx_index].subcomponentsParallel;
+std::string* listOfTemplateMessages = ctx->listOfTemplateMessages;
+uint sub_component_aux;
+uint index_multiple_eq;
+int cmp_index_ref_load = -1;
+{
+PFrElement aux_dest = &lvar[0];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[7]);
+}
+{
+std::string new_cmp_name = "chunkHashes[0]";
+Poseidon_81_create_parallel(mySignalStart+38,0+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[0] = 0+ctx_index+1;
+}
+{
+std::string new_cmp_name = "chunkHashes[1]";
+Poseidon_81_create_parallel(mySignalStart+2835,252+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[1] = 252+ctx_index+1;
+}
+{
+std::string new_cmp_name = "chunkHashes[2]";
+Poseidon_81_create_parallel(mySignalStart+5632,504+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[2] = 504+ctx_index+1;
+}
+{
+std::string new_cmp_name = "chunkHashes[3]";
+Poseidon_223_create_parallel(mySignalStart+8429,756+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[3] = 756+ctx_index+1;
+}
+{
+std::string new_cmp_name = "finalHash";
+Poseidon_154_create(mySignalStart+9009,902+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[4] = 902+ctx_index+1;
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[4]);
+}
+{
+PFrElement aux_dest = &lvar[2];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[2062]);
+}
+{
+PFrElement aux_dest = &lvar[3];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2062]); // line circom 31
+while(Fr_isTrue(&expaux[0])){
+Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2059]); // line circom 32
+if(Fr_isTrue(&expaux[0])){
+{
+PFrElement aux_dest = &lvar[4];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[4]);
+}
+}else{
+{
+PFrElement aux_dest = &lvar[4];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[3]);
+}
+}
+{
+PFrElement aux_dest = &lvar[5];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[5],&lvar[4]); // line circom 34
+while(Fr_isTrue(&expaux[0])){
+{
+uint cmp_index_ref = ((1 * Fr_toInt(&lvar[3])) + 0);
+{
+uint map_accesses_aux[1];
+{
+IOFieldDef *cur_def = &(ctx->templateInsId2IOSignalInfo[ctx->componentMemory[mySubcomponents[cmp_index_ref]].templateId].defs[1]);
+{
+uint map_index_aux[1];
+map_index_aux[0]=Fr_toInt(&lvar[5]);
+map_accesses_aux[0] = map_index_aux[0]*cur_def->size;
+}
+}
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + ctx->templateInsId2IOSignalInfo[ctx->componentMemory[mySubcomponents[cmp_index_ref]].templateId].defs[1].offset+map_accesses_aux[0]];
+// load src
+// end load src
+Fr_copy(aux_dest,&signalValues[mySignalStart + ((1 * ((Fr_toInt(&lvar[3]) * 12) + Fr_toInt(&lvar[5]))) + 1)]);
+}
+// run sub component if needed
+if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread((*_functionTableParallel[ctx->componentMemory[mySubcomponents[cmp_index_ref]].templateId]),mySubcomponents[cmp_index_ref],ctx);
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+
+}
+}
+}
+{
+PFrElement aux_dest = &lvar[5];
+// load src
+Fr_add(&expaux[0],&lvar[5],&circuitConstants[3]); // line circom 34
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[5],&lvar[4]); // line circom 34
+}
+{
+PFrElement aux_dest = &lvar[3];
+// load src
+Fr_add(&expaux[0],&lvar[3],&circuitConstants[3]); // line circom 31
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2062]); // line circom 31
+}
+{
+PFrElement aux_dest = &lvar[3];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2062]); // line circom 41
+while(Fr_isTrue(&expaux[0])){
+{
+uint cmp_index_ref = 4;
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + ((1 * Fr_toInt(&lvar[3])) + 1)];
+// load src
+cmp_index_ref_load = ((1 * Fr_toInt(&lvar[3])) + 0);
+cmp_index_ref_load = ((1 * Fr_toInt(&lvar[3])) + 0);
+{
+int aux2 = ctx->templateInsId2IOSignalInfo[ctx->componentMemory[mySubcomponents[((1 * Fr_toInt(&lvar[3])) + 0)]].templateId].defs[0].offset;
+for (int i = 0; i < 1; i++) {
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+std::unique_lock<std::mutex> lk(ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].mutexes[aux2 + i]);
+ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].cvs[aux2 + i].wait(lk, [ctx,mySubcomponents,cmp_index_ref_load,aux2, i]() {return ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].outputIsSet[aux2 + i];});
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+}
+// end load src
+Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * Fr_toInt(&lvar[3])) + 0)]].signalStart + ctx->templateInsId2IOSignalInfo[ctx->componentMemory[mySubcomponents[((1 * Fr_toInt(&lvar[3])) + 0)]].templateId].defs[0].offset]);
+}
+// run sub component if needed
+if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
+Poseidon_154_run(mySubcomponents[cmp_index_ref],ctx);
+
+}
+}
+{
+PFrElement aux_dest = &lvar[3];
+// load src
+Fr_add(&expaux[0],&lvar[3],&circuitConstants[3]); // line circom 41
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2062]); // line circom 41
+}
+{
+PFrElement aux_dest = &signalValues[mySignalStart + 0];
+// load src
+cmp_index_ref_load = 4;
+cmp_index_ref_load = 4;
+// end load src
+Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[4]].signalStart + 0]);
+}
+{
+for (uint i = 0; i < 5; i++) {
+if (ctx->componentMemory[ctx_index].sbct[i].joinable()) {
+ctx->componentMemory[ctx_index].sbct[i].join();
+}
+}
+}
+for (uint i = 0; i < 5; i++){
+uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
+}
+}
+
+void HashPermutationMatrix_302_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 302;
+ctx->componentMemory[coffset].templateName = "HashPermutationMatrix";
+ctx->componentMemory[coffset].signalStart = soffset;
+ctx->componentMemory[coffset].inputCounter = 1369;
+ctx->componentMemory[coffset].componentName = componentName;
+ctx->componentMemory[coffset].idFather = componentFather;
+ctx->componentMemory[coffset].subcomponents = new uint[38]{0};
+ctx->componentMemory[coffset].sbct = new std::thread[38];
+ctx->componentMemory[coffset].subcomponentsParallel = new bool[38];
+ctx->componentMemory[coffset].outputIsSet = new bool[1]();
+ctx->componentMemory[coffset].mutexes = new std::mutex[1];
+ctx->componentMemory[coffset].cvs = new std::condition_variable[1];
+}
+
+void HashPermutationMatrix_302_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
+FrElement* circuitConstants = ctx->circuitConstants;
+FrElement* signalValues = ctx->signalValues;
+FrElement expaux[2];
+FrElement lvar[2];
+u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
+std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
+std::string myComponentName = ctx->componentMemory[ctx_index].componentName;
+u64 myFather = ctx->componentMemory[ctx_index].idFather;
+u64 myId = ctx_index;
+u32* mySubcomponents = ctx->componentMemory[ctx_index].subcomponents;
+bool* mySubcomponentsParallel = ctx->componentMemory[ctx_index].subcomponentsParallel;
+std::string* listOfTemplateMessages = ctx->listOfTemplateMessages;
+uint sub_component_aux;
+uint index_multiple_eq;
+int cmp_index_ref_load = -1;
+{
+PFrElement aux_dest = &lvar[0];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[7]);
+}
+{
+uint aux_create = 0;
+int aux_cmp_num = 1081+ctx_index+1;
+uint csoffset = mySignalStart+11546;
+uint aux_dimensions[1] = {37};
+for (uint i = 0; i < 37; i++) {
+std::string new_cmp_name = "rows"+ctx->generate_position_array(aux_dimensions, 1, i);
+RowBitsToNum_300_create_parallel(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+mySubcomponents[aux_create+ i] = aux_cmp_num;
+csoffset += 76 ;
+aux_cmp_num += 1;
+}
+}
+{
+std::string new_cmp_name = "rowHasher";
+HashRowValueChunk_301_create(mySignalStart+1370,0+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[37] = 0+ctx_index+1;
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 87
+while(Fr_isTrue(&expaux[0])){
+{
+uint cmp_index_ref = ((1 * Fr_toInt(&lvar[1])) + 0);
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 1];
+// load src
+// end load src
+Fr_copyn(aux_dest,&signalValues[mySignalStart + ((37 * Fr_toInt(&lvar[1])) + 1)],37);
+}
+// run sub component if needed
+if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 37)){
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(RowBitsToNum_300_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+
+}
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 87
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 87
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 93
+while(Fr_isTrue(&expaux[0])){
+{
+uint cmp_index_ref = 37;
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + ((1 * Fr_toInt(&lvar[1])) + 1)];
+// load src
+cmp_index_ref_load = ((1 * Fr_toInt(&lvar[1])) + 0);
+cmp_index_ref_load = ((1 * Fr_toInt(&lvar[1])) + 0);
+{
+int aux2 = 0;
+for (int i = 0; i < 1; i++) {
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+std::unique_lock<std::mutex> lk(ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].mutexes[aux2 + i]);
+ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].cvs[aux2 + i].wait(lk, [ctx,mySubcomponents,cmp_index_ref_load,aux2, i]() {return ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].outputIsSet[aux2 + i];});
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+}
+// end load src
+Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * Fr_toInt(&lvar[1])) + 0)]].signalStart + 0]);
+}
+// run sub component if needed
+if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
+HashRowValueChunk_301_run(mySubcomponents[cmp_index_ref],ctx);
+
+}
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 93
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 93
+}
+{
+{
+PFrElement aux_dest = &signalValues[mySignalStart + 0];
+// load src
+cmp_index_ref_load = 37;
+cmp_index_ref_load = 37;
+// end load src
+Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[37]].signalStart + 0]);
+ctx->componentMemory[ctx_index].mutexes[0].lock();
+ctx->componentMemory[ctx_index].outputIsSet[0]=true;
+ctx->componentMemory[ctx_index].mutexes[0].unlock();
+ctx->componentMemory[ctx_index].cvs[0].notify_all();
+}
+}
+{
+for (uint i = 0; i < 38; i++) {
+if (ctx->componentMemory[ctx_index].sbct[i].joinable()) {
+ctx->componentMemory[ctx_index].sbct[i].join();
+}
+}
+}
+for (uint i = 0; i < 1; i++) {
+ctx->componentMemory[ctx_index].mutexes[i].lock();
+ctx->componentMemory[ctx_index].outputIsSet[i]=true;
+ctx->componentMemory[ctx_index].mutexes[i].unlock();
+ctx->componentMemory[ctx_index].cvs[i].notify_all();
+}
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+for (uint i = 0; i < 38; i++){
+uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
+}
+}
+
+void IsZero_303_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 303;
 ctx->componentMemory[coffset].templateName = "IsZero";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 1;
@@ -1209943,7 +1211619,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[0];
 }
 
-void IsZero_298_run(uint ctx_index,Circom_CalcWit* ctx){
+void IsZero_303_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[3];
@@ -1209995,12 +1211671,15 @@ assert(Fr_isTrue(&expaux[0]));
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void Num2Bits_299_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 299;
+void Num2Bits_304_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 304;
 ctx->componentMemory[coffset].templateName = "Num2Bits";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 1;
@@ -1210009,7 +1211688,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[0];
 }
 
-void Num2Bits_299_run(uint ctx_index,Circom_CalcWit* ctx){
+void Num2Bits_304_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[4];
@@ -1210101,12 +1211780,15 @@ assert(Fr_isTrue(&expaux[0]));
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void Edwards2Montgomery_300_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 300;
+void Edwards2Montgomery_305_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 305;
 ctx->componentMemory[coffset].templateName = "Edwards2Montgomery";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 2;
@@ -1210115,7 +1211797,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[0];
 }
 
-void Edwards2Montgomery_300_run(uint ctx_index,Circom_CalcWit* ctx){
+void Edwards2Montgomery_305_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[4];
@@ -1210167,12 +1211849,15 @@ assert(Fr_isTrue(&expaux[0]));
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void MontgomeryDouble_301_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 301;
+void MontgomeryDouble_306_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 306;
 ctx->componentMemory[coffset].templateName = "MontgomeryDouble";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 2;
@@ -1210181,7 +1211866,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[0];
 }
 
-void MontgomeryDouble_301_run(uint ctx_index,Circom_CalcWit* ctx){
+void MontgomeryDouble_306_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[7];
@@ -1210275,12 +1211960,15 @@ Fr_copy(aux_dest,&expaux[0]);
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void MultiMux3_302_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 302;
+void MultiMux3_307_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 307;
 ctx->componentMemory[coffset].templateName = "MultiMux3";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 19;
@@ -1210289,7 +1211977,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[0];
 }
 
-void MultiMux3_302_run(uint ctx_index,Circom_CalcWit* ctx){
+void MultiMux3_307_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[8];
@@ -1210424,12 +1212112,15 @@ Fr_lt(&expaux[0],&lvar[1],&circuitConstants[2056]); // line circom 40
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void MontgomeryAdd_303_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 303;
+void MontgomeryAdd_308_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 308;
 ctx->componentMemory[coffset].templateName = "MontgomeryAdd";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 4;
@@ -1210438,7 +1212129,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[0];
 }
 
-void MontgomeryAdd_303_run(uint ctx_index,Circom_CalcWit* ctx){
+void MontgomeryAdd_308_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[6];
@@ -1210519,12 +1212210,15 @@ Fr_copy(aux_dest,&expaux[0]);
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void WindowMulFix_304_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 304;
+void WindowMulFix_309_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 309;
 ctx->componentMemory[coffset].templateName = "WindowMulFix";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 5;
@@ -1210533,7 +1212227,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[8]{0};
 }
 
-void WindowMulFix_304_run(uint ctx_index,Circom_CalcWit* ctx){
+void WindowMulFix_309_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[1];
@@ -1210551,42 +1212245,42 @@ uint index_multiple_eq;
 int cmp_index_ref_load = -1;
 {
 std::string new_cmp_name = "mux";
-MultiMux3_302_create(mySignalStart+57,7+ctx_index+1,ctx,new_cmp_name,myId);
+MultiMux3_307_create(mySignalStart+57,7+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[0] = 7+ctx_index+1;
 }
 {
 std::string new_cmp_name = "dbl2";
-MontgomeryDouble_301_create(mySignalStart+51,6+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryDouble_306_create(mySignalStart+51,6+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[1] = 6+ctx_index+1;
 }
 {
 std::string new_cmp_name = "adr3";
-MontgomeryAdd_303_create(mySignalStart+9,0+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(mySignalStart+9,0+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[2] = 0+ctx_index+1;
 }
 {
 std::string new_cmp_name = "adr4";
-MontgomeryAdd_303_create(mySignalStart+16,1+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(mySignalStart+16,1+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[3] = 1+ctx_index+1;
 }
 {
 std::string new_cmp_name = "adr5";
-MontgomeryAdd_303_create(mySignalStart+23,2+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(mySignalStart+23,2+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[4] = 2+ctx_index+1;
 }
 {
 std::string new_cmp_name = "adr6";
-MontgomeryAdd_303_create(mySignalStart+30,3+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(mySignalStart+30,3+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[5] = 3+ctx_index+1;
 }
 {
 std::string new_cmp_name = "adr7";
-MontgomeryAdd_303_create(mySignalStart+37,4+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(mySignalStart+37,4+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[6] = 4+ctx_index+1;
 }
 {
 std::string new_cmp_name = "adr8";
-MontgomeryAdd_303_create(mySignalStart+44,5+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(mySignalStart+44,5+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[7] = 5+ctx_index+1;
 }
 {
@@ -1210672,7 +1212366,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 8]);
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-MontgomeryDouble_301_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryDouble_306_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 0;
@@ -1210753,7 +1212447,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].sig
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 0;
@@ -1210834,7 +1212528,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[2]].sig
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 0;
@@ -1210915,7 +1212609,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[3]].sig
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 0;
@@ -1210996,7 +1212690,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[4]].sig
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 0;
@@ -1211077,7 +1212771,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[5]].sig
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 0;
@@ -1211158,7 +1212852,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[6]].sig
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 0;
@@ -1211187,7 +1212881,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[7]].sig
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-MultiMux3_302_run(mySubcomponents[cmp_index_ref],ctx);
+MultiMux3_307_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 PFrElement aux_dest = &signalValues[mySignalStart + 2];
@@ -1211223,12 +1212917,15 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 for (uint i = 0; i < 8; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void Montgomery2Edwards_305_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 305;
+void Montgomery2Edwards_310_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 310;
 ctx->componentMemory[coffset].templateName = "Montgomery2Edwards";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 2;
@@ -1211237,7 +1212934,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[0];
 }
 
-void Montgomery2Edwards_305_run(uint ctx_index,Circom_CalcWit* ctx){
+void Montgomery2Edwards_310_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[4];
@@ -1211289,12 +1212986,15 @@ assert(Fr_isTrue(&expaux[0]));
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void SegmentMulFix_306_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 306;
+void SegmentMulFix_311_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 311;
 ctx->componentMemory[coffset].templateName = "SegmentMulFix";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 251;
@@ -1211303,7 +1213003,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[254]{0};
 }
 
-void SegmentMulFix_306_run(uint ctx_index,Circom_CalcWit* ctx){
+void SegmentMulFix_311_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[2];
@@ -1211327,7 +1213027,7 @@ Fr_copy(aux_dest,&circuitConstants[2254]);
 }
 {
 std::string new_cmp_name = "e2m";
-Edwards2Montgomery_300_create(mySignalStart+1437,169+ctx_index+1,ctx,new_cmp_name,myId);
+Edwards2Montgomery_305_create(mySignalStart+1437,169+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[0] = 169+ctx_index+1;
 }
 {
@@ -1211337,7 +1213037,7 @@ uint csoffset = mySignalStart+1445;
 uint aux_dimensions[1] = {83};
 for (uint i = 0; i < 83; i++) {
 std::string new_cmp_name = "windows"+ctx->generate_position_array(aux_dimensions, 1, i);
-WindowMulFix_304_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+WindowMulFix_309_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
 mySubcomponents[aux_create+ i] = aux_cmp_num;
 csoffset += 95 ;
 aux_cmp_num += 9;
@@ -1211350,7 +1213050,7 @@ uint csoffset = mySignalStart+255;
 uint aux_dimensions[1] = {83};
 for (uint i = 0; i < 83; i++) {
 std::string new_cmp_name = "adders"+ctx->generate_position_array(aux_dimensions, 1, i);
-MontgomeryAdd_303_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
 mySubcomponents[aux_create+ i] = aux_cmp_num;
 csoffset += 7 ;
 aux_cmp_num += 1;
@@ -1211363,7 +1213063,7 @@ uint csoffset = mySignalStart+846;
 uint aux_dimensions[1] = {83};
 for (uint i = 0; i < 83; i++) {
 std::string new_cmp_name = "cadders"+ctx->generate_position_array(aux_dimensions, 1, i);
-MontgomeryAdd_303_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
 mySubcomponents[aux_create+ i] = aux_cmp_num;
 csoffset += 7 ;
 aux_cmp_num += 1;
@@ -1211371,17 +1213071,17 @@ aux_cmp_num += 1;
 }
 {
 std::string new_cmp_name = "dblLast";
-MontgomeryDouble_301_create(mySignalStart+1431,168+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryDouble_306_create(mySignalStart+1431,168+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[250] = 168+ctx_index+1;
 }
 {
 std::string new_cmp_name = "m2e";
-Montgomery2Edwards_305_create(mySignalStart+1441,170+ctx_index+1,ctx,new_cmp_name,myId);
+Montgomery2Edwards_310_create(mySignalStart+1441,170+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[251] = 170+ctx_index+1;
 }
 {
 std::string new_cmp_name = "cm2e";
-Montgomery2Edwards_305_create(mySignalStart+1427,167+ctx_index+1,ctx,new_cmp_name,myId);
+Montgomery2Edwards_310_create(mySignalStart+1427,167+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[252] = 167+ctx_index+1;
 }
 {
@@ -1211424,7 +1213124,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 254]);
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Edwards2Montgomery_300_run(mySubcomponents[cmp_index_ref],ctx);
+Edwards2Montgomery_305_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 PFrElement aux_dest = &lvar[1];
@@ -1211450,7 +1213150,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-WindowMulFix_304_run(mySubcomponents[cmp_index_ref],ctx);
+WindowMulFix_309_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211466,7 +1213166,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-WindowMulFix_304_run(mySubcomponents[cmp_index_ref],ctx);
+WindowMulFix_309_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211482,7 +1213182,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211498,7 +1213198,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211516,7 +1213216,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-WindowMulFix_304_run(mySubcomponents[cmp_index_ref],ctx);
+WindowMulFix_309_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211533,7 +1213233,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-WindowMulFix_304_run(mySubcomponents[cmp_index_ref],ctx);
+WindowMulFix_309_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211550,7 +1213250,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211567,7 +1213267,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211590,7 +1213290,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + ((1 * ((3 * Fr_toInt(&lvar[1])) +
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-WindowMulFix_304_run(mySubcomponents[cmp_index_ref],ctx);
+WindowMulFix_309_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211617,7 +1213317,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211633,7 +1213333,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211648,11 +1213348,9 @@ cmp_index_ref_load = 83;
 // end load src
 Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[83]].signalStart + 2]);
 }
-// run sub component if needed
-if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryDouble_301_run(mySubcomponents[cmp_index_ref],ctx);
-
-}
+// no need to run sub component
+ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
+assert(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter > 0);
 }
 {
 uint cmp_index_ref = 250;
@@ -1211666,7 +1213364,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[83]].si
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryDouble_301_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryDouble_306_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211682,7 +1213380,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[250]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211698,7 +1213396,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[250]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211736,7 +1213434,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[250]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211752,7 +1213450,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[250]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211770,7 +1213468,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211787,7 +1213485,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211804,7 +1213502,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211820,7 +1213518,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1211860,7 +1213558,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[166]].s
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Montgomery2Edwards_305_run(mySubcomponents[cmp_index_ref],ctx);
+Montgomery2Edwards_310_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 252;
@@ -1211889,7 +1213587,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[249]].s
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Montgomery2Edwards_305_run(mySubcomponents[cmp_index_ref],ctx);
+Montgomery2Edwards_310_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 253;
@@ -1211983,12 +1213681,15 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[83]].si
 }
 for (uint i = 0; i < 254; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void SegmentMulFix_307_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 307;
+void SegmentMulFix_312_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 312;
 ctx->componentMemory[coffset].templateName = "SegmentMulFix";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 8;
@@ -1211997,7 +1213698,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[11]{0};
 }
 
-void SegmentMulFix_307_run(uint ctx_index,Circom_CalcWit* ctx){
+void SegmentMulFix_312_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[2];
@@ -1212021,7 +1213722,7 @@ Fr_copy(aux_dest,&circuitConstants[2056]);
 }
 {
 std::string new_cmp_name = "e2m";
-Edwards2Montgomery_300_create(mySignalStart+60,7+ctx_index+1,ctx,new_cmp_name,myId);
+Edwards2Montgomery_305_create(mySignalStart+60,7+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[0] = 7+ctx_index+1;
 }
 {
@@ -1212031,7 +1213732,7 @@ uint csoffset = mySignalStart+68;
 uint aux_dimensions[1] = {2};
 for (uint i = 0; i < 2; i++) {
 std::string new_cmp_name = "windows"+ctx->generate_position_array(aux_dimensions, 1, i);
-WindowMulFix_304_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+WindowMulFix_309_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
 mySubcomponents[aux_create+ i] = aux_cmp_num;
 csoffset += 95 ;
 aux_cmp_num += 9;
@@ -1212044,7 +1213745,7 @@ uint csoffset = mySignalStart+12;
 uint aux_dimensions[1] = {2};
 for (uint i = 0; i < 2; i++) {
 std::string new_cmp_name = "adders"+ctx->generate_position_array(aux_dimensions, 1, i);
-MontgomeryAdd_303_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
 mySubcomponents[aux_create+ i] = aux_cmp_num;
 csoffset += 7 ;
 aux_cmp_num += 1;
@@ -1212057,7 +1213758,7 @@ uint csoffset = mySignalStart+36;
 uint aux_dimensions[1] = {2};
 for (uint i = 0; i < 2; i++) {
 std::string new_cmp_name = "cadders"+ctx->generate_position_array(aux_dimensions, 1, i);
-MontgomeryAdd_303_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
 mySubcomponents[aux_create+ i] = aux_cmp_num;
 csoffset += 7 ;
 aux_cmp_num += 1;
@@ -1212065,17 +1213766,17 @@ aux_cmp_num += 1;
 }
 {
 std::string new_cmp_name = "dblLast";
-MontgomeryDouble_301_create(mySignalStart+54,6+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryDouble_306_create(mySignalStart+54,6+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[7] = 6+ctx_index+1;
 }
 {
 std::string new_cmp_name = "m2e";
-Montgomery2Edwards_305_create(mySignalStart+64,8+ctx_index+1,ctx,new_cmp_name,myId);
+Montgomery2Edwards_310_create(mySignalStart+64,8+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[8] = 8+ctx_index+1;
 }
 {
 std::string new_cmp_name = "cm2e";
-Montgomery2Edwards_305_create(mySignalStart+50,5+ctx_index+1,ctx,new_cmp_name,myId);
+Montgomery2Edwards_310_create(mySignalStart+50,5+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[9] = 5+ctx_index+1;
 }
 {
@@ -1212118,7 +1213819,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 11]);
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Edwards2Montgomery_300_run(mySubcomponents[cmp_index_ref],ctx);
+Edwards2Montgomery_305_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 PFrElement aux_dest = &lvar[1];
@@ -1212144,7 +1213845,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-WindowMulFix_304_run(mySubcomponents[cmp_index_ref],ctx);
+WindowMulFix_309_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212160,7 +1213861,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-WindowMulFix_304_run(mySubcomponents[cmp_index_ref],ctx);
+WindowMulFix_309_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212176,7 +1213877,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212192,7 +1213893,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212209,7 +1213910,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-WindowMulFix_304_run(mySubcomponents[cmp_index_ref],ctx);
+WindowMulFix_309_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212225,7 +1213926,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-WindowMulFix_304_run(mySubcomponents[cmp_index_ref],ctx);
+WindowMulFix_309_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212241,7 +1213942,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[5]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212257,7 +1213958,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[5]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212280,7 +1213981,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + ((1 * ((3 * Fr_toInt(&lvar[1])) +
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-WindowMulFix_304_run(mySubcomponents[cmp_index_ref],ctx);
+WindowMulFix_309_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212307,7 +1214008,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212323,7 +1214024,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212338,11 +1214039,9 @@ cmp_index_ref_load = 2;
 // end load src
 Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[2]].signalStart + 2]);
 }
-// run sub component if needed
-if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryDouble_301_run(mySubcomponents[cmp_index_ref],ctx);
-
-}
+// no need to run sub component
+ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
+assert(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter > 0);
 }
 {
 uint cmp_index_ref = 7;
@@ -1212356,7 +1214055,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[2]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryDouble_301_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryDouble_306_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212372,7 +1214071,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[7]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212388,7 +1214087,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[7]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212426,7 +1214125,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[7]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212442,7 +1214141,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[7]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212459,7 +1214158,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[3]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212475,7 +1214174,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[3]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212492,7 +1214191,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212508,7 +1214207,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212548,7 +1214247,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[4]].sig
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Montgomery2Edwards_305_run(mySubcomponents[cmp_index_ref],ctx);
+Montgomery2Edwards_310_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 9;
@@ -1212577,7 +1214276,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[6]].sig
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Montgomery2Edwards_305_run(mySubcomponents[cmp_index_ref],ctx);
+Montgomery2Edwards_310_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 10;
@@ -1212671,21 +1214370,27 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[2]].sig
 }
 for (uint i = 0; i < 11; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void EscalarMulFix_308_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 308;
+void EscalarMulFix_313_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 313;
 ctx->componentMemory[coffset].templateName = "EscalarMulFix";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 253;
 ctx->componentMemory[coffset].componentName = componentName;
 ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[4]{0};
+ctx->componentMemory[coffset].outputIsSet = new bool[2]();
+ctx->componentMemory[coffset].mutexes = new std::mutex[2];
+ctx->componentMemory[coffset].cvs = new std::condition_variable[2];
 }
 
-void EscalarMulFix_308_run(uint ctx_index,Circom_CalcWit* ctx){
+void EscalarMulFix_313_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[4];
@@ -1212721,17 +1214426,17 @@ Fr_copy(aux_dest,&circuitConstants[2407]);
 }
 {
 std::string new_cmp_name = "segments[0]";
-SegmentMulFix_306_create(mySignalStart+269,2+ctx_index+1,ctx,new_cmp_name,myId);
+SegmentMulFix_311_create(mySignalStart+269,2+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[0] = 2+ctx_index+1;
 }
 {
 std::string new_cmp_name = "segments[1]";
-SegmentMulFix_307_create(mySignalStart+9599,921+ctx_index+1,ctx,new_cmp_name,myId);
+SegmentMulFix_312_create(mySignalStart+9599,921+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[1] = 921+ctx_index+1;
 }
 {
 std::string new_cmp_name = "m2e";
-Montgomery2Edwards_305_create(mySignalStart+265,1+ctx_index+1,ctx,new_cmp_name,myId);
+Montgomery2Edwards_310_create(mySignalStart+265,1+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[2] = 1+ctx_index+1;
 }
 {
@@ -1212963,7 +1214668,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-Montgomery2Edwards_305_run(mySubcomponents[cmp_index_ref],ctx);
+Montgomery2Edwards_310_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1212979,7 +1214684,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-Montgomery2Edwards_305_run(mySubcomponents[cmp_index_ref],ctx);
+Montgomery2Edwards_310_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213112,13 +1214817,20 @@ Fr_copy(aux_dest,&expaux[0]);
 Fr_lt(&expaux[0],&lvar[5],&circuitConstants[2056]); // line circom 252
 }
 {
+{
 PFrElement aux_dest = &signalValues[mySignalStart + 0];
 // load src
 cmp_index_ref_load = 3;
 cmp_index_ref_load = 3;
 // end load src
 Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[3]].signalStart + 0]);
+ctx->componentMemory[ctx_index].mutexes[0].lock();
+ctx->componentMemory[ctx_index].outputIsSet[0]=true;
+ctx->componentMemory[ctx_index].mutexes[0].unlock();
+ctx->componentMemory[ctx_index].cvs[0].notify_all();
 }
+}
+{
 {
 PFrElement aux_dest = &signalValues[mySignalStart + 1];
 // load src
@@ -1213126,15 +1214838,33 @@ cmp_index_ref_load = 3;
 cmp_index_ref_load = 3;
 // end load src
 Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[3]].signalStart + 1]);
+ctx->componentMemory[ctx_index].mutexes[1].lock();
+ctx->componentMemory[ctx_index].outputIsSet[1]=true;
+ctx->componentMemory[ctx_index].mutexes[1].unlock();
+ctx->componentMemory[ctx_index].cvs[1].notify_all();
 }
+}
+for (uint i = 0; i < 2; i++) {
+ctx->componentMemory[ctx_index].mutexes[i].lock();
+ctx->componentMemory[ctx_index].outputIsSet[i]=true;
+ctx->componentMemory[ctx_index].mutexes[i].unlock();
+ctx->componentMemory[ctx_index].cvs[i].notify_all();
+}
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
 for (uint i = 0; i < 4; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void Multiplexor2_309_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 309;
+void Multiplexor2_314_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 314;
 ctx->componentMemory[coffset].templateName = "Multiplexor2";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 5;
@@ -1213143,7 +1214873,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[0];
 }
 
-void Multiplexor2_309_run(uint ctx_index,Circom_CalcWit* ctx){
+void Multiplexor2_314_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[3];
@@ -1213179,12 +1214909,15 @@ Fr_copy(aux_dest,&expaux[0]);
 }
 for (uint i = 0; i < 0; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void BitElementMulAny_310_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 310;
+void BitElementMulAny_315_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 315;
 ctx->componentMemory[coffset].templateName = "BitElementMulAny";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 5;
@@ -1213193,7 +1214926,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[3]{0};
 }
 
-void BitElementMulAny_310_run(uint ctx_index,Circom_CalcWit* ctx){
+void BitElementMulAny_315_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[1];
@@ -1213211,17 +1214944,17 @@ uint index_multiple_eq;
 int cmp_index_ref_load = -1;
 {
 std::string new_cmp_name = "doubler";
-MontgomeryDouble_301_create(mySignalStart+16,1+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryDouble_306_create(mySignalStart+16,1+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[0] = 1+ctx_index+1;
 }
 {
 std::string new_cmp_name = "adder";
-MontgomeryAdd_303_create(mySignalStart+9,0+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryAdd_308_create(mySignalStart+9,0+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[1] = 0+ctx_index+1;
 }
 {
 std::string new_cmp_name = "selector";
-Multiplexor2_309_create(mySignalStart+22,2+ctx_index+1,ctx,new_cmp_name,myId);
+Multiplexor2_314_create(mySignalStart+22,2+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[2] = 2+ctx_index+1;
 }
 {
@@ -1213259,7 +1214992,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 6]);
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-MontgomeryDouble_301_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryDouble_306_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 1;
@@ -1213312,7 +1215045,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 8]);
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-MontgomeryAdd_303_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryAdd_308_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 2;
@@ -1213365,7 +1215098,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].sig
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Multiplexor2_309_run(mySubcomponents[cmp_index_ref],ctx);
+Multiplexor2_314_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 PFrElement aux_dest = &signalValues[mySignalStart + 0];
@@ -1213401,12 +1215134,15 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[2]].sig
 }
 for (uint i = 0; i < 3; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void SegmentMulAny_311_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 311;
+void SegmentMulAny_316_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 316;
 ctx->componentMemory[coffset].templateName = "SegmentMulAny";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 150;
@@ -1213415,7 +1215151,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[151]{0};
 }
 
-void SegmentMulAny_311_run(uint ctx_index,Circom_CalcWit* ctx){
+void SegmentMulAny_316_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[2];
@@ -1213444,7 +1215180,7 @@ uint csoffset = mySignalStart+154;
 uint aux_dimensions[1] = {147};
 for (uint i = 0; i < 147; i++) {
 std::string new_cmp_name = "bits"+ctx->generate_position_array(aux_dimensions, 1, i);
-BitElementMulAny_310_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+BitElementMulAny_315_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
 mySubcomponents[aux_create+ i] = aux_cmp_num;
 csoffset += 29 ;
 aux_cmp_num += 4;
@@ -1213452,12 +1215188,12 @@ aux_cmp_num += 4;
 }
 {
 std::string new_cmp_name = "e2m";
-Edwards2Montgomery_300_create(mySignalStart+4417,588+ctx_index+1,ctx,new_cmp_name,myId);
+Edwards2Montgomery_305_create(mySignalStart+4417,588+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[147] = 588+ctx_index+1;
 }
 {
 std::string new_cmp_name = "m2e";
-Montgomery2Edwards_305_create(mySignalStart+4438,591+ctx_index+1,ctx,new_cmp_name,myId);
+Montgomery2Edwards_310_create(mySignalStart+4438,591+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[148] = 591+ctx_index+1;
 }
 {
@@ -1213467,7 +1215203,7 @@ mySubcomponents[149] = 589+ctx_index+1;
 }
 {
 std::string new_cmp_name = "lastSel";
-Multiplexor2_309_create(mySignalStart+4431,590+ctx_index+1,ctx,new_cmp_name,myId);
+Multiplexor2_314_create(mySignalStart+4431,590+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[150] = 590+ctx_index+1;
 }
 {
@@ -1213493,7 +1215229,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 153]);
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Edwards2Montgomery_300_run(mySubcomponents[cmp_index_ref],ctx);
+Edwards2Montgomery_305_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 PFrElement aux_dest = &lvar[1];
@@ -1213513,7 +1215249,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[147]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213529,7 +1215265,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[147]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213545,7 +1215281,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[147]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213561,7 +1215297,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[147]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213575,7 +1215311,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 5]);
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213600,7 +1215336,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213617,7 +1215353,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213634,7 +1215370,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213651,7 +1215387,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213665,7 +1215401,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + ((1 * (Fr_toInt(&lvar[1]) + 1)) +
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213721,7 +1215457,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[146]].s
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Montgomery2Edwards_305_run(mySubcomponents[cmp_index_ref],ctx);
+Montgomery2Edwards_310_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 149;
@@ -1213844,7 +1215580,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[148]].s
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Multiplexor2_309_run(mySubcomponents[cmp_index_ref],ctx);
+Multiplexor2_314_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 PFrElement aux_dest = &signalValues[mySignalStart + 0];
@@ -1213864,12 +1215600,15 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[150]].s
 }
 for (uint i = 0; i < 151; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void SegmentMulAny_312_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 312;
+void SegmentMulAny_317_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 317;
 ctx->componentMemory[coffset].templateName = "SegmentMulAny";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 107;
@@ -1213878,7 +1215617,7 @@ ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[108]{0};
 }
 
-void SegmentMulAny_312_run(uint ctx_index,Circom_CalcWit* ctx){
+void SegmentMulAny_317_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[2];
@@ -1213907,7 +1215646,7 @@ uint csoffset = mySignalStart+111;
 uint aux_dimensions[1] = {104};
 for (uint i = 0; i < 104; i++) {
 std::string new_cmp_name = "bits"+ctx->generate_position_array(aux_dimensions, 1, i);
-BitElementMulAny_310_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+BitElementMulAny_315_create(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
 mySubcomponents[aux_create+ i] = aux_cmp_num;
 csoffset += 29 ;
 aux_cmp_num += 4;
@@ -1213915,12 +1215654,12 @@ aux_cmp_num += 4;
 }
 {
 std::string new_cmp_name = "e2m";
-Edwards2Montgomery_300_create(mySignalStart+3127,416+ctx_index+1,ctx,new_cmp_name,myId);
+Edwards2Montgomery_305_create(mySignalStart+3127,416+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[104] = 416+ctx_index+1;
 }
 {
 std::string new_cmp_name = "m2e";
-Montgomery2Edwards_305_create(mySignalStart+3148,419+ctx_index+1,ctx,new_cmp_name,myId);
+Montgomery2Edwards_310_create(mySignalStart+3148,419+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[105] = 419+ctx_index+1;
 }
 {
@@ -1213930,7 +1215669,7 @@ mySubcomponents[106] = 417+ctx_index+1;
 }
 {
 std::string new_cmp_name = "lastSel";
-Multiplexor2_309_create(mySignalStart+3141,418+ctx_index+1,ctx,new_cmp_name,myId);
+Multiplexor2_314_create(mySignalStart+3141,418+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[107] = 418+ctx_index+1;
 }
 {
@@ -1213956,7 +1215695,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 110]);
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Edwards2Montgomery_300_run(mySubcomponents[cmp_index_ref],ctx);
+Edwards2Montgomery_305_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 PFrElement aux_dest = &lvar[1];
@@ -1213976,7 +1215715,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[104]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1213992,7 +1215731,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[104]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214008,7 +1215747,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[104]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214024,7 +1215763,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[104]].s
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214038,7 +1215777,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 5]);
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214063,7 +1215802,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214080,7 +1215819,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214097,7 +1215836,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214114,7 +1215853,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * F
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214128,7 +1215867,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + ((1 * (Fr_toInt(&lvar[1]) + 1)) +
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-BitElementMulAny_310_run(mySubcomponents[cmp_index_ref],ctx);
+BitElementMulAny_315_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214184,7 +1215923,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[103]].s
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Montgomery2Edwards_305_run(mySubcomponents[cmp_index_ref],ctx);
+Montgomery2Edwards_310_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 106;
@@ -1214307,7 +1216046,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[105]].s
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Multiplexor2_309_run(mySubcomponents[cmp_index_ref],ctx);
+Multiplexor2_314_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 PFrElement aux_dest = &signalValues[mySignalStart + 0];
@@ -1214327,21 +1216066,27 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[107]].s
 }
 for (uint i = 0; i < 108; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void EscalarMulAny_313_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 313;
+void EscalarMulAny_318_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 318;
 ctx->componentMemory[coffset].templateName = "EscalarMulAny";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 255;
 ctx->componentMemory[coffset].componentName = componentName;
 ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[6]{0};
+ctx->componentMemory[coffset].outputIsSet = new bool[2]();
+ctx->componentMemory[coffset].mutexes = new std::mutex[2];
+ctx->componentMemory[coffset].cvs = new std::condition_variable[2];
 }
 
-void EscalarMulAny_313_run(uint ctx_index,Circom_CalcWit* ctx){
+void EscalarMulAny_318_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[4];
@@ -1214365,22 +1216110,22 @@ Fr_copy(aux_dest,&circuitConstants[2407]);
 }
 {
 std::string new_cmp_name = "segments[0]";
-SegmentMulAny_311_create(mySignalStart+277,3+ctx_index+1,ctx,new_cmp_name,myId);
+SegmentMulAny_316_create(mySignalStart+277,3+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[0] = 3+ctx_index+1;
 }
 {
 std::string new_cmp_name = "segments[1]";
-SegmentMulAny_312_create(mySignalStart+4719,596+ctx_index+1,ctx,new_cmp_name,myId);
+SegmentMulAny_317_create(mySignalStart+4719,596+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[1] = 596+ctx_index+1;
 }
 {
 std::string new_cmp_name = "doublers";
-MontgomeryDouble_301_create(mySignalStart+267,1+ctx_index+1,ctx,new_cmp_name,myId);
+MontgomeryDouble_306_create(mySignalStart+267,1+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[2] = 1+ctx_index+1;
 }
 {
 std::string new_cmp_name = "m2e";
-Montgomery2Edwards_305_create(mySignalStart+273,2+ctx_index+1,ctx,new_cmp_name,myId);
+Montgomery2Edwards_310_create(mySignalStart+273,2+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[3] = 2+ctx_index+1;
 }
 {
@@ -1214390,7 +1216135,7 @@ mySubcomponents[4] = 0+ctx_index+1;
 }
 {
 std::string new_cmp_name = "zeropoint";
-IsZero_298_create(mySignalStart+7871,1017+ctx_index+1,ctx,new_cmp_name,myId);
+IsZero_303_create(mySignalStart+7871,1017+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[5] = 1017+ctx_index+1;
 }
 {
@@ -1214416,7 +1216161,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 255]);
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-IsZero_298_run(mySubcomponents[cmp_index_ref],ctx);
+IsZero_303_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 PFrElement aux_dest = &lvar[3];
@@ -1214581,7 +1216326,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryDouble_301_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryDouble_306_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214597,7 +1216342,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-MontgomeryDouble_301_run(mySubcomponents[cmp_index_ref],ctx);
+MontgomeryDouble_306_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214613,7 +1216358,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[2]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-Montgomery2Edwards_305_run(mySubcomponents[cmp_index_ref],ctx);
+Montgomery2Edwards_310_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214629,7 +1216374,7 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[2]].sig
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-Montgomery2Edwards_305_run(mySubcomponents[cmp_index_ref],ctx);
+Montgomery2Edwards_310_run(mySubcomponents[cmp_index_ref],ctx);
 
 }
 }
@@ -1214762,6 +1216507,7 @@ Fr_copy(aux_dest,&expaux[0]);
 Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2056]); // line circom 150
 }
 {
+{
 PFrElement aux_dest = &signalValues[mySignalStart + 0];
 // load src
 cmp_index_ref_load = 4;
@@ -1214772,7 +1216518,13 @@ Fr_sub(&expaux[1],&circuitConstants[3],&ctx->signalValues[ctx->componentMemory[m
 Fr_mul(&expaux[0],&ctx->signalValues[ctx->componentMemory[mySubcomponents[4]].signalStart + 0],&expaux[1]); // line circom 194
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
+ctx->componentMemory[ctx_index].mutexes[0].lock();
+ctx->componentMemory[ctx_index].outputIsSet[0]=true;
+ctx->componentMemory[ctx_index].mutexes[0].unlock();
+ctx->componentMemory[ctx_index].cvs[0].notify_all();
 }
+}
+{
 {
 PFrElement aux_dest = &signalValues[mySignalStart + 1];
 // load src
@@ -1214787,27 +1216539,47 @@ Fr_mul(&expaux[1],&expaux[2],&ctx->signalValues[ctx->componentMemory[mySubcompon
 Fr_add(&expaux[0],&ctx->signalValues[ctx->componentMemory[mySubcomponents[4]].signalStart + 1],&expaux[1]); // line circom 195
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
+ctx->componentMemory[ctx_index].mutexes[1].lock();
+ctx->componentMemory[ctx_index].outputIsSet[1]=true;
+ctx->componentMemory[ctx_index].mutexes[1].unlock();
+ctx->componentMemory[ctx_index].cvs[1].notify_all();
 }
+}
+for (uint i = 0; i < 2; i++) {
+ctx->componentMemory[ctx_index].mutexes[i].lock();
+ctx->componentMemory[ctx_index].outputIsSet[i]=true;
+ctx->componentMemory[ctx_index].mutexes[i].unlock();
+ctx->componentMemory[ctx_index].cvs[i].notify_all();
+}
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
 for (uint i = 0; i < 6; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void AddRandomness_314_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 314;
+void AddRandomness_319_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 319;
 ctx->componentMemory[coffset].templateName = "AddRandomness";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 7;
 ctx->componentMemory[coffset].componentName = componentName;
 ctx->componentMemory[coffset].idFather = componentFather;
 ctx->componentMemory[coffset].subcomponents = new uint[6]{0};
+ctx->componentMemory[coffset].sbct = new std::thread[6];
+ctx->componentMemory[coffset].subcomponentsParallel = new bool[6];
 ctx->componentMemory[coffset].outputIsSet = new bool[4]();
 ctx->componentMemory[coffset].mutexes = new std::mutex[4];
 ctx->componentMemory[coffset].cvs = new std::condition_variable[4];
 }
 
-void AddRandomness_314_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
+void AddRandomness_319_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[2];
@@ -1214825,22 +1216597,22 @@ uint index_multiple_eq;
 int cmp_index_ref_load = -1;
 {
 std::string new_cmp_name = "isZeroRandomness";
-IsZero_298_create(mySignalStart+31,2+ctx_index+1,ctx,new_cmp_name,myId);
+IsZero_303_create(mySignalStart+31,2+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[0] = 2+ctx_index+1;
 }
 {
 std::string new_cmp_name = "randomnessBits";
-Num2Bits_299_create(mySignalStart+34,3+ctx_index+1,ctx,new_cmp_name,myId);
+Num2Bits_304_create(mySignalStart+34,3+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[1] = 3+ctx_index+1;
 }
 {
 std::string new_cmp_name = "randomnessG";
-EscalarMulFix_308_create(mySignalStart+288,4+ctx_index+1,ctx,new_cmp_name,myId);
+EscalarMulFix_313_create_parallel(mySignalStart+288,4+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[2] = 4+ctx_index+1;
 }
 {
 std::string new_cmp_name = "randomnessPublicKey";
-EscalarMulAny_313_create(mySignalStart+10145,954+ctx_index+1,ctx,new_cmp_name,myId);
+EscalarMulAny_318_create_parallel(mySignalStart+10145,954+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[3] = 954+ctx_index+1;
 }
 {
@@ -1214864,15 +1216636,15 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 10]);
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-IsZero_298_run(mySubcomponents[cmp_index_ref],ctx);
+IsZero_303_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 cmp_index_ref_load = 0;
 cmp_index_ref_load = 0;
 {{
-Fr_eq(&expaux[0],&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].signalStart + 0],&circuitConstants[5]); // line circom 90
+Fr_eq(&expaux[0],&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].signalStart + 0],&circuitConstants[5]); // line circom 95
 }}
-if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 90. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
+if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 95. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
 assert(Fr_isTrue(&expaux[0]));
 }
 {
@@ -1214886,7 +1216658,7 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + 10]);
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-Num2Bits_299_run(mySubcomponents[cmp_index_ref],ctx);
+Num2Bits_304_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 2;
@@ -1214901,7 +1216673,40 @@ Fr_copyn(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].si
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 253;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-EscalarMulFix_308_run(mySubcomponents[cmp_index_ref],ctx);
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(EscalarMulFix_313_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+{
+uint cmp_index_ref = 3;
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 255];
+// load src
+// end load src
+Fr_copyn(aux_dest,&signalValues[mySignalStart + 8],2);
+}
+// no need to run sub component
+ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 2;
+assert(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter > 0);
+}
+{
+uint cmp_index_ref = 3;
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 2];
+// load src
+cmp_index_ref_load = 1;
+cmp_index_ref_load = 1;
+// end load src
+Fr_copyn(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].signalStart + 0],253);
+}
+// need to run sub component
+ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 253;
+assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(EscalarMulAny_318_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
 }
 {
 uint cmp_index_ref = 4;
@@ -1214934,6 +1216739,20 @@ PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cm
 // load src
 cmp_index_ref_load = 2;
 cmp_index_ref_load = 2;
+{
+int aux2 = 0;
+for (int i = 0; i < 1; i++) {
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+std::unique_lock<std::mutex> lk(ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].mutexes[aux2 + i]);
+ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].cvs[aux2 + i].wait(lk, [ctx,mySubcomponents,cmp_index_ref_load,aux2, i]() {return ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].outputIsSet[aux2 + i];});
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+}
 // end load src
 Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[2]].signalStart + 0]);
 }
@@ -1214948,6 +1216767,20 @@ PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cm
 // load src
 cmp_index_ref_load = 2;
 cmp_index_ref_load = 2;
+{
+int aux2 = 1;
+for (int i = 0; i < 1; i++) {
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+std::unique_lock<std::mutex> lk(ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].mutexes[aux2 + i]);
+ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].cvs[aux2 + i].wait(lk, [ctx,mySubcomponents,cmp_index_ref_load,aux2, i]() {return ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].outputIsSet[aux2 + i];});
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+}
 // end load src
 Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[2]].signalStart + 1]);
 }
@@ -1214955,33 +1216788,6 @@ Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[2]].sig
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
 BabyAdd_0_run(mySubcomponents[cmp_index_ref],ctx);
-}
-{
-uint cmp_index_ref = 3;
-{
-PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 255];
-// load src
-// end load src
-Fr_copyn(aux_dest,&signalValues[mySignalStart + 8],2);
-}
-// no need to run sub component
-ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 2;
-assert(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter > 0);
-}
-{
-uint cmp_index_ref = 3;
-{
-PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 2];
-// load src
-cmp_index_ref_load = 1;
-cmp_index_ref_load = 1;
-// end load src
-Fr_copyn(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].signalStart + 0],253);
-}
-// need to run sub component
-ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 253;
-assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-EscalarMulAny_313_run(mySubcomponents[cmp_index_ref],ctx);
 }
 {
 uint cmp_index_ref = 5;
@@ -1215014,6 +1216820,20 @@ PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cm
 // load src
 cmp_index_ref_load = 3;
 cmp_index_ref_load = 3;
+{
+int aux2 = 0;
+for (int i = 0; i < 1; i++) {
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+std::unique_lock<std::mutex> lk(ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].mutexes[aux2 + i]);
+ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].cvs[aux2 + i].wait(lk, [ctx,mySubcomponents,cmp_index_ref_load,aux2, i]() {return ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].outputIsSet[aux2 + i];});
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+}
 // end load src
 Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[3]].signalStart + 0]);
 }
@@ -1215028,6 +1216848,20 @@ PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cm
 // load src
 cmp_index_ref_load = 3;
 cmp_index_ref_load = 3;
+{
+int aux2 = 1;
+for (int i = 0; i < 1; i++) {
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+std::unique_lock<std::mutex> lk(ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].mutexes[aux2 + i]);
+ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].cvs[aux2 + i].wait(lk, [ctx,mySubcomponents,cmp_index_ref_load,aux2, i]() {return ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].outputIsSet[aux2 + i];});
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+}
 // end load src
 Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[3]].signalStart + 1]);
 }
@@ -1215092,6 +1216926,13 @@ ctx->componentMemory[ctx_index].mutexes[3].unlock();
 ctx->componentMemory[ctx_index].cvs[3].notify_all();
 }
 }
+{
+for (uint i = 0; i < 6; i++) {
+if (ctx->componentMemory[ctx_index].sbct[i].joinable()) {
+ctx->componentMemory[ctx_index].sbct[i].join();
+}
+}
+}
 for (uint i = 0; i < 4; i++) {
 ctx->componentMemory[ctx_index].mutexes[i].lock();
 ctx->componentMemory[ctx_index].outputIsSet[i]=true;
@@ -1215104,12 +1216945,15 @@ ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
 for (uint i = 0; i < 6; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void AddRandomnessN_315_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 315;
+void AddRandomnessN_320_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 320;
 ctx->componentMemory[coffset].templateName = "AddRandomnessN";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 187;
@@ -1215123,7 +1216967,7 @@ ctx->componentMemory[coffset].mutexes = new std::mutex[148];
 ctx->componentMemory[coffset].cvs = new std::condition_variable[148];
 }
 
-void AddRandomnessN_315_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
+void AddRandomnessN_320_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[2];
@@ -1215152,7 +1216996,7 @@ uint csoffset = mySignalStart+335;
 uint aux_dimensions[1] = {37};
 for (uint i = 0; i < 37; i++) {
 std::string new_cmp_name = "addRandomness"+ctx->generate_position_array(aux_dimensions, 1, i);
-AddRandomness_314_create_parallel(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
+AddRandomness_319_create_parallel(csoffset,aux_cmp_num,ctx,new_cmp_name,myId);
 mySubcomponents[aux_create+ i] = aux_cmp_num;
 csoffset += 18019 ;
 aux_cmp_num += 1974;
@@ -1215164,7 +1217008,7 @@ PFrElement aux_dest = &lvar[1];
 // end load src
 Fr_copy(aux_dest,&circuitConstants[5]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 282
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 341
 while(Fr_isTrue(&expaux[0])){
 {
 uint cmp_index_ref = ((1 * Fr_toInt(&lvar[1])) + 0);
@@ -1215176,7 +1217020,7 @@ Fr_copyn(aux_dest,&signalValues[mySignalStart + ((4 * Fr_toInt(&lvar[1])) + 148)
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 4)){
-ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(AddRandomness_314_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(AddRandomness_319_run_parallel,mySubcomponents[cmp_index_ref],ctx);
 std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
 ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
 ctx->numThread++;
@@ -1215193,7 +1217037,7 @@ Fr_copyn(aux_dest,&signalValues[mySignalStart + 333],2);
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 2)){
-ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(AddRandomness_314_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(AddRandomness_319_run_parallel,mySubcomponents[cmp_index_ref],ctx);
 std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
 ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
 ctx->numThread++;
@@ -1215210,13 +1217054,30 @@ Fr_copy(aux_dest,&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 296)]
 }
 // run sub component if needed
 if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(AddRandomness_314_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(AddRandomness_319_run_parallel,mySubcomponents[cmp_index_ref],ctx);
 std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
 ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
 ctx->numThread++;
 
 }
 }
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 341
+// end load src
+Fr_copy(aux_dest,&expaux[0]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 341
+}
+{
+PFrElement aux_dest = &lvar[1];
+// load src
+// end load src
+Fr_copy(aux_dest,&circuitConstants[5]);
+}
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 347
+while(Fr_isTrue(&expaux[0])){
 {
 {
 PFrElement aux_dest = &signalValues[mySignalStart + ((4 * Fr_toInt(&lvar[1])) + 0)];
@@ -1215252,11 +1217113,11 @@ ctx->componentMemory[ctx_index].cvs[((4 * Fr_toInt(&lvar[1])) + 0)+i].notify_all
 {
 PFrElement aux_dest = &lvar[1];
 // load src
-Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 282
+Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 347
 // end load src
 Fr_copy(aux_dest,&expaux[0]);
 }
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 282
+Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 347
 }
 {
 for (uint i = 0; i < 37; i++) {
@@ -1215277,395 +1217138,26 @@ ctx->numThreadMutex.unlock();
 ctx->ntcvs.notify_one();
 for (uint i = 0; i < 37; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
-void HashRowValueChunk_316_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 316;
-ctx->componentMemory[coffset].templateName = "HashRowValueChunk";
-ctx->componentMemory[coffset].signalStart = soffset;
-ctx->componentMemory[coffset].inputCounter = 37;
-ctx->componentMemory[coffset].componentName = componentName;
-ctx->componentMemory[coffset].idFather = componentFather;
-ctx->componentMemory[coffset].subcomponents = new uint[5]{0};
-ctx->componentMemory[coffset].sbct = new std::thread[5];
-ctx->componentMemory[coffset].subcomponentsParallel = new bool[5];
-}
-
-void HashRowValueChunk_316_run(uint ctx_index,Circom_CalcWit* ctx){
-FrElement* circuitConstants = ctx->circuitConstants;
-FrElement* signalValues = ctx->signalValues;
-FrElement expaux[2];
-FrElement lvar[6];
-u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
-std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
-std::string myComponentName = ctx->componentMemory[ctx_index].componentName;
-u64 myFather = ctx->componentMemory[ctx_index].idFather;
-u64 myId = ctx_index;
-u32* mySubcomponents = ctx->componentMemory[ctx_index].subcomponents;
-bool* mySubcomponentsParallel = ctx->componentMemory[ctx_index].subcomponentsParallel;
-std::string* listOfTemplateMessages = ctx->listOfTemplateMessages;
-uint sub_component_aux;
-uint index_multiple_eq;
-int cmp_index_ref_load = -1;
-{
-PFrElement aux_dest = &lvar[0];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[7]);
-}
-{
-std::string new_cmp_name = "chunkHashes[0]";
-Poseidon_81_create_parallel(mySignalStart+38,0+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[0] = 0+ctx_index+1;
-}
-{
-std::string new_cmp_name = "chunkHashes[1]";
-Poseidon_81_create_parallel(mySignalStart+2835,252+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[1] = 252+ctx_index+1;
-}
-{
-std::string new_cmp_name = "chunkHashes[2]";
-Poseidon_81_create_parallel(mySignalStart+5632,504+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[2] = 504+ctx_index+1;
-}
-{
-std::string new_cmp_name = "chunkHashes[3]";
-Poseidon_223_create_parallel(mySignalStart+8429,756+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[3] = 756+ctx_index+1;
-}
-{
-std::string new_cmp_name = "finalHash";
-Poseidon_154_create(mySignalStart+9009,902+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[4] = 902+ctx_index+1;
-}
-{
-PFrElement aux_dest = &lvar[1];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[4]);
-}
-{
-PFrElement aux_dest = &lvar[2];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[2062]);
-}
-{
-PFrElement aux_dest = &lvar[3];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2062]); // line circom 25
-while(Fr_isTrue(&expaux[0])){
-Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2059]); // line circom 26
-if(Fr_isTrue(&expaux[0])){
-{
-PFrElement aux_dest = &lvar[4];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[4]);
-}
-}else{
-{
-PFrElement aux_dest = &lvar[4];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[3]);
-}
-}
-{
-PFrElement aux_dest = &lvar[5];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-Fr_lt(&expaux[0],&lvar[5],&lvar[4]); // line circom 28
-while(Fr_isTrue(&expaux[0])){
-{
-uint cmp_index_ref = ((1 * Fr_toInt(&lvar[3])) + 0);
-{
-uint map_accesses_aux[1];
-{
-IOFieldDef *cur_def = &(ctx->templateInsId2IOSignalInfo[ctx->componentMemory[mySubcomponents[cmp_index_ref]].templateId].defs[1]);
-{
-uint map_index_aux[1];
-map_index_aux[0]=Fr_toInt(&lvar[5]);
-map_accesses_aux[0] = map_index_aux[0]*cur_def->size;
-}
-}
-{
-PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + ctx->templateInsId2IOSignalInfo[ctx->componentMemory[mySubcomponents[cmp_index_ref]].templateId].defs[1].offset+map_accesses_aux[0]];
-// load src
-// end load src
-Fr_copy(aux_dest,&signalValues[mySignalStart + ((1 * ((Fr_toInt(&lvar[3]) * 12) + Fr_toInt(&lvar[5]))) + 1)]);
-}
-// run sub component if needed
-if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread((*_functionTableParallel[ctx->componentMemory[mySubcomponents[cmp_index_ref]].templateId]),mySubcomponents[cmp_index_ref],ctx);
-std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
-ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
-ctx->numThread++;
-
-}
-}
-}
-{
-PFrElement aux_dest = &lvar[5];
-// load src
-Fr_add(&expaux[0],&lvar[5],&circuitConstants[3]); // line circom 28
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-Fr_lt(&expaux[0],&lvar[5],&lvar[4]); // line circom 28
-}
-{
-PFrElement aux_dest = &lvar[3];
-// load src
-Fr_add(&expaux[0],&lvar[3],&circuitConstants[3]); // line circom 25
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2062]); // line circom 25
-}
-{
-PFrElement aux_dest = &lvar[3];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2062]); // line circom 35
-while(Fr_isTrue(&expaux[0])){
-{
-uint cmp_index_ref = 4;
-{
-PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + ((1 * Fr_toInt(&lvar[3])) + 1)];
-// load src
-cmp_index_ref_load = ((1 * Fr_toInt(&lvar[3])) + 0);
-cmp_index_ref_load = ((1 * Fr_toInt(&lvar[3])) + 0);
-{
-int aux2 = ctx->templateInsId2IOSignalInfo[ctx->componentMemory[mySubcomponents[((1 * Fr_toInt(&lvar[3])) + 0)]].templateId].defs[0].offset;
-for (int i = 0; i < 1; i++) {
-ctx->numThreadMutex.lock();
-ctx->numThread--;
-ctx->numThreadMutex.unlock();
-ctx->ntcvs.notify_one();
-std::unique_lock<std::mutex> lk(ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].mutexes[aux2 + i]);
-ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].cvs[aux2 + i].wait(lk, [ctx,mySubcomponents,cmp_index_ref_load,aux2, i]() {return ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].outputIsSet[aux2 + i];});
-std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
-ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
-ctx->numThread++;
-}
-}
-// end load src
-Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[((1 * Fr_toInt(&lvar[3])) + 0)]].signalStart + ctx->templateInsId2IOSignalInfo[ctx->componentMemory[mySubcomponents[((1 * Fr_toInt(&lvar[3])) + 0)]].templateId].defs[0].offset]);
-}
-// run sub component if needed
-if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-Poseidon_154_run(mySubcomponents[cmp_index_ref],ctx);
-
-}
-}
-{
-PFrElement aux_dest = &lvar[3];
-// load src
-Fr_add(&expaux[0],&lvar[3],&circuitConstants[3]); // line circom 35
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-Fr_lt(&expaux[0],&lvar[3],&circuitConstants[2062]); // line circom 35
-}
-{
-PFrElement aux_dest = &signalValues[mySignalStart + 0];
-// load src
-cmp_index_ref_load = 4;
-cmp_index_ref_load = 4;
-// end load src
-Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[4]].signalStart + 0]);
-}
-{
-for (uint i = 0; i < 5; i++) {
-if (ctx->componentMemory[ctx_index].sbct[i].joinable()) {
-ctx->componentMemory[ctx_index].sbct[i].join();
-}
-}
-}
-for (uint i = 0; i < 5; i++){
-uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
-}
-}
-
-void HashPermutationMatrix_317_create_parallel(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 317;
-ctx->componentMemory[coffset].templateName = "HashPermutationMatrix";
-ctx->componentMemory[coffset].signalStart = soffset;
-ctx->componentMemory[coffset].inputCounter = 1369;
-ctx->componentMemory[coffset].componentName = componentName;
-ctx->componentMemory[coffset].idFather = componentFather;
-ctx->componentMemory[coffset].subcomponents = new uint[1]{0};
-ctx->componentMemory[coffset].outputIsSet = new bool[1]();
-ctx->componentMemory[coffset].mutexes = new std::mutex[1];
-ctx->componentMemory[coffset].cvs = new std::condition_variable[1];
-}
-
-void HashPermutationMatrix_317_run_parallel(uint ctx_index,Circom_CalcWit* ctx){
-FrElement* circuitConstants = ctx->circuitConstants;
-FrElement* signalValues = ctx->signalValues;
-FrElement expaux[3];
-FrElement lvar[3];
-u64 mySignalStart = ctx->componentMemory[ctx_index].signalStart;
-std::string myTemplateName = ctx->componentMemory[ctx_index].templateName;
-std::string myComponentName = ctx->componentMemory[ctx_index].componentName;
-u64 myFather = ctx->componentMemory[ctx_index].idFather;
-u64 myId = ctx_index;
-u32* mySubcomponents = ctx->componentMemory[ctx_index].subcomponents;
-bool* mySubcomponentsParallel = ctx->componentMemory[ctx_index].subcomponentsParallel;
-std::string* listOfTemplateMessages = ctx->listOfTemplateMessages;
-uint sub_component_aux;
-uint index_multiple_eq;
-int cmp_index_ref_load = -1;
-{
-PFrElement aux_dest = &lvar[0];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[7]);
-}
-{
-std::string new_cmp_name = "rowHasher";
-HashRowValueChunk_316_create(mySignalStart+2813,0+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[0] = 0+ctx_index+1;
-}
-{
-PFrElement aux_dest = &lvar[1];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 70
-while(Fr_isTrue(&expaux[0])){
-{
-PFrElement aux_dest = &signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + 0) + 1407)];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-{
-PFrElement aux_dest = &lvar[2];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 72
-while(Fr_isTrue(&expaux[0])){
-{
-PFrElement aux_dest = &signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + (1 * (Fr_toInt(&lvar[2]) + 1))) + 1407)];
-// load src
-Fr_mul(&expaux[1],&signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 1407)],&circuitConstants[2056]); // line circom 73
-Fr_add(&expaux[0],&expaux[1],&signalValues[mySignalStart + (((37 * Fr_toInt(&lvar[1])) + (1 * Fr_toInt(&lvar[2]))) + 1)]); // line circom 73
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-{
-PFrElement aux_dest = &lvar[2];
-// load src
-Fr_add(&expaux[0],&lvar[2],&circuitConstants[3]); // line circom 72
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-Fr_lt(&expaux[0],&lvar[2],&circuitConstants[7]); // line circom 72
-}
-{
-PFrElement aux_dest = &signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 1370)];
-// load src
-// end load src
-Fr_copy(aux_dest,&signalValues[mySignalStart + (((38 * Fr_toInt(&lvar[1])) + 37) + 1407)]);
-}
-{
-PFrElement aux_dest = &lvar[1];
-// load src
-Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 70
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 70
-}
-{
-PFrElement aux_dest = &lvar[1];
-// load src
-// end load src
-Fr_copy(aux_dest,&circuitConstants[5]);
-}
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 79
-while(Fr_isTrue(&expaux[0])){
-{
-uint cmp_index_ref = 0;
-{
-PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + ((1 * Fr_toInt(&lvar[1])) + 1)];
-// load src
-// end load src
-Fr_copy(aux_dest,&signalValues[mySignalStart + ((1 * Fr_toInt(&lvar[1])) + 1370)]);
-}
-// run sub component if needed
-if(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1)){
-HashRowValueChunk_316_run(mySubcomponents[cmp_index_ref],ctx);
-
-}
-}
-{
-PFrElement aux_dest = &lvar[1];
-// load src
-Fr_add(&expaux[0],&lvar[1],&circuitConstants[3]); // line circom 79
-// end load src
-Fr_copy(aux_dest,&expaux[0]);
-}
-Fr_lt(&expaux[0],&lvar[1],&circuitConstants[7]); // line circom 79
-}
-{
-{
-PFrElement aux_dest = &signalValues[mySignalStart + 0];
-// load src
-cmp_index_ref_load = 0;
-cmp_index_ref_load = 0;
-// end load src
-Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[0]].signalStart + 0]);
-ctx->componentMemory[ctx_index].mutexes[0].lock();
-ctx->componentMemory[ctx_index].outputIsSet[0]=true;
-ctx->componentMemory[ctx_index].mutexes[0].unlock();
-ctx->componentMemory[ctx_index].cvs[0].notify_all();
-}
-}
-for (uint i = 0; i < 1; i++) {
-ctx->componentMemory[ctx_index].mutexes[i].lock();
-ctx->componentMemory[ctx_index].outputIsSet[i]=true;
-ctx->componentMemory[ctx_index].mutexes[i].unlock();
-ctx->componentMemory[ctx_index].cvs[i].notify_all();
-}
-ctx->numThreadMutex.lock();
-ctx->numThread--;
-ctx->numThreadMutex.unlock();
-ctx->ntcvs.notify_one();
-for (uint i = 0; i < 1; i++){
-uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
-}
-}
-
-void Shuffle_318_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
-ctx->componentMemory[coffset].templateId = 318;
+void Shuffle_321_create(uint soffset,uint coffset,Circom_CalcWit* ctx,std::string componentName,uint componentFather){
+ctx->componentMemory[coffset].templateId = 321;
 ctx->componentMemory[coffset].templateName = "Shuffle";
 ctx->componentMemory[coffset].signalStart = soffset;
 ctx->componentMemory[coffset].inputCounter = 1579;
 ctx->componentMemory[coffset].componentName = componentName;
 ctx->componentMemory[coffset].idFather = componentFather;
-ctx->componentMemory[coffset].subcomponents = new uint[6]{0};
-ctx->componentMemory[coffset].sbct = new std::thread[6];
-ctx->componentMemory[coffset].subcomponentsParallel = new bool[6];
+ctx->componentMemory[coffset].subcomponents = new uint[7]{0};
+ctx->componentMemory[coffset].sbct = new std::thread[7];
+ctx->componentMemory[coffset].subcomponentsParallel = new bool[7];
 }
 
-void Shuffle_318_run(uint ctx_index,Circom_CalcWit* ctx){
+void Shuffle_321_run(uint ctx_index,Circom_CalcWit* ctx){
 FrElement* circuitConstants = ctx->circuitConstants;
 FrElement* signalValues = ctx->signalValues;
 FrElement expaux[1];
@@ -1215701,33 +1217193,38 @@ Fr_copy(aux_dest,&circuitConstants[4]);
 }
 {
 std::string new_cmp_name = "noFixedPointsCheck";
-NoFixedPoints_2_create_parallel(mySignalStart+715264,77614+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[0] = 77614+ctx_index+1;
+NoFixedPoints_2_create_parallel(mySignalStart+754289,81371+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[0] = 81371+ctx_index+1;
 }
 {
 std::string new_cmp_name = "hashMain";
-HashMain_296_create_parallel(mySignalStart+668766,73039+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[1] = 73039+ctx_index+1;
+HashMain_296_create_parallel(mySignalStart+707791,76796+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[1] = 76796+ctx_index+1;
 }
 {
 std::string new_cmp_name = "permute";
-ApplyPermutations_297_create_parallel(mySignalStart+729697,78697+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[2] = 78697+ctx_index+1;
+ApplyPermutations_299_create_parallel(mySignalStart+770091,82491+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[2] = 82491+ctx_index+1;
 }
 {
 std::string new_cmp_name = "pkAggregator";
-AggregatePublicKey_1_create_parallel(mySignalStart+741167,78698+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[3] = 78698+ctx_index+1;
+AggregatePublicKey_1_create_parallel(mySignalStart+789960,82566+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[3] = 82566+ctx_index+1;
 }
 {
 std::string new_cmp_name = "addRandomness";
-AddRandomnessN_315_create_parallel(mySignalStart+1728,0+ctx_index+1,ctx,new_cmp_name,myId);
+AddRandomnessN_320_create_parallel(mySignalStart+1581,0+ctx_index+1,ctx,new_cmp_name,myId);
 mySubcomponents[4] = 0+ctx_index+1;
 }
 {
 std::string new_cmp_name = "permutationHasher";
-HashPermutationMatrix_317_create_parallel(mySignalStart+716708,77615+ctx_index+1,ctx,new_cmp_name,myId);
-mySubcomponents[5] = 77615+ctx_index+1;
+HashPermutationMatrix_302_create_parallel(mySignalStart+755733,81372+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[5] = 81372+ctx_index+1;
+}
+{
+std::string new_cmp_name = "deckHash";
+HashDeck_294_create_parallel(mySignalStart+668619,73039+ctx_index+1,ctx,new_cmp_name,myId);
+mySubcomponents[6] = 73039+ctx_index+1;
 }
 {
 PFrElement aux_dest = &lvar[3];
@@ -1215741,7 +1217238,7 @@ uint cmp_index_ref = 3;
 PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 2];
 // load src
 // end load src
-Fr_copyn(aux_dest,&signalValues[mySignalStart + 298],24);
+Fr_copyn(aux_dest,&signalValues[mySignalStart + 151],24);
 }
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 24;
@@ -1215757,7 +1217254,7 @@ uint cmp_index_ref = 0;
 PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 0];
 // load src
 // end load src
-Fr_copyn(aux_dest,&signalValues[mySignalStart + 322],1369);
+Fr_copyn(aux_dest,&signalValues[mySignalStart + 175],1369);
 }
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1369;
@@ -1215773,7 +1217270,7 @@ uint cmp_index_ref = 1;
 PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 1];
 // load src
 // end load src
-Fr_copyn(aux_dest,&signalValues[mySignalStart + 150],148);
+Fr_copyn(aux_dest,&signalValues[mySignalStart + 3],148);
 }
 // no need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 148;
@@ -1215785,12 +1217282,56 @@ uint cmp_index_ref = 1;
 PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 149];
 // load src
 // end load src
-Fr_copyn(aux_dest,&signalValues[mySignalStart + 298],24);
+Fr_copyn(aux_dest,&signalValues[mySignalStart + 151],24);
 }
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 24;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
 ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(HashMain_296_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+{
+uint cmp_index_ref = 2;
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 148];
+// load src
+// end load src
+Fr_copyn(aux_dest,&signalValues[mySignalStart + 175],1369);
+}
+// no need to run sub component
+ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1369;
+assert(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter > 0);
+}
+{
+uint cmp_index_ref = 2;
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 1517];
+// load src
+// end load src
+Fr_copyn(aux_dest,&signalValues[mySignalStart + 3],148);
+}
+// need to run sub component
+ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 148;
+assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(ApplyPermutations_299_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+{
+uint cmp_index_ref = 5;
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 1];
+// load src
+// end load src
+Fr_copyn(aux_dest,&signalValues[mySignalStart + 175],1369);
+}
+// need to run sub component
+ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1369;
+assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(HashPermutationMatrix_302_run_parallel,mySubcomponents[cmp_index_ref],ctx);
 std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
 ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
 ctx->numThread++;
@@ -1215813,38 +1217354,10 @@ ctx->numThread++;
 }
 }
 {{
-Fr_eq(&expaux[0],&signalValues[mySignalStart + 149],&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].signalStart + 0]); // line circom 325
+Fr_eq(&expaux[0],&signalValues[mySignalStart + 2],&ctx->signalValues[ctx->componentMemory[mySubcomponents[1]].signalStart + 0]); // line circom 400
 }}
-if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 325. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
+if (!Fr_isTrue(&expaux[0])) std::cout << "Failed assert in template/function " << myTemplateName << " line 400. " <<  "Followed trace of components: " << ctx->getTrace(myId) << std::endl;
 assert(Fr_isTrue(&expaux[0]));
-}
-{
-uint cmp_index_ref = 2;
-{
-PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 148];
-// load src
-// end load src
-Fr_copyn(aux_dest,&signalValues[mySignalStart + 322],1369);
-}
-// no need to run sub component
-ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1369;
-assert(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter > 0);
-}
-{
-uint cmp_index_ref = 2;
-{
-PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 1517];
-// load src
-// end load src
-Fr_copyn(aux_dest,&signalValues[mySignalStart + 150],148);
-}
-// need to run sub component
-ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 148;
-assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(ApplyPermutations_297_run_parallel,mySubcomponents[cmp_index_ref],ctx);
-std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
-ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
-ctx->numThread++;
 }
 {
 uint cmp_index_ref = 4;
@@ -1215908,18 +1217421,20 @@ uint cmp_index_ref = 4;
 PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 296];
 // load src
 // end load src
-Fr_copyn(aux_dest,&signalValues[mySignalStart + 1691],37);
+Fr_copyn(aux_dest,&signalValues[mySignalStart + 1544],37);
 }
 // need to run sub component
 ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 37;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(AddRandomnessN_315_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(AddRandomnessN_320_run_parallel,mySubcomponents[cmp_index_ref],ctx);
 std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
 ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
 ctx->numThread++;
 }
 {
-PFrElement aux_dest = &signalValues[mySignalStart + 0];
+uint cmp_index_ref = 6;
+{
+PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 1];
 // load src
 cmp_index_ref_load = 4;
 cmp_index_ref_load = 4;
@@ -1215940,24 +1217455,38 @@ ctx->numThread++;
 // end load src
 Fr_copyn(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[4]].signalStart + 0],148);
 }
-{
-uint cmp_index_ref = 5;
-{
-PFrElement aux_dest = &ctx->signalValues[ctx->componentMemory[mySubcomponents[cmp_index_ref]].signalStart + 1];
-// load src
-// end load src
-Fr_copyn(aux_dest,&signalValues[mySignalStart + 322],1369);
-}
 // need to run sub component
-ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 1369;
+ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter -= 148;
 assert(!(ctx->componentMemory[mySubcomponents[cmp_index_ref]].inputCounter));
-ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(HashPermutationMatrix_317_run_parallel,mySubcomponents[cmp_index_ref],ctx);
+ctx->componentMemory[ctx_index].sbct[cmp_index_ref] = std::thread(HashDeck_294_run_parallel,mySubcomponents[cmp_index_ref],ctx);
 std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
 ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
 ctx->numThread++;
 }
 {
-PFrElement aux_dest = &signalValues[mySignalStart + 148];
+PFrElement aux_dest = &signalValues[mySignalStart + 0];
+// load src
+cmp_index_ref_load = 6;
+cmp_index_ref_load = 6;
+{
+int aux2 = 0;
+for (int i = 0; i < 1; i++) {
+ctx->numThreadMutex.lock();
+ctx->numThread--;
+ctx->numThreadMutex.unlock();
+ctx->ntcvs.notify_one();
+std::unique_lock<std::mutex> lk(ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].mutexes[aux2 + i]);
+ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].cvs[aux2 + i].wait(lk, [ctx,mySubcomponents,cmp_index_ref_load,aux2, i]() {return ctx->componentMemory[mySubcomponents[cmp_index_ref_load]].outputIsSet[aux2 + i];});
+std::unique_lock<std::mutex> lkt(ctx->numThreadMutex);
+ctx->ntcvs.wait(lkt, [ctx]() {return ctx->numThread <  ctx->maxThread; });
+ctx->numThread++;
+}
+}
+// end load src
+Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[6]].signalStart + 0]);
+}
+{
+PFrElement aux_dest = &signalValues[mySignalStart + 1];
 // load src
 cmp_index_ref_load = 5;
 cmp_index_ref_load = 5;
@@ -1215979,20 +1217508,23 @@ ctx->numThread++;
 Fr_copy(aux_dest,&ctx->signalValues[ctx->componentMemory[mySubcomponents[5]].signalStart + 0]);
 }
 {
-for (uint i = 0; i < 6; i++) {
+for (uint i = 0; i < 7; i++) {
 if (ctx->componentMemory[ctx_index].sbct[i].joinable()) {
 ctx->componentMemory[ctx_index].sbct[i].join();
 }
 }
 }
-for (uint i = 0; i < 6; i++){
+for (uint i = 0; i < 7; i++){
 uint index_subc = ctx->componentMemory[ctx_index].subcomponents[i];
-if (index_subc != 0)release_memory_component(ctx,index_subc);
+if (index_subc != 0){
+assert(!(ctx->componentMemory[index_subc].inputCounter));
+release_memory_component(ctx,index_subc);
+}
 }
 }
 
 void run(Circom_CalcWit* ctx){
-Shuffle_318_create(1,0,ctx,"main",0);
-Shuffle_318_run(0,ctx);
+Shuffle_321_create(1,0,ctx,"main",0);
+Shuffle_321_run(0,ctx);
 }
 

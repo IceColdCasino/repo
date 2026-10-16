@@ -4,7 +4,6 @@ const std = @import("std");
 const poseidon = @import("../crypto/poseidon.zig");
 const hash = @import("../crypto/hash.zig");
 const elg = @import("../crypto/elgamal.zig");
-const poly = @import("../crypto/poly_hash.zig");
 const zk = @import("../crypto/zk_crypto.zig");
 const hand = @import("hand_eval.zig");
 const base = @import("player_base.zig");
@@ -22,7 +21,13 @@ pub const MAX_PLAYERS: usize = 10;
 pub const TOTAL_CARDS: usize = 25;
 pub const SHARE_OTHERS: usize = 9;
 
-pub fn shareHash(crypto: *const Crypto, cts: []const Ciphertext, card_mask: u64, pk: PublicKey, others: []const PublicKey) Fr {
+pub fn shareHash(
+    crypto: *const Crypto,
+    cts: []const Ciphertext,
+    card_mask: u64,
+    pk: PublicKey,
+    others: []const PublicKey,
+) Fr {
     var keys: [10]PublicKey = undefined;
     keys[0] = pk;
     @memcpy(keys[1..], others[0..9]);
@@ -48,8 +53,8 @@ pub fn share(
         var c: usize = 0;
         while (c < cts.len) : (c += 1) {
             const partial = elg.createPartial(sk, cts[c]);
-            const use_id = ((card_mask >> @intCast(c)) & 1) == 0;
-            out[p][c] = elg.reencryptPartial(partial, recipients[p], randomness[p][c], use_id);
+            const masked = ((card_mask >> @intCast(c)) & 1) == 0;
+            out[p][c] = elg.reencryptPartial(partial, recipients[p], randomness[p][c], masked);
         }
     }
 }
@@ -61,6 +66,7 @@ pub fn showdownHash(
     player_index: Fr,
     cards: []const Ciphertext,
     partials: []const []const Ciphertext,
+    seal_commitment: Fr,
 ) Fr {
     const h1 = poseidon.hash(pot_masks);
     var keys: [10]PublicKey = undefined;
@@ -76,14 +82,7 @@ pub fn showdownHash(
         h3_in[p + 1] = crypto.hashCiphertexts(partials[p]);
     }
     const h3 = poseidon.hash(h3_in[0 .. 1 + partials.len]);
-    return poseidon.hash(&.{ h1, player_index, h2, h3 });
-}
-
-pub fn computeCoefficientCommitment(coefficients: []const Fr) Fr {
-    return poseidon.hash(&.{
-        poseidon.hash(coefficients[0..6]),
-        poseidon.hash(coefficients[5..9]),
-    });
+    return poseidon.hash(&.{ h1, player_index, h2, h3, seal_commitment });
 }
 
 pub fn compareHands(pot_masks: []const u64, plaintext: []const u64, out: []u64) void {
@@ -91,15 +90,76 @@ pub fn compareHands(pot_masks: []const u64, plaintext: []const u64, out: []u64) 
 }
 
 pub fn computeShowdownOutputHash(winner_masks: []const Fr, coefficients: []const Fr) Fr {
-    var h = Fr.zero();
-    for (winner_masks, coefficients) |mask, c| {
-        h = h.add(mask.add(Fr.one()).mul(c));
+    std.debug.assert(winner_masks.len == 9);
+    std.debug.assert(coefficients.len >= 2);
+    var total = Fr.zero();
+    var place = Fr.one();
+    const scale = Fr.fromU64(1024);
+    for (winner_masks) |mask| {
+        total = total.add(mask.mul(place));
+        place = place.mul(scale);
     }
-    return h;
+    return total.add(Fr.one()).mul(coefficients[0]).add(coefficients[1]);
+}
+
+pub const STREET_COUNT: usize = 13;
+
+fn streetCards(street: usize, out: *[3]u8) []const u8 {
+    if (street < 10) {
+        out[0] = @intCast(street * 2);
+        out[1] = @intCast(street * 2 + 1);
+        return out[0..2];
+    }
+    if (street == 10) {
+        out[0] = 20;
+        out[1] = 21;
+        out[2] = 22;
+        return out[0..3];
+    }
+    if (street == 11) {
+        out[0] = 23;
+        return out[0..1];
+    }
+    out[0] = 24;
+    return out[0..1];
+}
+
+/// First-level Poseidon of one street's recipient-major partials.
+/// `values` is the 9×25×4 share grid.
+pub fn streetHashFromFlat(values: []const Fr, street: usize) Fr {
+    std.debug.assert(values.len == SHARE_OTHERS * TOTAL_CARDS * 4);
+    var cards: [3]u8 = undefined;
+    const set = streetCards(street, &cards);
+    var buf: [9 * 3 * 4]Fr = undefined;
+    var n: usize = 0;
+    var recipient: usize = 0;
+    while (recipient < SHARE_OTHERS) : (recipient += 1) {
+        for (set) |card| {
+            const at = recipient * TOTAL_CARDS * 4 + @as(usize, card) * 4;
+            buf[n..][0..4].* = values[at..][0..4].*;
+            n += 4;
+        }
+    }
+    return hash.hashFieldElements(buf[0..n]);
+}
+
+pub fn shareStreetHashes(values: []const Fr, out: *[STREET_COUNT]Fr) void {
+    for (out, 0..) |*slot, street| slot.* = streetHashFromFlat(values, street);
+}
+
+/// Poseidon(10 hole hashes) and Poseidon(flop, turn, river), then Poseidon of those two.
+/// Each call has at most 12 inputs, matching the on-chain hasher.
+pub fn finalShareHash(streets: *const [STREET_COUNT]Fr) Fr {
+    const holes = poseidon.hash(streets[0..10]);
+    const board = poseidon.hash(streets[10..13]);
+    return poseidon.hash(&.{ holes, board });
 }
 
 pub fn computeShareOutputHash(values: []const Fr, n_actual_players: u32) Fr {
-    return poly.hash900(values, n_actual_players);
+    _ = n_actual_players;
+    var streets: [STREET_COUNT]Fr = undefined;
+    shareStreetHashes(values, &streets);
+    return finalShareHash(&streets);
 }
 
 pub fn shareCardMask(n_players: u32) u64 {
@@ -134,6 +194,13 @@ pub fn lookupCatalog(crypto: *const Crypto, m: Point) isize {
 pub fn decryptOwnCards(crypto: *const Crypto, sk: Fr, cards: []const Ciphertext, out: []isize) void {
     std.debug.assert(out.len >= cards.len);
     for (cards, 0..) |ct, i| out[i] = crypto.decryptWithSk(sk, ct);
+}
+
+pub fn playerInPots(pot_masks: []const u64, player: usize) bool {
+    for (pot_masks) |mask| {
+        if ((mask >> @intCast(player)) & 1 == 1) return true;
+    }
+    return false;
 }
 
 pub fn decryptCards(

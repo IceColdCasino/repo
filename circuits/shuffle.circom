@@ -63,27 +63,35 @@ template HashRowValueChunk(nRows) {
 
 // Hash permutation matrix using bits2num and Poseidon.
 // Each row is converted to a number, then all rows are hashed.
+// One permutation row, packed as an integer. Rows do not depend on each other.
+template RowBitsToNum(nBits) {
+  signal input bits[nBits];
+  signal output out;
+
+  signal acc[nBits+1];
+  acc[0] <== 0;
+  for (var j = 0; j < nBits; j++) {
+    acc[j+1] <== acc[j] * 2 + bits[j];
+  }
+  out <== acc[nBits];
+}
+
 template HashPermutationMatrix(nCards) {
   signal input permutationMatrix[nCards][nCards];
 
-  signal rowValues[nCards];
-  signal rowAccumulator[nCards][nCards+1];
-
   signal output out;
 
+  component rows[nCards];
   component rowHasher;
 
   for (var i = 0; i < nCards; i++) {
-    rowAccumulator[i][0] <== 0;
-    for (var j = 0; j < nCards; j++) {
-      rowAccumulator[i][j+1] <== rowAccumulator[i][j] * 2 + permutationMatrix[i][j];
-    }
-    rowValues[i] <== rowAccumulator[i][nCards];
+    rows[i] = parallel RowBitsToNum(nCards);
+    rows[i].bits <== permutationMatrix[i];
   }
 
   rowHasher = HashRowValueChunk(nCards);
   for (var i = 0; i < nCards; i++) {
-    rowHasher.rowValues[i] <== rowValues[i];
+    rowHasher.rowValues[i] <== rows[i].out;
   }
   out <== rowHasher.out;
 }
@@ -95,26 +103,21 @@ template HashPermutationMatrixNDecks(nDecks, deckSize) {
 
   signal input permutationMatrix[nCards][nCards];
 
-  signal rowValues[nCards];
-  signal rowAccumulator[nCards][nCards+1];
-
   signal output out;
 
+  component rows[nCards];
   component deckHashes[nDecks];
   component finalHash = Poseidon(nDecks);
 
   for (var i = 0; i < nCards; i++) {
-    rowAccumulator[i][0] <== 0;
-    for (var j = 0; j < nCards; j++) {
-      rowAccumulator[i][j+1] <== rowAccumulator[i][j] * 2 + permutationMatrix[i][j];
-    }
-    rowValues[i] <== rowAccumulator[i][nCards];
+    rows[i] = parallel RowBitsToNum(nCards);
+    rows[i].bits <== permutationMatrix[i];
   }
 
   for (var d = 0; d < nDecks; d++) {
     deckHashes[d] = parallel HashRowValueChunk(deckSize);
     for (var r = 0; r < deckSize; r++) {
-      deckHashes[d].rowValues[r] <== rowValues[d * deckSize + r];
+      deckHashes[d].rowValues[r] <== rows[d * deckSize + r].out;
     }
   }
 
@@ -139,6 +142,8 @@ template HashPermutationMatrixNIndependent(nMatrices, nSize) {
   for (var i = 0; i < nMatrices; i++) {
     matrixHashes[i] = parallel HashPermutationMatrix(nSize);
     matrixHashes[i].permutationMatrix <== permutationMatrix[i];
+  }
+  for (var i = 0; i < nMatrices; i++) {
     finalHash.inputs[i] <== matrixHashes[i].out;
   }
 
@@ -222,52 +227,80 @@ template HashMain(nPlayers, nCards) {
   out <== finalHash.out;
 }
 
+// Select one output card and check that its permutation row is a 0/1 vector
+// summing to 1. Each row is independent of the others.
+template PermuteOneRow(nCards) {
+  signal input permutationRow[nCards];
+  signal input cards[nCards][4];
+
+  signal output out[4];
+
+  signal rowSum[nCards+1];
+  signal diff[nCards];
+  signal accumulator[nCards+1][4];
+
+  rowSum[0] <== 0;
+  for (var j = 0; j < nCards; j++) {
+    rowSum[j+1] <== rowSum[j] + permutationRow[j];
+    diff[j] <== permutationRow[j] - 1;
+    permutationRow[j] * diff[j] === 0;
+  }
+  rowSum[nCards] === 1;
+
+  for (var k = 0; k < 4; k++) {
+    accumulator[0][k] <== 0;
+  }
+  for (var j = 0; j < nCards; j++) {
+    for (var k = 0; k < 4; k++) {
+      accumulator[j+1][k] <== accumulator[j][k] + cards[j][k] * permutationRow[j];
+    }
+  }
+  for (var k = 0; k < 4; k++) {
+    out[k] <== accumulator[nCards][k];
+  }
+}
+
+// A permutation column sums to 1. Independent of every other column.
+template MatrixColumnSum(nCards) {
+  signal input column[nCards];
+  signal output total;
+
+  signal acc[nCards+1];
+  acc[0] <== 0;
+  for (var i = 0; i < nCards; i++) {
+    acc[i+1] <== acc[i] + column[i];
+  }
+  total <== acc[nCards];
+  total === 1;
+}
+
 template ApplyPermutations(nCards) {
   signal input permutationMatrix[nCards][nCards];
   signal input cards[nCards][4];
 
-  signal rowSum[nCards][nCards+1];
-  signal colSum[nCards][nCards+1];
-  signal diff[nCards][nCards];
-  signal accumulator[nCards][nCards+1][4];
-
   signal output out[nCards][4];
 
+  component rows[nCards];
+  component cols[nCards];
+
   for (var i = 0; i < nCards; i++) {
-    rowSum[i][0] <== 0;
-    for (var j = 0; j < nCards; j++) {
-      rowSum[i][j+1] <== rowSum[i][j] + permutationMatrix[i][j];
-    }
-    rowSum[i][nCards] === 1;
+    rows[i] = parallel PermuteOneRow(nCards);
+    rows[i].permutationRow <== permutationMatrix[i];
+    rows[i].cards <== cards;
   }
-  
+
   for (var j = 0; j < nCards; j++) {
-    colSum[j][0] <== 0;
+    cols[j] = parallel MatrixColumnSum(nCards);
     for (var i = 0; i < nCards; i++) {
-      colSum[j][i+1] <== colSum[j][i] + permutationMatrix[i][j];
-    }
-    colSum[j][nCards] === 1;
-  }
-
-  for (var i = 0; i < nCards; i++) {
-    for (var j = 0; j < nCards; j++) {
-      diff[i][j] <== permutationMatrix[i][j] - 1;
-      permutationMatrix[i][j] * diff[i][j] === 0;
+      cols[j].column[i] <== permutationMatrix[i][j];
     }
   }
 
   for (var i = 0; i < nCards; i++) {
-    for (var k = 0; k < 4; k++) {
-      accumulator[i][0][k] <== 0;
-    }
-    
-    for (var j = 0; j < nCards; j++) {
-      for (var k = 0; k < 4; k++) {
-        accumulator[i][j+1][k] <== accumulator[i][j][k] + cards[j][k] * permutationMatrix[i][j];
-      }
-    }
-
-    out[i] <== accumulator[i][nCards];
+    out[i] <== rows[i].out;
+  }
+  for (var j = 0; j < nCards; j++) {
+    cols[j].total === 1;
   }
 }
 
@@ -310,6 +343,8 @@ template AddRandomnessN(nCards) {
     addRandomness[i].ciphertext <== cards[i];
     addRandomness[i].publicKey <== publicKey;
     addRandomness[i].randomness <== randomness[i];
+  }
+  for (var i = 0; i < nCards; i++) {
     out[i] <== addRandomness[i].out;
   }
 }
@@ -327,8 +362,8 @@ template Shuffle(nPlayers, nDecks, deckSize) {
   signal input permutationMatrix[nCards][nCards];
   signal input randomness[nCards];
 
-  signal output out[nCards][4];
-  signal output permutationHash;
+  // [0] Poseidon of the shuffled shoe, [1] permutation-matrix hash.
+  signal output out[2];
   
   component noFixedPointsCheck;
   component hashMain;
@@ -337,38 +372,46 @@ template Shuffle(nPlayers, nDecks, deckSize) {
   component addRandomness;
   component permutationHasherN;
   component permutationHasher;
+  component deckHash;
 
+  // These four reads are independent. Start all of them before joining any.
   pkAggregator = parallel AggregatePublicKey(nPlayers);
   pkAggregator.publicKeys <== publicKeys;
-  
-  // Ensure NO card stays in its original position (strict shuffle)
+
   noFixedPointsCheck = parallel NoFixedPoints(nCards);
   noFixedPointsCheck.permutationMatrix <== permutationMatrix;
-  
+
   hashMain = parallel HashMain(nPlayers, nCards);
   hashMain.deck <== deck;
   hashMain.publicKeys <== publicKeys;
-  hash === hashMain.out;
 
   permute = parallel ApplyPermutations(nCards);
   permute.permutationMatrix <== permutationMatrix;
   permute.cards <== deck;
+
+  if (nDecks > 1) {
+    permutationHasherN = parallel HashPermutationMatrixNDecks(nDecks, deckSize);
+    permutationHasherN.permutationMatrix <== permutationMatrix;
+  } else {
+    permutationHasher = parallel HashPermutationMatrix(nCards);
+    permutationHasher.permutationMatrix <== permutationMatrix;
+  }
+
+  hash === hashMain.out;
 
   addRandomness = parallel AddRandomnessN(nCards);
   addRandomness.cards <== permute.out;
   addRandomness.publicKey <== pkAggregator.key;
   addRandomness.randomness <== randomness;
 
-  out <== addRandomness.out;
+  deckHash = parallel HashDeck(nCards);
+  deckHash.deck <== addRandomness.out;
 
-  // Compute permutation matrix hash
+  out[0] <== deckHash.out;
+
   if (nDecks > 1) {
-    permutationHasherN = parallel HashPermutationMatrixNDecks(nDecks, deckSize);
-    permutationHasherN.permutationMatrix <== permutationMatrix;
-    permutationHash <== permutationHasherN.out;
+    out[1] <== permutationHasherN.out;
   } else {
-    permutationHasher = parallel HashPermutationMatrix(nCards);
-    permutationHasher.permutationMatrix <== permutationMatrix;
-    permutationHash <== permutationHasher.out;
+    out[1] <== permutationHasher.out;
   }
 }

@@ -1,6 +1,7 @@
 import './helpers/require-player-ffi';
 import { MAX_PLAYERS } from '../src/war';
 import { hostShowdownCoefficients } from './helpers/host-showdown-coefficients';
+import { sealCommitment } from '../src/host-showdown-coefficients';
 import { Game } from '../src/war-game';
 import { Player, loadWarCircuits, type WarCircuits } from '../src/war-player';
 import { verify } from '../src/rapidsnark-ffi';
@@ -57,19 +58,30 @@ async function shuffle(game: Game, players: Player[]) {
 }
 
 async function share(game: Game, players: Player[], nActualPlayers: number) {
+  const prepared = [];
   for (let p = 0; p < nActualPlayers; p++) {
     const player = players[p]!;
-
     console.time(`Share Prove ${p}`);
-    const { proof, publicSignals, ciphertexts } = await player.shareProve(
+    const proved = await player.shareProve(
       game.finalShuffledDeck,
       game.publicKeysShare(p),
       nActualPlayers,
     );
     console.timeEnd(`Share Prove ${p}`);
+    prepared.push({ p, ...proved });
+  }
 
+  const dealers = game.seatPools?.dealerSeats ?? [];
+  const order = [
+    ...dealers,
+    ...prepared.map(item => item.p).filter(seat => !dealers.includes(seat)),
+  ];
+  for (const p of order) {
+    const item = prepared.find(row => row.p === p);
+    if (!item) throw new Error(`share prepare missing player=${p}`);
     console.time(`Game Share ${p}`);
-    game.share(proof, publicSignals, { publicKey: player.publicKey, ciphertexts });
+    game.postShareStake(p, game.requiredShareStake(p));
+    game.share(item.proof, item.publicSignals, { publicKey: players[p]!.publicKey, ciphertexts: item.ciphertexts });
     console.timeEnd(`Game Share ${p}`);
   }
 }
@@ -80,7 +92,8 @@ async function showdown(game: Game, players: Player[], nActualPlayers: number) {
   for (let p = 0; p < nActualPlayers; p++) {
     const player = players[p]!;
 
-    player.setSealedCoefficients(hostShowdownCoefficients(1));
+    const sealed = hostShowdownCoefficients(2);
+    player.setSealedCoefficients(sealed);
     console.time(`Showdown Prove ${p}`);
     const { proof, publicSignals, publicKey, winner } = await player.showdownProve(
       game.publicKeys,
@@ -93,7 +106,10 @@ async function showdown(game: Game, players: Player[], nActualPlayers: number) {
       expectedWinner = winner;
 
       console.time(`Game Verify Showdown ${p}`);
-      const result = game.verifyShowdown(proof, publicSignals, { publicKey });
+      const result = game.verifyShowdown(proof, publicSignals, {
+        publicKey,
+        coefficientCommitment: sealCommitment(sealed),
+      });
       console.timeEnd(`Game Verify Showdown ${p}`);
       expect(result).toBe(BigInt(publicSignals[0]!));
     } else {

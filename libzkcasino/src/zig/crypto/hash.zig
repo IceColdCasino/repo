@@ -70,6 +70,34 @@ pub fn hashPublicKeys2(keys: []const elg.PublicKey) Fr {
     return hashPublicKeysN(keys);
 }
 
+/// Circom `HashFlat` / `HashCiphertexts`: chunk by 12, then fold.
+/// A single chunk is wrapped in Poseidon(1).
+pub fn hashFieldElements(values: []const Fr) Fr {
+    if (values.len == 0) @panic("hashFieldElements requires values");
+    const n_chunks = (values.len + POSEIDON_CHUNK - 1) / POSEIDON_CHUNK;
+    const h = hashFlat(values);
+    if (n_chunks == 1) return poseidon.hash(&.{h});
+    return h;
+}
+
+/// Poseidon(ciphertext hash, public-key hash).
+pub fn shareInputHashHouse(ct_hash: Fr, pk_hash: Fr) Fr {
+    return poseidon.hash(&.{ ct_hash, pk_hash });
+}
+
+/// ShareHashOut: Poseidon of one HashCiphertexts per recipient row, including padded seats.
+pub fn hashRecipientCiphertexts(values: []const Fr, n_others: usize, n_cards: usize) Fr {
+    const stride = n_cards * 4;
+    if (n_others == 0 or values.len != n_others * stride) @panic("hashRecipientCiphertexts size");
+    var hashes: [16]Fr = undefined;
+    if (n_others > hashes.len) @panic("hashRecipientCiphertexts too many recipients");
+    var i: usize = 0;
+    while (i < n_others) : (i += 1) {
+        hashes[i] = hashFieldElements(values[i * stride .. (i + 1) * stride]);
+    }
+    return poseidon.hash(hashes[0..n_others]);
+}
+
 pub fn hashCiphertexts(cts: []const elg.Ciphertext) Fr {
     var buf: [2048]Fr = undefined;
     var n: usize = 0;
@@ -80,11 +108,7 @@ pub fn hashCiphertexts(cts: []const elg.Ciphertext) Fr {
             n += 1;
         }
     }
-    const n_chunks = (n + POSEIDON_CHUNK - 1) / POSEIDON_CHUNK;
-    const h = hashFlat(buf[0..n]);
-    // Circom HashCiphertexts always does Poseidon(nChunks), including nChunks==1.
-    if (n_chunks == 1) return poseidon.hash(&.{h});
-    return h;
+    return hashFieldElements(buf[0..n]);
 }
 
 pub fn bits2num(bits: []const u8) Fr {

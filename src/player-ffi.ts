@@ -8,10 +8,13 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import type { BabyJub, Poseidon } from 'circomlibjs';
 
-const libPath = path.join(
-  import.meta.dir,
-  `../libzkcasino/zig-out/lib/libzkcasino-player.${suffix}`,
-);
+function zkcasinoLib(file: string): string {
+  const dir = process.env.ZKCASINO_LIB_DIR;
+  if (dir && dir.length > 0) return path.join(dir, file);
+  return path.join(import.meta.dir, '../libzkcasino/zig-out/lib', file);
+}
+
+const libPath = zkcasinoLib(`libzkcasino-player.${suffix}`);
 
 const SYMBOLS = {
   zkplayer_create: { args: [FFIType.u64], returns: FFIType.ptr },

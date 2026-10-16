@@ -207,7 +207,7 @@ pub fn shuffleJson(
     return j.finish();
 }
 
-pub fn linearShareJson(
+pub fn linearShareJsonHouse(
     alloc: std.mem.Allocator,
     hash: Fr,
     deck: []const Ciphertext,

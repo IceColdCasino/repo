@@ -5,14 +5,23 @@ import {
 import {
   Poker,
   MAX_PLAYERS,
+  pokerStreetCards,
 } from './poker';
 import { verifyCircuit } from './zk-verify';
+import { readShuffleProof } from './shuffle-signals';
 import type { Groth16Proof, PublicSignals } from 'snarkjs';
 import { PotManager } from './pot-manager';
 import { BettingRound, identitySeatIndexMap } from './betting-round';
 import { actionClosingSeat } from './room';
 import { shareOthersForPlayer } from './share-common';
 import { shareCardMask } from './backend/card-layout';
+import {
+  requiredShareStake,
+  settleBadUnseal,
+  UnsealChallengeWindow,
+  unsealChallengeShouldClose,
+  type ShareUnsealPenalty,
+} from './poker-share-penalty';
 
 interface ShuffledDeck {
   transientHash: bigint;
@@ -55,7 +64,7 @@ export interface SharePrivateData {
 export interface ShowdownPrivateData {
   publicKey: PublicKey;
   winnerMasks: bigint[];
-  /** Public commitment derived from the player's sealed private coefficients. */
+  /** Poseidon of the seal rows Arcis revealed for this seat (seal account, not the prover). */
   coefficientCommitment: bigint;
 }
 
@@ -77,6 +86,15 @@ export class Game {
   #poker = new Poker();
   #phase: GamePhase = 'Registration';
   #partials: Ciphertext[][][] = new Array(MAX_PLAYERS);
+  #shareOutputHashes: Array<bigint | undefined> = new Array(MAX_PLAYERS);
+  #shareStreetHashes: Array<bigint[] | undefined> = new Array(MAX_PLAYERS);
+  #shareStakes: Array<bigint | undefined> = new Array(MAX_PLAYERS);
+  #revealedLimbs = new Map<string, bigint[]>();
+  #judgedStreets = new Set<string>();
+  #cheaters = new Set<number>();
+  #unsealWindow = new UnsealChallengeWindow();
+  #clock: () => number = Date.now;
+  #sharePenalty: ShareUnsealPenalty | undefined;
   #pot = 0;
   #allIn = new Array(MAX_PLAYERS).fill(false);
   potManager!: PotManager;
@@ -87,6 +105,7 @@ export class Game {
   foldedMask: number = 0;
   allInMask: number = 0;
   currentBet: bigint = 0n;
+  /** Button. */
   dealerSeat: number = 0;
   smallBlindSeat: number = 0;
   bigBlindSeat: number = 0;
@@ -183,7 +202,7 @@ export class Game {
       );
     }
     
-    // Set up blinds
+    // Set up blinds. dealerSeat is the button.
     this.dealerSeat = 0;
     this.smallBlindSeat = 0;
     this.bigBlindSeat = 1 % this.#numPlayers;
@@ -281,34 +300,26 @@ export class Game {
       throw new Error('Not your turn');
     }
 
-    const signalBigInts = publicSignals.map(s => BigInt(s));
     const transientHashExpected = this.#poker.shuffleHash(this.deck, this.registeredPublicKeys());
+    const { outputDeckHash, permutationHash, inputHash } = readShuffleProof(publicSignals);
 
-    // shuffle_main public signals ordering (snarkjs):
-    //   outputs first, then public inputs
-    //   [deck[0][0..3], ..., deck[51][0..3] (208), permutationHash (1), hash (1)] = 210 total
-    const transientHash = signalBigInts.pop()!;
-    const permutationHash = signalBigInts.pop()!;
-
-    if (transientHash !== transientHashExpected) {
-      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${transientHash}`);
+    if (inputHash !== transientHashExpected) {
+      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${inputHash}`);
+    }
+    if (this.#poker.deckHash(privateData.deck) !== outputDeckHash) {
+      throw new Error('Shuffle output hash does not match the shoe');
+    }
+    if (privateData.permutationHash !== permutationHash) {
+      throw new Error('Shuffle permutation hash does not match the proof');
     }
 
     if (!options.verified && !verifyCircuit('shuffle_1_deck_52_main', proof, publicSignals)) {
       throw new Error('Invalid proof');
     }
 
-    // Reconstruct shuffled deck from public signals (first 208 values)
-    const deckFromSignals: Ciphertext[] = [];
-    for (let i = 0; i < 52; i++) {
-      deckFromSignals.push(
-        signalBigInts.slice(i * 4, i * 4 + 4) as Ciphertext
-      );
-    }
-
     this.#shuffledDecks.push({
-      transientHash,
-      deck: deckFromSignals,
+      transientHash: inputHash,
+      deck: privateData.deck,
       permutationHash,
     });
 
@@ -333,12 +344,93 @@ export class Game {
     this.#pot &= ~(1 << this.getPlayerIndex(privateData.publicKey));
   }
 
+  /**
+   * Street hashes published with the share. The chain folds them and requires
+   * that fold to equal the proof output.
+   */
+  shareTierCommitment(ciphertexts: Ciphertext[][]): { hashes: bigint[]; finalHash: bigint } {
+    const commitment = this.#poker.shareCommitments(ciphertexts, this.#numPlayers);
+    if (commitment.streets.length !== 13) {
+      throw new Error(`Expected 13 street hashes, got ${commitment.streets.length}`);
+    }
+    return { hashes: commitment.streets, finalHash: commitment.finalHash };
+  }
+
+  assertShareOutput(
+    publicSignals: Array<bigint | string>,
+    ciphertexts: Ciphertext[][],
+    playerIndex?: number,
+  ) {
+    const parsed = this.#poker.parseSharePublicSignals(publicSignals);
+    const expected = this.#poker.shareCommitments(ciphertexts, this.#numPlayers).finalHash;
+    const who = playerIndex === undefined ? 'share' : `player ${playerIndex}`;
+    if (parsed.finalHash !== expected) {
+      throw new Error(`${who} output hash mismatch: circuit has ${parsed.finalHash}, expected ${expected}`);
+    }
+    return parsed;
+  }
+
+  /** Chips that must be posted before this hand's share. Ten small blinds. */
+  requiredShareStake(): bigint {
+    return requiredShareStake(this.smallBlindAmount);
+  }
+
+  /**
+   * Post the share-integrity stake. It stays unless a receiving player unseals
+   * partials that miss this seat's published street hash.
+   */
+  postShareStake(playerIndex: number, amount: bigint) {
+    if (playerIndex < 0 || playerIndex >= this.#numPlayers) {
+      throw new Error(`player ${playerIndex} is not in the hand`);
+    }
+    const need = this.requiredShareStake();
+    if (amount !== need) {
+      throw new Error(`share stake must be ${need}`);
+    }
+    this.#shareStakes[playerIndex] = amount;
+  }
+
+  /** Set once an unseal proves a bad share. Absent while every opened street matches. */
+  get shareUnsealPenalty(): ShareUnsealPenalty | undefined {
+    return this.#sharePenalty;
+  }
+
+  /** Open after the first mismatched street. Absent until then. */
+  get unsealChallenge() {
+    return this.#unsealWindow.challenge;
+  }
+
+  /** Tests supply a clock so the challenge deadline can move without waiting. */
+  setClock(clock: () => number) {
+    this.#clock = clock;
+  }
+
+  /**
+   * Close the challenge once every player has revealed that street, or once
+   * the deadline has passed. Returns `open` while other players may still unseal.
+   */
+  pollUnsealChallenge(now = this.#clock()): 'none' | 'open' | 'closed' {
+    const challenge = this.#unsealWindow.challenge;
+    if (!challenge) return 'none';
+    if (challenge.closed) return 'closed';
+    const streetFullyRevealed = this.#streetRevealed(challenge.street);
+    if (!unsealChallengeShouldClose(challenge, now, streetFullyRevealed)) return 'open';
+    this.#unsealWindow.close(now, streetFullyRevealed);
+    this.#phase = 'Complete';
+    return 'closed';
+  }
+
   share(proof: Groth16Proof, publicSignals: PublicSignals, privateData: SharePrivateData, options: ProofOptions = {}) {
     if (this.#phase !== 'Share') {
       throw new Error('Not in Share phase');
     }
 
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
+    if (this.smallBlindAmount > 0n && this.#shareStakes[playerIndex] !== this.requiredShareStake()) {
+      throw new Error(
+        `player ${playerIndex} must post ${this.requiredShareStake()} as the share stake before sharing`,
+      );
+    }
     const cardMask = shareCardMask(this.#numPlayers);
 
     const expectedInputHash = this.#poker.shareHash(
@@ -349,24 +441,19 @@ export class Game {
     );
 
     if (!options.fixtureApply) {
-      const [outputHash, transientHash] = publicSignals.map(s => BigInt(s));
+      const parsed = this.assertShareOutput(publicSignals, privateData.ciphertexts, playerIndex);
 
-      if (transientHash !== expectedInputHash) {
-        throw new Error(`Input hash mismatch: expected ${expectedInputHash}, got ${transientHash}`);
+      if (parsed.inputHash !== expectedInputHash) {
+        throw new Error(`Input hash mismatch: expected ${expectedInputHash}, got ${parsed.inputHash}`);
       }
 
       if (!options.verified && !verifyCircuit('poker_share_hashout_main', proof, publicSignals)) {
         throw new Error('Invalid share partials proof');
       }
 
-      const expectedOutputHash = this.#poker.computeShareOutputHash(
-        privateData.ciphertexts,
-        this.#numPlayers,
-      );
-
-      if (outputHash !== expectedOutputHash) {
-        throw new Error(`Output hash mismatch: circuit has ${outputHash}, expected ${expectedOutputHash}`);
-      }
+      const tier = this.shareTierCommitment(privateData.ciphertexts);
+      this.#shareStreetHashes[playerIndex] = tier.hashes;
+      this.#shareOutputHashes[playerIndex] = parsed.finalHash;
     }
 
     if (this.#partials[playerIndex] && this.#partials[playerIndex].length) {
@@ -385,11 +472,9 @@ export class Game {
   getCiphertextPartialsForPlayer(playerIndex: number) {
     const ciphertextPartials: Ciphertext[][] = [];
 
-    const padding = this.#padding[playerIndex]!;
-    // Masked-out deal slots (unused holes) are remapped to register padding so
-    // Light can recompute the showdown Poseidon from in-play RevealedCards +
-    // PlayerState.padding without needing unused-card reveals.
+    // Register padding is an encryption of the identity under the player key.
     const cardMask = shareCardMask(this.#numPlayers);
+    const padding = this.#padding[playerIndex]!;
 
     for (let i = 0; i < MAX_PLAYERS; i++) {
       if (i === playerIndex) {
@@ -397,7 +482,7 @@ export class Game {
       }
 
       if (i >= this.#numPlayers) {
-        ciphertextPartials.push(new Array(25).fill(padding));
+        ciphertextPartials.push(new Array(TOTAL_CARDS).fill(padding));
         continue;
       }
 
@@ -429,6 +514,149 @@ export class Game {
     ];
   }
 
+  /**
+   * Record the Arcis-revealed limbs for one recipient and card.
+   * Bytes are big-endian field elements, one sharer's 4 limbs packed by seat.
+   */
+  noteRevealedCard(recipient: number, card: number, limbs: bigint[]) {
+    const now = this.#clock();
+    this.#rejectIfUnsealClosed(now);
+    const expected = (this.#numPlayers - 1) * 4;
+    if (limbs.length < expected) {
+      throw new Error(
+        `revealed card r${recipient} c${card} has ${limbs.length} limbs, expected ${expected}`,
+      );
+    }
+    this.#revealedLimbs.set(`${recipient}:${card}`, limbs.slice(0, expected));
+    this.#judgeOpenedStreets(now);
+  }
+
+  /**
+   * Recheck every street that has at least one opened partial. A mismatch
+   * opens the challenge window and does not end the hand.
+   */
+  assertCompleteShareStreets(): ShareUnsealPenalty | undefined {
+    this.#judgeOpenedStreets(this.#clock());
+    if (this.pollUnsealChallenge() !== 'closed') return undefined;
+    return this.#sharePenalty;
+  }
+
+  #rejectIfUnsealClosed(now: number) {
+    const challenge = this.#unsealWindow.challenge;
+    if (!challenge) return;
+    if (!challenge.closed && now < challenge.deadline) return;
+    if (!challenge.closed) {
+      this.#unsealWindow.close(now, false);
+      this.#phase = 'Complete';
+    }
+    throw new Error('the unseal window has closed');
+  }
+
+  #streetRevealed(street: number): boolean {
+    return pokerStreetCards(street).every(card =>
+      Array.from({ length: this.#numPlayers }, (_, seat) =>
+        this.#revealedLimbs.has(`${seat}:${card}`),
+      ).every(Boolean),
+    );
+  }
+
+  #streetHasReveal(street: number): boolean {
+    return pokerStreetCards(street).some(card =>
+      Array.from({ length: this.#numPlayers }, (_, seat) =>
+        this.#revealedLimbs.has(`${seat}:${card}`),
+      ).some(Boolean),
+    );
+  }
+
+  #seatContributions(): bigint[] {
+    const bets = this.playerTotalBets.slice(0, this.#numPlayers);
+    if (!this.potManager) return bets;
+    return bets.map((bet, seat) => {
+      const inPot = this.potManager.contribution(seat);
+      return inPot > bet ? inPot : bet;
+    });
+  }
+
+  #kick(seat: number) {
+    if (this.#cheaters.has(seat)) return;
+    this.#cheaters.add(seat);
+    this.#pot &= ~(1 << seat);
+    this.foldedMask |= 1 << seat;
+    const manager = this.potManager;
+    if (
+      manager
+      && manager.activePlayers.has(seat)
+      && !manager.allInPlayers.has(seat)
+      && manager.activePlayers.size > 1
+    ) {
+      manager.foldPlayer(seat);
+    }
+  }
+
+  #judgeOpenedStreets(now: number) {
+    const streets = [
+      ...Array.from({ length: this.#numPlayers }, (_, seat) => seat),
+      10,
+      11,
+      12,
+    ];
+    const openedStreets = streets.filter(street => this.#streetHasReveal(street));
+    if (openedStreets.length === 0) return;
+
+    let found = false;
+    for (let sharer = 0; sharer < this.#numPlayers; sharer++) {
+      const pending = openedStreets.filter(street => !this.#judgedStreets.has(`${sharer}:${street}`));
+      if (pending.length === 0) continue;
+      const published = this.#shareStreetHashes[sharer];
+      if (!published) {
+        throw new Error(`player ${sharer} has no published street hashes`);
+      }
+      const grid = this.#partials[sharer]!.map(row => row.map(ct => [...ct] as Ciphertext));
+      let wrote = false;
+      for (const street of pending) {
+        for (let row = 0; row < 9; row++) {
+          const seat = row < sharer ? row : row + 1;
+          if (seat >= this.#numPlayers) continue;
+          const dest = sharer < seat ? sharer : sharer - 1;
+          for (const card of pokerStreetCards(street)) {
+            const limbs = this.#revealedLimbs.get(`${seat}:${card}`);
+            if (!limbs) continue;
+            grid[row]![card] = limbs.slice(dest * 4, dest * 4 + 4) as Ciphertext;
+            wrote = true;
+          }
+        }
+      }
+      if (!wrote) continue;
+      const got = this.#poker.shareCommitments(grid, this.#numPlayers).streets;
+      for (const street of pending) {
+        if (this.#sharerStreetRevealed(sharer, street)) {
+          this.#judgedStreets.add(`${sharer}:${street}`);
+        }
+        if (got[street] !== published[street] && !this.#cheaters.has(sharer)) {
+          this.#unsealWindow.recordMismatch(street, sharer, now);
+          this.#kick(sharer);
+          found = true;
+        }
+      }
+    }
+    if (found) {
+      this.#sharePenalty = settleBadUnseal({
+        contributions: this.#seatContributions(),
+        stakes: Array.from({ length: this.#numPlayers }, (_, seat) => this.#shareStakes[seat] ?? 0n),
+        cheaters: this.#unsealWindow.cheaters,
+      });
+    }
+  }
+
+  /** Recipients other than the sharer have opened every card of the street. */
+  #sharerStreetRevealed(sharer: number, street: number): boolean {
+    return pokerStreetCards(street).every(card =>
+      Array.from({ length: this.#numPlayers }, (_, seat) =>
+        seat === sharer || this.#revealedLimbs.has(`${seat}:${card}`),
+      ).every(Boolean),
+    );
+  }
+
   verifyShowdown(proof: Groth16Proof, publicSignals: PublicSignals, privateData: ShowdownPrivateData, options: ProofOptions = {}) {
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
 
@@ -440,7 +668,10 @@ export class Game {
       ciphertextPartials: this.getCiphertextPartialsForPlayer(playerIndex),
     };
 
-    const expectedInputHash = this.#poker.showdownHash(hashInput);
+    const expectedInputHash = this.#poker.showdownHash({
+      ...hashInput,
+      sealCommitment: privateData.coefficientCommitment,
+    });
 
     const [outputHash, transientHash] = publicSignals.map(s => BigInt(s));
 

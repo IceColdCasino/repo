@@ -8,6 +8,10 @@ index `i · 22`). Circom opens one center stop per reel, reconstructs the
 three-symbol window `(above, center, below)` with wrap-around, and awards
 the highest matching paytable line for a 1–3 coin bet.
 
+The house seat shuffles the reels and does not bet. Wins are paid from the
+dealer pool. `start_hand` coverage for this kind is `bet_unit × seats`. See
+[on-chain](../on-chain.md#dealer-pool).
+
 ## Shoe
 
 | | |
@@ -15,7 +19,7 @@ the highest matching paytable line for a 1–3 coin bet.
 | Encoding | Stop index `0..21` per reel → `BabyPbk(v+1)` |
 | Shuffle mains | `shuffle_3_reel_22_main`, `shuffle_5_reel_22_main` |
 | Opened at showdown | 3 or 5 center stops |
-| Poly-hash terms | 1 (award) |
+| Showdown terms | 2: `[award, 0]` |
 
 House seat shuffles. Table is heads-up (player + house).
 
@@ -24,8 +28,10 @@ House seat shuffles. Table is heads-up (player + house).
 1. **Register / shuffle** — `slot_shuffle.circom` wraps the shared shuffle
    for 3×22 or 5×22.
 2. **Coin bet** — `slot_coin_bet.circom` encrypts `coinBet ∈ {1,2,3}`.
-3. **Share** — `slot_share` / `slot_share_{3,5}_reel_hashout_main`.
-4. **Showdown** — decrypt centers + coin; evaluate strip windows.
+3. **Share** — `slot_share_{3,5}_reel_hashout_main`. The public outputs are
+   the reel partial-hash and the encrypted coin bets.
+4. **Showdown** — decrypt centers and the coin. The public field is
+   `(award + 1) · c0 + c1`.
 
 ## Unique ZK
 
@@ -47,7 +53,9 @@ the painted symbols. The strip mapping is a circuit constant.
 
 | Public | Private |
 |--------|---------|
-| Input hash (reel ciphertexts + coin ciphertext), award output hash | `sk`, center indices, coin amount, window symbols |
+| `hash`, `(award+1)·c0 + c1`, Groth16 proof | `sk`, center indices, coin amount, window symbols, 14 coefficients, seal commitment |
+
+`hash` is `Poseidon(keys, playerIndex, ciphertextHash, betHash, sealCommitment)`. The showdown template checks that equality. Share also publishes the encrypted coin bets.
 
 ## Entrypoints
 

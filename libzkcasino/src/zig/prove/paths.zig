@@ -12,7 +12,19 @@ pub const Paths = struct {
     alloc: std.mem.Allocator,
 
     pub fn resolve(alloc: std.mem.Allocator) !Paths {
-        const repo = try findRepo(alloc);
+        const repo = findRepo(alloc) catch |err| blk: {
+            if (err != error.RepoRootNotFound) return err;
+            // House images set these and mount zkeys later. They have no
+            // checkout, so the zkey walk cannot find a repo root.
+            if (std.c.getenv("ZKCASINO_LIB_DIR") == null or
+                std.c.getenv("ZKCASINO_DAT_ROOT") == null or
+                std.c.getenv("ZK_ZKEY_DIR") == null or
+                std.c.getenv("RAPIDSNARK_LIB") == null)
+            {
+                return err;
+            }
+            break :blk try alloc.dupe(u8, ".");
+        };
         errdefer alloc.free(repo);
 
         const lib_dir = try envOrJoin(alloc, "ZKCASINO_LIB_DIR", repo, "libzkcasino/zig-out/lib");
@@ -21,7 +33,10 @@ pub const Paths = struct {
         errdefer alloc.free(dat_dir);
         const zkey_dir = try envOrJoin(alloc, "ZK_ZKEY_DIR", repo, "zkey");
         errdefer alloc.free(zkey_dir);
-        const rapidsnark = try envOrJoin(alloc, "RAPIDSNARK_LIB", repo, "rapidsnark/lib/librapidsnark." ++ dylib_suffix);
+        const rapidsnark = if (getenvDup(alloc, "RAPIDSNARK_LIB")) |v|
+            v
+        else
+            try readZkeyLib(alloc);
         errdefer alloc.free(rapidsnark);
 
         return .{
@@ -58,6 +73,23 @@ pub const Paths = struct {
 fn envOrJoin(alloc: std.mem.Allocator, env: [:0]const u8, repo: []const u8, rel: []const u8) ![]u8 {
     if (getenvDup(alloc, env)) |v| return v;
     return std.fmt.allocPrint(alloc, "{s}/{s}", .{ repo, rel });
+}
+
+extern "c" fn popen(command: [*:0]const u8, mode: [*:0]const u8) ?*std.c.FILE;
+extern "c" fn pclose(stream: *std.c.FILE) c_int;
+
+/// `zkey lib` prints the libgroth16 path on stdout. That library is the prover and verifier.
+fn readZkeyLib(alloc: std.mem.Allocator) ![]u8 {
+    const file = popen("zkey lib", "r") orelse return error.ZkeyNotFound;
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    const n = std.c.fread(&buf, 1, buf.len, file);
+    const rc = pclose(file);
+    if (rc != 0 or n == 0) return error.ZkeyNotFound;
+    const text = std.mem.trim(u8, buf[0..n], " \t\r\n");
+    const line_end = std.mem.indexOfScalar(u8, text, '\n') orelse text.len;
+    const path = std.mem.trim(u8, text[0..line_end], " \t\r");
+    if (path.len == 0) return error.ZkeyNotFound;
+    return alloc.dupe(u8, path);
 }
 
 fn getenvDup(alloc: std.mem.Allocator, key: [:0]const u8) ?[]u8 {

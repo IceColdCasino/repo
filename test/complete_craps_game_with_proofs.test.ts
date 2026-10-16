@@ -4,6 +4,7 @@ import { Game } from '../src/craps-game';
 import { Player, loadCrapsCircuits, type CrapsCircuits } from '../src/craps-player';
 import { CrapsBetType, CRAPS_SHOWDOWN_TERMS } from '../src/craps-eval';
 import { hostShowdownCoefficients } from './helpers/host-showdown-coefficients';
+import { sealCommitment } from '../src/host-showdown-coefficients';
 import { verify } from '../src/rapidsnark-ffi';
 import path from 'path';
 
@@ -76,7 +77,8 @@ async function showdown(
   let expectedDice: string | undefined;
   for (let p = 0; p < nActualPlayers; p++) {
     if (game.isDealer(p)) continue;
-    players[p]!.setSealedCoefficients(hostShowdownCoefficients(CRAPS_SHOWDOWN_TERMS));
+    const sealed = hostShowdownCoefficients(2);
+    players[p]!.setSealedCoefficients(sealed);
     const { proof, publicSignals, plaintextDice, results } = await players[p]!.showdownProve(
       game.publicKeys,
       game.finalShuffledDeck,
@@ -90,7 +92,10 @@ async function showdown(
     expect(results.length).toBe(CRAPS_SHOWDOWN_TERMS);
     if (expectedDice === undefined) {
       expectedDice = plaintextDice.join(',');
-      const result = game.verifyShowdown(proof, publicSignals, { publicKey: players[p]!.publicKey });
+      const result = game.verifyShowdown(proof, publicSignals, {
+        publicKey: players[p]!.publicKey,
+        coefficientCommitment: sealCommitment(sealed),
+      });
       expect(result).toBe(BigInt(publicSignals[0]!));
     } else {
       expect(plaintextDice.join(',')).toBe(expectedDice);

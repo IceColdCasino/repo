@@ -84,12 +84,8 @@ template UniqueActualScalarBets(nBets) {
 template UniqueActualBets(nBets) {
   assert(nBets >= 1 && nBets <= 12);
 
-  var nPairs = nBets * (nBets - 1) / 2;
-
   signal input nActualBets;
   signal input plaintextBets[nBets][2];
-
-  signal bothActive[nPairs];
 
   signal output packedBets[nBets];
 

@@ -8,8 +8,7 @@ pragma circom 2.2.2;
 
 include "./hash.circom";
 include "./elgamal.circom";
-include "./polynomial_hash.circom";
-include "circuits/comparators.circom";
+include "./actual_players.circom";
 
 template HashMain(nOthers, nCards) {
   var nPlayers = nOthers + 1;
@@ -19,7 +18,6 @@ template HashMain(nOthers, nCards) {
   signal input publicKeys[nOthers][2];
 
   signal allPublicKeys[nPlayers][2];
-
   signal output out;
 
   component hashCiphertexts;
@@ -28,20 +26,16 @@ template HashMain(nOthers, nCards) {
 
   allPublicKeys[0] <== publicKey;
   for (var i = 0; i < nOthers; i++) {
-    allPublicKeys[i+1] <== publicKeys[i];
+    allPublicKeys[i + 1] <== publicKeys[i];
   }
 
-  hashCiphertexts = HashCiphertexts(nCards);
+  hashCiphertexts = parallel HashCiphertexts(nCards);
+  hashPublicKeys = parallel HashPublicKeys(nPlayers);
   hashCiphertexts.ciphertext <== ciphertext;
-
-  hashPublicKeys = HashPublicKeys(nPlayers);
   hashPublicKeys.publicKeys <== allPublicKeys;
 
   finalHash = Poseidon(2);
-  finalHash.inputs <== [
-    hashCiphertexts.out,
-    hashPublicKeys.out
-  ];
+  finalHash.inputs <== [hashCiphertexts.out, hashPublicKeys.out];
 
   out <== finalHash.out;
 }
@@ -61,12 +55,19 @@ template CreatePartials(nOthers, nCards) {
     partialDecrypt[i] = parallel PartialDecrypt();
     partialDecrypt[i].c0 <== [ciphertext[i][0], ciphertext[i][1]];
     partialDecrypt[i].privateKey <== privateKey;
+  }
 
+  for (var i = 0; i < nCards; i++) {
     for (var j = 0; j < nOthers; j++) {
       encrypt[j][i] = parallel Encrypt();
       encrypt[j][i].plaintext <== partialDecrypt[i].partial;
       encrypt[j][i].publicKey <== publicKeys[j];
       encrypt[j][i].randomness <== randomness[j][i];
+    }
+  }
+
+  for (var i = 0; i < nCards; i++) {
+    for (var j = 0; j < nOthers; j++) {
       out[j][i] <== encrypt[j][i].ciphertext;
     }
   }
@@ -76,13 +77,9 @@ template Share(nPlayers, nCards) {
   var nOthers = nPlayers - 1;
 
   signal input hash;
-
-  // Hashed private inputs
   signal input ciphertext[nCards][4];
   signal input publicKey[2];
   signal input publicKeys[nOthers][2];
-
-  // Non-hashed private inputs
   signal input privateKey;
   signal input randomness[nOthers][nCards];
   signal input nActualPlayers;
@@ -120,15 +117,10 @@ template Share(nPlayers, nCards) {
 template ShareHashOut(nPlayers, nCards) {
   var nOthers = nPlayers - 1;
 
-  // Public input
   signal input hash;
-
-  // Hashed private inputs
   signal input ciphertext[nCards][4];
   signal input publicKey[2];
   signal input publicKeys[nOthers][2];
-
-  // Non-hashed private inputs
   signal input privateKey;
   signal input randomness[nOthers][nCards];
   signal input nActualPlayers;
@@ -136,7 +128,8 @@ template ShareHashOut(nPlayers, nCards) {
   signal output out;
 
   component share;
-  component hashOut;
+  component hashOut[nOthers];
+  component finalHash;
 
   share = Share(nPlayers, nCards);
   share.hash <== hash;
@@ -147,9 +140,16 @@ template ShareHashOut(nPlayers, nCards) {
   share.randomness <== randomness;
   share.nActualPlayers <== nActualPlayers;
 
-  hashOut = PolynomialHash(nPlayers, nCards);
-  hashOut.in <== share.out;
-  hashOut.nActualPlayers <== nActualPlayers;
+  for (var p = 0; p < nOthers; p++) {
+    hashOut[p] = parallel HashCiphertexts(nCards);
+    hashOut[p].ciphertext <== share.out[p];
+  }
 
-  out <== hashOut.out;
+  finalHash = Poseidon(nOthers);
+
+  for (var p = 0; p < nOthers; p++) {
+    finalHash.inputs[p] <== hashOut[p].out;
+  }
+
+  out <== finalHash.out;
 }

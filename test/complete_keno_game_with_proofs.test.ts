@@ -1,6 +1,7 @@
 import './helpers/require-player-ffi';
 import { MAX_PLAYERS } from '../src/keno';
 import { hostShowdownCoefficients } from './helpers/host-showdown-coefficients';
+import { sealCommitment } from '../src/host-showdown-coefficients';
 import { Game } from '../src/keno-game';
 import { Player, loadKenoCircuits, type KenoCircuits } from '../src/keno-player';
 import { verify } from '../src/rapidsnark-ffi';
@@ -76,7 +77,8 @@ async function showdown(
   let expectedDraw: string | undefined;
   for (let p = 0; p < nActualPlayers; p++) {
     if (game.isDealer(p)) continue;
-    players[p]!.setSealedCoefficients(hostShowdownCoefficients(1));
+    const sealed = hostShowdownCoefficients(2);
+    players[p]!.setSealedCoefficients(sealed);
     const { proof, publicSignals, plaintextDraw } = await players[p]!.showdownProve(
       game.publicKeys,
       game.finalShuffledDeck,
@@ -87,7 +89,10 @@ async function showdown(
     );
     if (expectedDraw === undefined) {
       expectedDraw = plaintextDraw.join(',');
-      const result = game.verifyShowdown(proof, publicSignals, { publicKey: players[p]!.publicKey });
+      const result = game.verifyShowdown(proof, publicSignals, {
+        publicKey: players[p]!.publicKey,
+        coefficientCommitment: sealCommitment(sealed),
+      });
       expect(result).toBe(BigInt(publicSignals[0]!));
     } else {
       expect(plaintextDraw.join(',')).toBe(expectedDraw);

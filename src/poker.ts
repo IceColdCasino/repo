@@ -1,7 +1,7 @@
 import type { BabyJub, Point } from 'circomlibjs';
 import assert from 'node:assert';
 import { HandEvaluator, type EvaluatedHand } from './hand-eval';
-import { hash900Bn254 } from './hash-coeffs';
+import { casinoShareStreets } from './casino-calc';
 import {
   type Ciphertext,
   type PlaintextCard,
@@ -13,6 +13,7 @@ export type { Ciphertext, CompressedCiphertext, PlayerKey, PlaintextCard, Privat
 import { ZkCrypto } from './zk-crypto-base';
 import { GameKind } from './game-config';
 import { casinoDeck } from './casino-calc';
+import { packPokerWinnerMasks, showdownTwoCoeffHash } from './showdown-sealed-coeffs';
 import {
   hashPublicKeys10,
   SHARE_OTHER_SLOTS,
@@ -20,6 +21,32 @@ import {
 } from './share-common';
 
 export const MAX_PLAYERS = 10;
+/** Hole pair per seat, then flop, turn, and river. */
+export const POKER_STREET_COUNT = 13;
+/** Final share hash and the share input hash. Street hashes are not proof outputs. */
+export const POKER_SHARE_PUBLIC_SIGNALS = 2;
+
+export type PokerShareCommitment = {
+  finalHash: bigint;
+  streets: bigint[];
+};
+
+/** Cards covered by street 0..9 (seat holes), 10 flop, 11 turn, 12 river. */
+export function pokerStreetCards(street: number): number[] {
+  if (street >= 0 && street < MAX_PLAYERS) return [street * 2, street * 2 + 1];
+  if (street === 10) return [20, 21, 22];
+  if (street === 11) return [23];
+  if (street === 12) return [24];
+  throw new Error(`poker street ${street} is out of range`);
+}
+
+export function pokerStreetName(street: number): string {
+  if (street >= 0 && street < MAX_PLAYERS) return `hole ${street}`;
+  if (street === 10) return 'flop';
+  if (street === 11) return 'turn';
+  if (street === 12) return 'river';
+  throw new Error(`poker street ${street} is out of range`);
+}
 
 export interface ShowdownHashInput {
   potMasks: bigint[];
@@ -27,6 +54,7 @@ export interface ShowdownHashInput {
   playerIndex: bigint;
   ciphertextCards: bigint[][];
   ciphertextPartials: bigint[][][];
+  sealCommitment: bigint;
 }
 
 export class Poker extends ZkCrypto {
@@ -34,22 +62,6 @@ export class Poker extends ZkCrypto {
 
   protected override onCryptoReady(_babyjub: BabyJub): void {
     this.initialDeckCards = casinoDeck(this.calcKind, 52);
-  }
-
-  computeCoefficientCommitment(coefficients: bigint[]): bigint {
-    if (coefficients.length !== MAX_PLAYERS - 1) {
-      throw new Error(`Expected ${MAX_PLAYERS - 1} sealed coefficients`);
-    }
-    const max = 1n << 128n;
-    for (const coefficient of coefficients) {
-      if (coefficient <= 0n || coefficient >= max) {
-        throw new Error('Each sealed coefficient must be a non-zero 128-bit integer');
-      }
-    }
-    return this.poseidon([
-      this.poseidon(coefficients.slice(0, 6)),
-      this.poseidon(coefficients.slice(5, 9)),
-    ]);
   }
 
   override generateShufflePermutation(numCards: number = 52): bigint[] {
@@ -74,14 +86,15 @@ export class Poker extends ZkCrypto {
     otherPublicKeys?: PublicKey[],
   ): bigint {
     if (typeof publicKeyOrMask !== 'bigint') {
-      return super.shareHash(ciphertext, publicKeyOrMask, publicKeysOrKey as PublicKey[]);
+      throw new Error('poker shareHash requires a card mask');
     }
 
     const cardMask = publicKeyOrMask;
     const publicKey = publicKeysOrKey as PublicKey;
-    if (otherPublicKeys!.length !== SHARE_OTHER_SLOTS) {
+    const recipients = otherPublicKeys as PublicKey[];
+    if (recipients.length !== SHARE_OTHER_SLOTS) {
       throw new Error(
-        `shareHash expects ${SHARE_OTHER_SLOTS} recipient keys (${SHARE_PLAYER_SLOTS}-player circuit), got ${otherPublicKeys!.length}`,
+        `shareHash expects ${SHARE_OTHER_SLOTS} recipient keys (${SHARE_PLAYER_SLOTS}-player circuit), got ${recipients.length}`,
       );
     }
 
@@ -89,7 +102,7 @@ export class Poker extends ZkCrypto {
       deck: ciphertext,
       cardMask,
       publicKey,
-      publicKeys: otherPublicKeys,
+      publicKeys: recipients,
     });
   }
 
@@ -101,7 +114,6 @@ export class Poker extends ZkCrypto {
       ciphertextCards,
       ciphertextPartials,
     } = hashInput;
-  
     const nPlayers = publicKeys.length;
     const nPots = nPlayers - 1;
     const nTotalCards = nPlayers * 2 + 5;
@@ -117,6 +129,7 @@ export class Poker extends ZkCrypto {
     assert(ciphertextPartials.every(cp => cp.every(c => c.length === 4)), 'Each partial ciphertext must be [c0.x, c0.y, c1.x, c1.y]');
   
     return this.calcFr('showdownHash', {
+      sealCommitment: hashInput.sealCommitment,
       potMasks,
       publicKeys,
       playerIndex,
@@ -195,24 +208,35 @@ export class Poker extends ZkCrypto {
     return this.poseidon([this.deckHash(outputDeck), permutationHash]);
   }
 
-  computeShareOutputHash(ciphertexts: Ciphertext[][], nActualPlayers: number): bigint {
-    // Flatten ciphertexts into a single array of BN254 field elements.
-    // Order matches the PolynomialHash Circom circuit:
-    //   [nOthers][nCards][4] where nOthers=9, nCards=25 for the 10-player circuit.
+  /**
+   * Street hashes are derived from the partials: one per hole pair, then flop, turn, and river.
+   * The final hash is Poseidon(Poseidon of the 10 hole hashes, Poseidon of flop, turn, and river).
+   */
+  shareCommitments(ciphertexts: Ciphertext[][], nActualPlayers: number): PokerShareCommitment {
     const values = this.flattenShareValues(ciphertexts);
-
     if (values.length !== 900) {
       throw new Error(
         `Expected 900 BN254 values for share partials hash (9 players × 25 cards × 4 values), got ${values.length}`
       );
     }
+    return casinoShareStreets(this.calcKind, { ciphertexts, nActualPlayers }, this.calcVariant);
+  }
 
-    // Polynomial hash with ExtractAndCombine + random coefficients.
-    // Matches circuits/poker_polynomial_hash.circom (active-player masking).
-    return this.calcFr('shareOutputHash', {
-      ciphertexts,
-      nActualPlayers,
-    });
+  computeShareOutputHash(ciphertexts: Ciphertext[][], nActualPlayers: number): bigint {
+    return this.shareCommitments(ciphertexts, nActualPlayers).finalHash;
+  }
+
+  parseSharePublicSignals(publicSignals: Array<bigint | string>): { finalHash: bigint; inputHash: bigint } {
+    const signals = publicSignals.map(s => BigInt(s));
+    if (signals.length !== POKER_SHARE_PUBLIC_SIGNALS) {
+      throw new Error(
+        `poker share proof has ${signals.length} public signals, expected ${POKER_SHARE_PUBLIC_SIGNALS}`,
+      );
+    }
+    return {
+      finalHash: signals[0]!,
+      inputHash: signals[1]!,
+    };
   }
 
   override share(
@@ -247,27 +271,23 @@ export class Poker extends ZkCrypto {
     const cardMask = publicKeysOrMask;
     const publicKeys = privateKeyOrKeys as PublicKey[];
     const privateKey = randomnessOrKey as PrivateKey;
-    const cardRandomness = randomness!;
+    const cardRandomness = randomness as bigint[][];
     const partials = ciphertext.map(c => this.createPartialDecryption(privateKey, c));
-
-    return publicKeys
-      .map((publicKey, p) => partials
-        .map((partial, c) => this.reencryptPartialForRecipient(
+    return publicKeys.map((publicKey, recipient) =>
+      partials.map((partial, card) => {
+        const masked = ((cardMask >> BigInt(card)) & 1n) === 0n;
+        return this.reencryptPartialForRecipient(
           partial,
           publicKey,
-          cardRandomness[p]![c],
-          ((cardMask >> BigInt(c)) & 1n) < 1n)),
-      );
+          cardRandomness[recipient]![card],
+          masked,
+        );
+      }),
+    );
   }
 
-  computeShowdownOutputHash(winnerMasks: bigint[], coefficients: bigint[]): bigint {
-    // Polynomial hash: h = sum((winnerMask[i] + 1) * coefficients[i])
-    // Adding 1 prevents 0 multiplication which leaks information
-    let h = 0n;
-    for (let i = 0; i < winnerMasks.length; i++) {
-      h += (winnerMasks[i]! + 1n) * coefficients[i]!;
-    }
-    return h;
+  computeShowdownOutputHash(winnerMasks: bigint[], coefficients: readonly bigint[]): bigint {
+    return showdownTwoCoeffHash(packPokerWinnerMasks(winnerMasks), coefficients);
   }
 
   override decryptCards(
@@ -281,12 +301,14 @@ export class Poker extends ZkCrypto {
     potMask: bigint,
     ciphertextCards: Ciphertext[],
     ciphertextPartials: Ciphertext[][],
+    dealerSk?: bigint[],
   ): bigint[];
   override decryptCards(
     privateKey: PrivateKey,
     cardsOrMask: Ciphertext[] | bigint,
     partialsOrCards: Ciphertext[][] | Ciphertext[],
     labelOrPartials?: string | Ciphertext[][],
+    dealerSk?: bigint[],
   ): bigint[] {
     if (typeof cardsOrMask !== 'bigint') {
       return super.decryptCards(
@@ -309,7 +331,12 @@ export class Poker extends ZkCrypto {
         }
 
         const cardPartials = ciphertextPartials.map((pt) => pt[cardIndex]!);
-        const index = this.decryptFromPartials(privateKey, encryptedCard, cardPartials);
+        const index = this.decryptFromPartials(
+          privateKey,
+          encryptedCard,
+          cardPartials,
+        );
+        void dealerSk;
 
         if (index < 0) {
           console.error(JSON.stringify({

@@ -773,7 +773,9 @@ template EvaluateBets(nBets, deckSize) {
 
     lessThan[i] = LessThan(4);
     lessThan[i].in <== [i, nActualBets];
+  }
 
+  for (var i = 0; i < nBets; i++) {
     out[i] <== evaluateBets[i].out * lessThan[i].out;
   }
 }

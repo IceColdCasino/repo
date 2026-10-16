@@ -220,20 +220,20 @@ template CommitBet(deckSize) {
 
   if (deckSize == 37) {
     component constrainBetEU;
-    constrainBetEU = ConstrainBetEU();
+    constrainBetEU = parallel ConstrainBetEU();
     constrainBetEU.type <== type;
     constrainBetEU.modifier <== modifier;
   } else {
     component constrainBetUS;
-    constrainBetUS = ConstrainBetUS();
+    constrainBetUS = parallel ConstrainBetUS();
     constrainBetUS.type <== type;
     constrainBetUS.modifier <== modifier;
   }
 
-  babyPbk = BabyPbk();
+  babyPbk = parallel BabyPbk();
   babyPbk.in <== packedBet + 1;
 
-  encrypt = Encrypt();
+  encrypt = parallel Encrypt();
   encrypt.plaintext <== [babyPbk.Ax, babyPbk.Ay];
   encrypt.publicKey <== publicKey;
   encrypt.randomness <== randomness;
@@ -274,7 +274,11 @@ template CommitBets(nPlayers, deckSize, nBets) {
       commitBet[p][i].packedBet <== uniqueBets.packedBets[i];
       commitBet[p][i].publicKey <== publicKeys[p];
       commitBet[p][i].randomness <== randomness[p][i];
+    }
+  }
 
+  for (var p = 0; p < nPlayers; p++) {
+    for (var i = 0; i < nBets; i++) {
       out[p][i] <== commitBet[p][i].out;
     }
   }

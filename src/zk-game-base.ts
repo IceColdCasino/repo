@@ -266,6 +266,12 @@ export abstract class HouseZkGame extends ZkGame {
     }
   }
 
+  /** This seat, including the house, has not shared in the simultaneous share round. */
+  unsharedPlayerForfeits(playerIndex: number): boolean {
+    if (playerIndex < 0 || playerIndex >= this.numPlayers) return false;
+    return !this.partials[playerIndex]?.length;
+  }
+
   getEncryptedBetsForPlayer(playerIndex: number): Ciphertext[] {
     const bets = this.encryptedBets[playerIndex];
     if (!bets) throw new Error(`Player ${playerIndex} has not committed bets`);

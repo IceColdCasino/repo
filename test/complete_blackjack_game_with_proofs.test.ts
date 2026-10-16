@@ -5,6 +5,7 @@ import { Player, loadBlackjackCircuits, type BlackjackCircuits, type ShareOutput
 import { verify } from '../src/rapidsnark-ffi';
 import path from 'path';
 import { hostShowdownCoefficients } from './helpers/host-showdown-coefficients';
+import { sealCommitment } from '../src/host-showdown-coefficients';
 
 const actionVkPath = path.join(
   __dirname,
@@ -130,15 +131,14 @@ async function actionCheckOnePlayer(game: Game, players: Player[]) {
   const player = players[0]!;
   const sourceIndices = [0, 1];
 
-  // Status coeff is host-sealed. The action circuit forces the ace coeff to 0
-  // for a non-dealer.
-  player.setSealedCoefficients([1n, 0n]);
+  player.setSealedCoefficients(hostShowdownCoefficients(2));
   console.time('Action Prove 0');
   const { proof, publicSignals, status, actionHash } = await player.actionProve(
     game.publicKeys,
     game.shareCiphertextCards,
     game.getCiphertextPartialsForPlayer(0),
     sourceIndices,
+    2,
     true,
   );
   console.timeEnd('Action Prove 0');
@@ -176,7 +176,8 @@ async function showdown(game: Game, players: Player[]) {
     dealerShareSlots: [2, 3],
   });
 
-  player.setSealedCoefficients(hostShowdownCoefficients(1));
+  const sealed = hostShowdownCoefficients(2);
+  player.setSealedCoefficients(sealed);
   console.time('Showdown Prove 0');
   const { proof, publicSignals, publicKey, outcomesHash } = await player.showdownProve(
     game.publicKeys,
@@ -189,6 +190,7 @@ async function showdown(game: Game, players: Player[]) {
   console.time('Game Verify Showdown 0');
   const result = game.verifyShowdown(proof, publicSignals, {
     publicKey,
+    coefficientCommitment: sealCommitment(sealed),
     outcomesHash,
     handLayout,
     handIndex: 0,
@@ -207,8 +209,9 @@ async function showdownSevenPlayers(game: Game, players: Player[]) {
   const handLayout = players[0]!.buildHandLayoutFromShareSlots(decrypted, buildSevenPlayerDeal());
 
   console.time('Parallel 7-player showdown proofs');
+  const sealed = hostShowdownCoefficients(2);
   const proved = await Promise.all(Array.from({ length: 7 }, (_, p) => {
-    players[p]!.setSealedCoefficients(hostShowdownCoefficients(1));
+    players[p]!.setSealedCoefficients(sealed);
     return players[p]!.showdownProve(
       game.publicKeys,
       ciphertextCards,
@@ -225,6 +228,7 @@ async function showdownSevenPlayers(game: Game, players: Player[]) {
       console.time('Game Verify Showdown 0');
       const result = game.verifyShowdown(proof, publicSignals, {
         publicKey,
+        coefficientCommitment: sealCommitment(sealed),
         outcomesHash,
         handLayout,
         handIndex,

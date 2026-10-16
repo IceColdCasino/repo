@@ -1,25 +1,23 @@
 import type { BabyJub } from 'circomlibjs';
 import assert from 'node:assert';
-import { hash8120Bn254, HASH_COEFFS_900, bn254ExtractAndCombine } from './hash-coeffs';
 import {
   type Ciphertext,
   type PrivateKey,
   type PublicKey,
 } from './zk-casino';
-import { hashRowValues } from './poseidon-chunk';
 import { ZkCrypto } from './zk-crypto-base';
 import { GameKind } from './game-config';
-import { casinoDeck } from './casino-calc';
+import { casinoDeck, casinoFr, casinoShareCards } from './casino-calc';
+import { showdownTwoCoeffHash } from './showdown-sealed-coeffs';
 
 export const MAX_SEATS = 8;
 export const MAX_PLAYERS = 7;
 export const SHOE_SIZE = 6 * 52;
 export const MAX_SHARE_CARDS = 290;
-// Matches circuits/blackjack_share_hashout_main.circom ShareHashOut(8, 16).
+// Matches circuits/blackjack_share_hashout_main.circom BlackjackShareHashOut(8, 16).
 export const CHUNK_SHARE_CARDS = 16;
 export const N_SHARE_CHUNKS = Math.ceil(MAX_SHARE_CARDS / CHUNK_SHARE_CARDS);
 export const N_OTHERS = MAX_SEATS - 1;
-export const SHARE_POLY_TERMS = N_OTHERS * MAX_SHARE_CARDS * 4;
 export const CHUNK_SHARE_POLY_TERMS = N_OTHERS * CHUNK_SHARE_CARDS * 4;
 export const MAX_HANDS = 4; // max 3 splits → 4 hands (game layout)
 export const MAX_CARDS_PER_HAND = 11;
@@ -71,6 +69,7 @@ export interface ShowdownHashInput {
   ciphertextPartials: Ciphertext[][];
   playerCardCount: number;
   dealerCardCount: number;
+  sealCommitment: bigint;
 }
 
 export interface BlackjackHandLayout {
@@ -292,9 +291,15 @@ export function computeOutcomesPolynomialHash(
 
 export class Blackjack extends ZkCrypto {
   protected override calcKind = GameKind.Blackjack;
+  readonly shoeDecks: 1 | 6 | 8;
+
+  constructor(shoeDecks: 1 | 6 | 8 = 6) {
+    super();
+    this.shoeDecks = shoeDecks;
+  }
 
   protected override onCryptoReady(_babyjub: BabyJub): void {
-    this.initialDeckCards = casinoDeck(this.calcKind, 52, 6);
+    this.initialDeckCards = casinoDeck(this.calcKind, 52, this.shoeDecks);
   }
 
   override generateShufflePermutation(numCards: number = SHOE_SIZE): bigint[] {
@@ -347,6 +352,7 @@ export class Blackjack extends ZkCrypto {
     assert(ciphertextPartials.every(cp => cp.length === ciphertextCards.length));
 
     return this.calcFr('showdownHash', {
+      sealCommitment: hashInput.sealCommitment,
       publicKeys,
       playerIndex,
       cards: ciphertextCards,
@@ -358,9 +364,12 @@ export class Blackjack extends ZkCrypto {
 
   /**
    * Matches BlackjackActionHashMain:
-   * Poseidon(h1, h2, cardCount, canSplit, hitSoft17, isDealer).
+   * Poseidon(h1, h2, upcardHash, cardCount, canSplit, hitSoft17, isDealer,
+   * insuranceEligible, sealCommitment).
    * Player: isDealer=0, hitSoft17=0. Dealer: isDealer=1, canSplit=0.
-   * dealerUpIsAce is a circuit output (not hashed here).
+   * insuranceEligible is 1 exactly when the dealer upcard is an Ace.
+   * The public output is the sealed polynomial of the action status.
+   * Dealer status 2 is a natural blackjack.
    */
   actionHashMaterial(
     publicKeys: PublicKey[],
@@ -376,6 +385,14 @@ export class Blackjack extends ZkCrypto {
     return { h1, h2 };
   }
 
+  /** Poseidon of the dealer upcard ciphertext and each other seat's partial. */
+  upcardHash(upcard: Ciphertext, partials: Ciphertext[]): bigint {
+    return this.poseidon([
+      this.hashCiphertexts([upcard]),
+      ...partials.map((partial) => this.hashCiphertexts([partial])),
+    ]);
+  }
+
   actionHash(
     publicKeys: PublicKey[],
     ciphertextCards: Ciphertext[],
@@ -385,11 +402,16 @@ export class Blackjack extends ZkCrypto {
       canSplit?: boolean;
       hitSoft17?: boolean;
       isDealer?: boolean;
-    } = {},
+      upcard: Ciphertext;
+      upcardPartials: Ciphertext[];
+      insuranceEligible: boolean;
+      sealCommitment: bigint;
+    },
   ) {
     const nPlayers = publicKeys.length;
     const nOthers = nPlayers - 1;
     assert(ciphertextPartials.length === nOthers);
+    assert(opts.upcardPartials.length === nOthers);
     const isDealer = opts.isDealer ?? false;
     const canSplit = isDealer ? false : (opts.canSplit ?? false);
     const hitSoft17 = isDealer ? (opts.hitSoft17 ?? false) : false;
@@ -402,6 +424,10 @@ export class Blackjack extends ZkCrypto {
       canSplit,
       hitSoft17,
       isDealer,
+      upcard: opts.upcard,
+      upcardPartials: opts.upcardPartials,
+      insuranceEligible: opts.insuranceEligible,
+      sealCommitment: opts.sealCommitment,
     });
   }
 
@@ -413,48 +439,24 @@ export class Blackjack extends ZkCrypto {
     return evaluateBlackjackDealerActionStatus(cards, cardCount, hitSoft17);
   }
 
-  hashPermutationMatrixSixDeck(permutationMatrix: bigint[]): bigint {
-    const nCards = SHOE_SIZE;
-    const rowValues: bigint[] = [];
-    for (let i = 0; i < nCards; i++) {
-      const row = permutationMatrix.slice(i * nCards, (i + 1) * nCards);
-      rowValues.push(this.bits2num(row));
-    }
-    const deckHashes: bigint[] = [];
-    for (let d = 0; d < 6; d++) {
-      deckHashes.push(hashRowValues(rowValues.slice(d * 52, (d + 1) * 52), (inputs) => this.poseidon(inputs)));
-    }
-    return this.poseidon(deckHashes);
-  }
-
   hashDeck(deck: Ciphertext[]): bigint {
     return this.hashCiphertexts(deck);
   }
 
-  override shuffle(
-    deck: Ciphertext[],
-    publicKeys: PublicKey[],
-    permutationMatrix: bigint[],
-    randomness?: bigint[],
-  ) {
-    const { ciphertexts } = super.shuffle(deck, publicKeys, permutationMatrix, randomness);
-    return {
-      ciphertexts,
-      permutationHash: this.hashPermutationMatrixSixDeck(permutationMatrix),
-    };
-  }
-
-  computeShareOutputHash(ciphertexts: Ciphertext[][]): bigint {
-    const values = this.flattenShareValues(ciphertexts);
-    if (values.length !== SHARE_POLY_TERMS) {
-      throw new Error(
-        `Expected ${SHARE_POLY_TERMS} BN254 values for share partials hash, got ${values.length}`,
-      );
-    }
-    return hash8120Bn254(values);
+  computeShareOutputHash(ciphertexts: Ciphertext[][], nActualPlayers: number): bigint {
+    return this.computeChunkShareOutputHash(ciphertexts, nActualPlayers);
   }
 
   computeChunkShareOutputHash(ciphertexts: Ciphertext[][], nActualPlayers: number): bigint {
+    return this.shareCardCommitment(ciphertexts, nActualPlayers).finalHash;
+  }
+
+  /**
+   * One hash per card (every recipient's partials for that card), then the
+   * folded public output. The initial deal is two cards per seat, so one card
+   * of the pair can be checked without the other.
+   */
+  shareCardCommitment(ciphertexts: Ciphertext[][], nActualPlayers: number): { finalHash: bigint; cards: bigint[] } {
     const values = this.flattenShareValues(ciphertexts);
     if (values.length !== CHUNK_SHARE_POLY_TERMS) {
       throw new Error(
@@ -464,7 +466,18 @@ export class Blackjack extends ZkCrypto {
     if (nActualPlayers < 2 || nActualPlayers > MAX_SEATS) {
       throw new Error(`nActualPlayers must be 2..${MAX_SEATS}, got ${nActualPlayers}`);
     }
-    return this.calcFr('shareOutputHash', { ciphertexts, nActualPlayers });
+    const commitment = casinoShareCards(this.calcKind, { ciphertexts, nActualPlayers });
+    if (commitment.cards.length !== CHUNK_SHARE_CARDS) {
+      throw new Error(`Expected ${CHUNK_SHARE_CARDS} card hashes, got ${commitment.cards.length}`);
+    }
+    return commitment;
+  }
+
+  cardShareHash(column: Ciphertext[]): bigint {
+    if (column.length !== N_OTHERS) {
+      throw new Error(`Expected ${N_OTHERS} recipient partials for one card, got ${column.length}`);
+    }
+    return casinoFr(this.calcKind, 'cardShareHash', { column });
   }
 
   shareChunk(
@@ -480,8 +493,8 @@ export class Blackjack extends ZkCrypto {
     return computeOutcomesPolynomialHash(outcomes, coefficients);
   }
 
-  computePlayerShowdownOutputHash(outcome: HandOutcome, coefficient: bigint): bigint {
-    return (BigInt(outcome) + 1n) * coefficient;
+  computePlayerShowdownOutputHash(outcome: HandOutcome, coefficients: readonly bigint[]): bigint {
+    return showdownTwoCoeffHash(BigInt(outcome), coefficients);
   }
 
   /**

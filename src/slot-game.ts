@@ -1,7 +1,8 @@
-import { Slot, MAX_PLAYERS, N_STOPS, parseSlotSharePublicSignals, type SlotVariant, type ShowdownHashInput } from './slot';
+import { Slot, MAX_PLAYERS, parseSlotSharePublicSignals, type SlotVariant, type ShowdownHashInput } from './slot';
 import { type Ciphertext, type PublicKey } from './zk-casino';
 import type { Groth16Proof, PublicSignals } from 'snarkjs';
 import { ZkGame, IDENTITY_POINT, type CasinoGamePhase } from './zk-game-base';
+import { readShuffleProof } from './shuffle-signals';
 
 interface ShuffledReels {
   transientHash: bigint;
@@ -94,24 +95,19 @@ export class Game extends ZkGame {
     this.assertPhase('Shuffle', 'Game is not in shuffle phase');
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
     this.assertTurn(playerIndex);
-    const signalBigInts = publicSignals.map(s => BigInt(s));
     const transientHashExpected = this.#slot.shuffleHash(this.reels, this.players);
-    const transientHash = signalBigInts.pop()!;
-    const permutationHash = signalBigInts.pop()!;
-    if (transientHash !== transientHashExpected) {
-      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${transientHash}`);
+    const { outputDeckHash, permutationHash, inputHash } = readShuffleProof(publicSignals);
+    if (inputHash !== transientHashExpected) {
+      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${inputHash}`);
+    }
+    if (this.#slot.deckHash(privateData.reels.flat()) !== outputDeckHash) {
+      throw new Error('Shuffle output hash does not match the reels');
+    }
+    if (privateData.permutationHash !== permutationHash) {
+      throw new Error('Shuffle permutation hash does not match the proof');
     }
     this.verifyProof(proof, publicSignals, this.#circuitNames().shuffle, 'Invalid shuffle proof');
-    const reelsFromSignals: Ciphertext[][] = [];
-    for (let r = 0; r < this.#variant; r++) {
-      const stops: Ciphertext[] = [];
-      for (let s = 0; s < N_STOPS; s++) {
-        const i = (r * N_STOPS + s) * 4;
-        stops.push(signalBigInts.slice(i, i + 4) as Ciphertext);
-      }
-      reelsFromSignals.push(stops);
-    }
-    this.#shuffled.push({ transientHash, reels: reelsFromSignals, permutationHash });
+    this.#shuffled.push({ transientHash: inputHash, reels: privateData.reels, permutationHash });
     this.advanceAfterShuffle('Share');
   }
 
@@ -158,6 +154,12 @@ export class Game extends ZkGame {
     }
   }
 
+  /** This seat, including the house, has not shared in the simultaneous share round. */
+  unsharedPlayerForfeits(playerIndex: number): boolean {
+    if (playerIndex < 0 || playerIndex >= this.numPlayers) return false;
+    return !this.#partials[playerIndex]?.length;
+  }
+
   getEncryptedBetForPlayer(playerIndex: number): Ciphertext {
     const bet = this.#encryptedBets[playerIndex];
     if (!bet) throw new Error(`Player ${playerIndex} has not shared a coin-bet`);
@@ -188,7 +190,7 @@ export class Game extends ZkGame {
   verifyShowdown(
     proof: Groth16Proof,
     publicSignals: PublicSignals,
-    privateData: { publicKey: PublicKey },
+    privateData: { publicKey: PublicKey ; coefficientCommitment: bigint },
   ) {
     this.assertPhase('Showdown', 'Not in Showdown phase');
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
@@ -196,13 +198,17 @@ export class Game extends ZkGame {
       throw new Error('House/dealer cannot submit showdown');
     }
     const hashInput: ShowdownHashInput = {
+      sealCommitment: privateData.coefficientCommitment,
       publicKeys: this.players,
       playerIndex: BigInt(playerIndex),
       ciphertextCards: this.finalShuffledDeck,
       ciphertextPartials: this.getCiphertextPartialsForPlayer(playerIndex),
       ciphertextBet: this.getEncryptedBetForPlayer(playerIndex),
     };
-    const expectedInputHash = this.#slot.showdownHash(hashInput);
+    const expectedInputHash = this.#slot.showdownHash({
+      ...hashInput,
+      sealCommitment: privateData.coefficientCommitment,
+    });
     const [outputHash, transientHash] = publicSignals.map(s => BigInt(s));
     if (transientHash !== expectedInputHash) {
       throw new Error('Input hash does not match expected');

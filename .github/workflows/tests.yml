@@ -14,13 +14,13 @@ permissions:
 
 jobs:
   changes:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       typecheck: ${{ steps.select.outputs.typecheck }}
       has_games: ${{ steps.select.outputs.has_games }}
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
-      - uses: useblacksmith/checkout@v1
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
           lfs: false
@@ -43,10 +43,10 @@ jobs:
   typecheck:
     needs: changes
     if: needs.changes.outputs.typecheck == 'true'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: useblacksmith/checkout@v1
+      - uses: actions/checkout@v4
         with:
           lfs: false
       - uses: oven-sh/setup-bun@v2
@@ -89,30 +89,31 @@ jobs:
         with:
           lfs: false
 
-      - name: Download rapidsnark
+      - name: Install the prover
         run: |
           set -eux
-          ver=v0.0.8
           if [ "$RUNNER_OS" = "macOS" ]; then
             export HOMEBREW_NO_AUTO_UPDATE=1
             brew install gmp
             if ! command -v git-lfs >/dev/null 2>&1; then
               brew install git-lfs
             fi
-            asset="rapidsnark-macOS-arm64-${ver}"
-            lib=librapidsnark.dylib
+            brew trust --tap IceColdCasino/groth16
+            brew tap IceColdCasino/groth16 https://github.com/IceColdCasino/groth16
+            brew install icecoldcasino/groth16/zkey
+            zkey lib
           else
             sudo apt-get update
             sudo apt-get install -y g++ libgmp-dev git-lfs unzip
+            ver=v0.0.8
             asset="rapidsnark-linux-arm64-${ver}"
-            lib=librapidsnark.so
+            curl -fsSL -o /tmp/rapidsnark.zip \
+              "https://github.com/iden3/rapidsnark/releases/download/${ver}/${asset}.zip"
+            unzip -q /tmp/rapidsnark.zip -d /tmp/rapidsnark
+            lib="/tmp/rapidsnark/${asset}/lib/librapidsnark.so"
+            test -f "$lib"
+            echo "RAPIDSNARK_LIB=${lib}" >> "$GITHUB_ENV"
           fi
-          curl -fsSL -o /tmp/rapidsnark.zip \
-            "https://github.com/iden3/rapidsnark/releases/download/${ver}/${asset}.zip"
-          unzip -q /tmp/rapidsnark.zip -d /tmp/rapidsnark
-          mkdir -p "$GITHUB_WORKSPACE/rapidsnark/lib"
-          cp "/tmp/rapidsnark/${asset}/lib/${lib}" "$GITHUB_WORKSPACE/rapidsnark/lib/"
-          rm -rf /tmp/rapidsnark /tmp/rapidsnark.zip
 
       - uses: mlugg/setup-zig@v2
         with:

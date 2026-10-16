@@ -9,4 +9,4 @@ pragma circom 2.2.2;
 include "./war_showdown.circom";
 
 // Expose only the authenticated receipt and roots, never the clear winner.
-component main { public [hash] } = ShowdownHashOut(12, 8);
+component main { public [hash] } = ShowdownHashOut(12);

@@ -44,7 +44,7 @@ template HandValue(maxCards) {
   aceAcc[0] <== 0;
 
   for (var i = 0; i < maxCards; i++) {
-    cardVal[i] = CardToHardValue(8);
+    cardVal[i] = CardToHardValue();
     cardVal[i].card <== cards[i];
 
     ltCount[i] = LessThan(5);

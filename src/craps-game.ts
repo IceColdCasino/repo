@@ -2,8 +2,6 @@ import {
   Craps,
   MAX_PLAYERS,
   TOTAL_CARDS,
-  N_DICE,
-  N_FACES,
   parseSharePublicSignals,
   parseBetPublicSignals,
   type ShowdownHashInput,
@@ -11,6 +9,7 @@ import {
 import { type Ciphertext, type PublicKey } from './zk-casino';
 import type { Groth16Proof, PublicSignals } from 'snarkjs';
 import { HouseZkGame, IDENTITY_POINT, type CasinoGamePhase } from './zk-game-base';
+import { readShuffleProof } from './shuffle-signals';
 
 interface ShuffledDice {
   transientHash: bigint;
@@ -93,23 +92,16 @@ export class Game extends HouseZkGame {
     this.assertPhase('Shuffle', 'Game is not in shuffle phase');
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
     this.assertTurn(playerIndex);
-    const signalBigInts = publicSignals.map(s => BigInt(s));
     const transientHashExpected = this.#craps.shuffleHash(this.dice, this.players);
-    const transientHash = signalBigInts.pop()!;
-    if (transientHash !== transientHashExpected) {
-      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${transientHash}`);
+    const { outputDeckHash, inputHash } = readShuffleProof(publicSignals);
+    if (inputHash !== transientHashExpected) {
+      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${inputHash}`);
+    }
+    if (this.#craps.deckHash(privateData.dice.flat()) !== outputDeckHash) {
+      throw new Error('Shuffle output hash does not match the dice');
     }
     this.verifyProof(proof, publicSignals, 'shuffle_2_dice_6_main', 'Invalid shuffle proof');
-    const diceFromSignals: Ciphertext[][] = [];
-    for (let d = 0; d < N_DICE; d++) {
-      const faces: Ciphertext[] = [];
-      for (let f = 0; f < N_FACES; f++) {
-        const i = (d * N_FACES + f) * 4;
-        faces.push(signalBigInts.slice(i, i + 4) as Ciphertext);
-      }
-      diceFromSignals.push(faces);
-    }
-    this.#shuffled.push({ transientHash, dice: diceFromSignals });
+    this.#shuffled.push({ transientHash: inputHash, dice: privateData.dice });
     this.advanceAfterShuffle('Share');
   }
 
@@ -147,11 +139,12 @@ export class Game extends HouseZkGame {
   verifyShowdown(
     proof: Groth16Proof,
     publicSignals: PublicSignals,
-    privateData: { publicKey: PublicKey },
+    privateData: { publicKey: PublicKey ; coefficientCommitment: bigint },
   ) {
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
     this.assertShowdownPlayer(playerIndex);
     const hashInput: ShowdownHashInput = {
+      sealCommitment: privateData.coefficientCommitment,
       publicKeys: this.players,
       playerIndex: BigInt(playerIndex),
       ciphertextCards: this.finalShuffledDeck,
@@ -161,7 +154,10 @@ export class Game extends HouseZkGame {
       phase: this.#phaseRoll,
       point: this.#point,
     };
-    const expectedInputHash = this.#craps.showdownHash(hashInput);
+    const expectedInputHash = this.#craps.showdownHash({
+      ...hashInput,
+      sealCommitment: privateData.coefficientCommitment,
+    });
     const [outputHash, transientHash] = publicSignals.map(s => BigInt(s));
     if (transientHash !== expectedInputHash) {
       throw new Error('Input hash does not match expected');

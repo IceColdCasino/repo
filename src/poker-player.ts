@@ -6,6 +6,7 @@ import {
   type Ciphertext,
 } from './poker';
 import { padPublicKeysForShuffle } from './shuffle-common';
+import { readShuffleProof } from './shuffle-signals';
 import { SHARE_OTHER_SLOTS } from './share-common';
 import { TOTAL_CARDS } from './poker-game';
 import { shareCardMask } from './backend/card-layout';
@@ -14,7 +15,10 @@ import type { Groth16Proof } from 'snarkjs';
 import assert from 'assert';
 import * as nativePlayer from './player-native-bridge';
 import type { PlayerSession } from './player-native-bridge';
-import { requireHostShowdownCoefficients } from './host-showdown-coefficients';
+import {
+  requireHostShowdownCoefficients,
+  sealCommitment,
+} from './host-showdown-coefficients';
 
 export interface RegisterOutput {
   proof: Groth16Proof;
@@ -62,7 +66,12 @@ export class Player {
 
   // Prepared params for witness preloading (randomness generated once, used by both preload and prove)
   #shuffleParams: { hash: bigint; permutationMatrix: bigint[]; randomness: bigint[]; deck: Ciphertext[] } | undefined;
-  #shareParams: { hash: bigint; cardMask: bigint; randomness: bigint[][]; nActualPlayers: number } | undefined;
+  #shareParams: {
+    hash: bigint;
+    cardMask: bigint;
+    randomness: bigint[][];
+    nActualPlayers: number;
+  } | undefined;
   #showdownParams: PokerShowdownParams | undefined;
   /** Host-sealed showdown coeffs (Arcis `seal_showdown_coefficients` or local host). */
   #sealedCoefficients: bigint[] | undefined;
@@ -78,11 +87,11 @@ export class Player {
   }
 
   /**
-   * Use Arcis-sealed coefficients for the next showdown proof.
-   * Must be 9 non-zero u128 values decrypted from SealedShowdownCoefficients.
+   * Use Arcis-sealed coefficients for the next showdown proof: all 14 slots
+   * decrypted from SealedShowdownCoefficients. The pots use the first 9.
    */
   setSealedCoefficients(coeffs: bigint[]): void {
-    this.#sealedCoefficients = requireHostShowdownCoefficients(coeffs, MAX_PLAYERS - 1);
+    this.#sealedCoefficients = requireHostShowdownCoefficients(coeffs);
     this.#showdownParams = undefined;
   }
 
@@ -307,7 +316,7 @@ export class Player {
     const shuffleKeys = padPublicKeysForShuffle(publicKeys);
     const params = this.prepareShuffle(deck, publicKeys);
 
-    const { ciphertexts, permutationHash } = this.#poker.shuffle(
+    const { ciphertexts } = this.#poker.shuffle(
       deck,
       shuffleKeys,
       params.permutationMatrix,
@@ -328,17 +337,26 @@ export class Player {
       proof,
       publicSignals,
       deck: ciphertexts,
-      permutationHash,
+      permutationHash: readShuffleProof(publicSignals).permutationHash,
     };
   }
 
-  private prepareShare(deck: Ciphertext[], publicKeys: PublicKey[], nActualPlayers: number) {
+  private prepareShare(
+    deck: Ciphertext[],
+    publicKeys: PublicKey[],
+    nActualPlayers: number,
+  ) {
     const expectedOthers = SHARE_OTHER_SLOTS;
     if (publicKeys.length !== expectedOthers) {
       throw new Error(`Expected ${expectedOthers} share recipient keys, got ${publicKeys.length}`);
     }
     const cardMask = shareCardMask(nActualPlayers);
-    const hash = this.#poker.shareHash(deck, cardMask, this.publicKey, publicKeys);
+    const hash = this.#poker.shareHash(
+      deck,
+      cardMask,
+      this.publicKey,
+      publicKeys,
+    );
     if (!this.#shareParams || this.#shareParams.hash !== hash) {
       const randomness = new Array(expectedOthers).fill(0n)
         .map(() => new Array(TOTAL_CARDS).fill(0n)
@@ -349,7 +367,11 @@ export class Player {
     return this.#shareParams;
   }
 
-  preloadShare(deck: Ciphertext[], publicKeys: PublicKey[], nActualPlayers: number): void {
+  preloadShare(
+    deck: Ciphertext[],
+    publicKeys: PublicKey[],
+    nActualPlayers: number,
+  ): void {
     if (this.usesZig()) return;
     const params = this.prepareShare(deck, publicKeys, nActualPlayers);
     this.#circuits.share.preloadWitness({
@@ -365,12 +387,26 @@ export class Player {
   }
 
   /** Witness-only share partials (no Groth16) — for fixture generation. */
-  sharePartialsOnly(deck: Ciphertext[], publicKeys: PublicKey[], nActualPlayers: number): Ciphertext[][] {
+  sharePartialsOnly(
+    deck: Ciphertext[],
+    publicKeys: PublicKey[],
+    nActualPlayers: number,
+  ): Ciphertext[][] {
     const params = this.prepareShare(deck, publicKeys, nActualPlayers);
-    return this.#poker.share(deck, params.cardMask, publicKeys, this.#privateKey, params.randomness);
+    return this.#poker.share(
+      deck,
+      params.cardMask,
+      publicKeys,
+      this.#privateKey,
+      params.randomness,
+    );
   }
 
-  async shareProve(deck: Ciphertext[], publicKeys: PublicKey[], nActualPlayers: number): Promise<ShareOutput> {
+  async shareProve(
+    deck: Ciphertext[],
+    publicKeys: PublicKey[],
+    nActualPlayers: number,
+  ): Promise<ShareOutput> {
     if (this.#session) {
       await this.ensureKey();
       const out = await this.#session.share(deck, publicKeys, nActualPlayers, this.#privateKey);
@@ -383,7 +419,13 @@ export class Player {
     try {
       const params = this.prepareShare(deck, publicKeys, nActualPlayers);
 
-      const ciphertexts = this.#poker.share(deck, params.cardMask, publicKeys, this.#privateKey, params.randomness);
+      const ciphertexts = this.#poker.share(
+        deck,
+        params.cardMask,
+        publicKeys,
+        this.#privateKey,
+        params.randomness,
+      );
 
       const { proof, publicSignals } = await this.#circuits.share.prove({
         hash: params.hash,
@@ -418,9 +460,9 @@ export class Player {
       const publicKey = this.publicKey;
       const coefficients = requireHostShowdownCoefficients(
         sealedCoefficients ?? this.#sealedCoefficients,
-        MAX_PLAYERS - 1,
       );
 
+      const coefficientCommitment = sealCommitment(coefficients);
       const hashInput = {
         publicKeys,
         potMasks,
@@ -428,10 +470,15 @@ export class Player {
         playerIndex: BigInt(playerIndex),
         publicKey,
         ciphertextPartials,
+        sealCommitment: coefficientCommitment,
       };
       const hash = this.#poker.showdownHash(hashInput);
-      const coefficientCommitment = this.#poker.computeCoefficientCommitment(coefficients);
-      const plaintextCards = this.#poker.decryptCards(this.#privateKey, potMasks[0]!, ciphertextCards, ciphertextPartials);
+      const plaintextCards = this.#poker.decryptCards(
+        this.#privateKey,
+        potMasks[0]!,
+        ciphertextCards,
+        ciphertextPartials,
+      );
       const winnerMasks = this.#poker.compareHands(potMasks, plaintextCards);
 
       this.#showdownParams = {
@@ -521,7 +568,7 @@ export class Player {
     publicKeys: PublicKey[],
     potMasks: bigint[],
     ciphertextCards: Ciphertext[],
-    ciphertextPartials: Ciphertext[][]
+    ciphertextPartials: Ciphertext[][],
   ): Promise<ShowdownOutput> {
     if (this.#session) {
       await this.ensureKey();
@@ -531,7 +578,7 @@ export class Player {
         playerIndex,
         cards: ciphertextCards,
         partials: ciphertextPartials,
-        coefficients: requireHostShowdownCoefficients(this.#sealedCoefficients, MAX_PLAYERS - 1),
+        coefficients: requireHostShowdownCoefficients(this.#sealedCoefficients),
         privateKey: this.#privateKey,
       });
       if (!out.winnerMasks || out.coefficientCommitment === undefined || !out.publicSignals) {
@@ -546,7 +593,13 @@ export class Player {
         coefficientCommitment: out.coefficientCommitment,
       };
     }
-    const params = this.prepareShowdown(playerIndex, publicKeys, potMasks, ciphertextCards, ciphertextPartials);
+    const params = this.prepareShowdown(
+      playerIndex,
+      publicKeys,
+      potMasks,
+      ciphertextCards,
+      ciphertextPartials,
+    );
 
     const { proof, publicSignals } = await this.#circuits.showdown.prove(this.showdownWitnessInput(params));
 
@@ -564,16 +617,17 @@ export class Player {
 
   /** Circuit inputs only — omit hash-only fields like coefficientCommitment. */
   private showdownWitnessInput(params: PokerShowdownParams) {
-    const { coefficientCommitment: _omit, ...circuitHashInput } = params.hashInput as {
+    const { coefficientCommitment, ...circuitHashInput } = params.hashInput as {
       coefficientCommitment: bigint;
       [key: string]: unknown;
     };
     return {
-      hash: params.hash,
       ...circuitHashInput,
+      hash: params.hash,
+      sealCommitment: coefficientCommitment,
       privateKey: this.#privateKey,
       plaintextCards: params.plaintextCards,
-      coefficients: params.coefficients.map(c => c.toString()),
+      coefficients: params.coefficients.slice(0, 2).map(c => c.toString()),
     };
   }
 }

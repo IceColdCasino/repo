@@ -5,6 +5,10 @@ export interface Room {
   vault: string;
   tableCount: bigint;
   smallBlindDefault: bigint;
+  /** Poker flop rake in basis points. `0` is the default. `500` is 5%. */
+  rakeBps: number;
+  /** Whitelisted house that receives the rake in its own encrypted wallet. */
+  house: string;
 }
 
 export interface TableState {
@@ -20,7 +24,7 @@ export interface TableState {
   pendingNumPlayers: number;
 }
 
-export const MAX_TABLE_SEATS = 10;
+export const MAX_TABLE_SEATS = 12;
 
 /** Port of on-chain seat_order.rs for client-side validation. */
 export function sortedOccupiedSeats(seats: string[]): number[] {
@@ -102,7 +106,7 @@ export function playerIndexBySeatMap(
   return map;
 }
 
-/** Build a fixed 10-seat pubkey array for table order helpers. */
+/** Build a fixed 12-seat pubkey array for table order helpers. */
 export function seatsArrayFromOccupied(
   occupied: Map<number, { publicKey: string }>,
 ): string[] {

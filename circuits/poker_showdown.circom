@@ -14,6 +14,7 @@ include "./partials.circom";
 include "./deck.circom";
 include "./poker_compare_hands.circom";
 include "./showdown.circom";
+include "./showdown_seal.circom";
 
 template PokerHashMain(nPlayers, nPots, nTotalCards) {
   var nOthers = nPlayers - 1;
@@ -23,6 +24,7 @@ template PokerHashMain(nPlayers, nPots, nTotalCards) {
   signal input playerIndex;
   signal input ciphertextCards[nTotalCards][4];
   signal input ciphertextPartials[nOthers][nTotalCards][4];
+  signal input sealCommitment;
 
   signal output out;
 
@@ -32,13 +34,13 @@ template PokerHashMain(nPlayers, nPots, nTotalCards) {
   component h3;
   component finalHash;
 
-  h1 = Poseidon(nPots);
+  h1 = parallel Poseidon(nPots);
   h1.inputs <== potMasks;
 
-  h2 = HashPublicKeys(nPlayers);
+  h2 = parallel HashPublicKeys(nPlayers);
   h2.publicKeys <== publicKeys;
 
-  h3 = Poseidon(nPlayers);
+  h3 = parallel Poseidon(nPlayers);
 
   for (var p = 0; p < nPlayers; p++) {
     _h3[p] = parallel HashCiphertexts(nTotalCards);
@@ -47,15 +49,18 @@ template PokerHashMain(nPlayers, nPots, nTotalCards) {
     } else {
       _h3[p].ciphertext <== ciphertextPartials[p-1];
     }
+  }
+  for (var p = 0; p < nPlayers; p++) {
     h3.inputs[p] <== _h3[p].out;
   }
 
-  finalHash = Poseidon(4);
+  finalHash = Poseidon(5);
   finalHash.inputs <== [
     h1.out,
     playerIndex,
     h2.out,
-    h3.out
+    h3.out,
+    sealCommitment
   ];
 
   out <== finalHash.out;
@@ -65,24 +70,18 @@ template PokerVerifyDecryptedCards(nPlayers, nTotalCards) {
   assert(nPlayers > 1 && nPlayers < 11);
 
   signal input plaintextCards[nTotalCards];
-  signal input potMask;
+  // Bits of potMasks[0], split once by Showdown.
+  signal input maskBits[10];
   signal input decryptedCards[nTotalCards][2];
 
   signal output plaintextHoleCards[nPlayers][2];
   signal output plaintextSharedCards[5];
 
   component deck;
-  component inPot;
   component isEqual[nTotalCards][2];
 
-  deck = InstantiateDeck(nTotalCards, 1, 52);
+  deck = parallel InstantiateDeck(nTotalCards, 1, 52);
   deck.cards <== plaintextCards;
-  // Literal width (nPlayers < 11); unused high bits must be zero.
-  inPot = Num2Bits(10);
-  inPot.in <== potMask;
-  for (var p = nPlayers; p < 10; p++) {
-    inPot.out[p] === 0;
-  }
 
   // First verify shared cards (always required to be valid)
   for (var s = 0; s < 5; s++) {
@@ -102,7 +101,7 @@ template PokerVerifyDecryptedCards(nPlayers, nTotalCards) {
   
   // Then verify hole cards (must be valid if player is in pot)
   for (var p = 0; p < nPlayers; p++) {
-    var playerInPot = inPot.out[p];
+    var playerInPot = maskBits[p];
 
     for (var c = 0; c < 2; c++) {
       var card = 2 * p + c;
@@ -125,6 +124,7 @@ template CompareHandsN(nPlayers, nPots) {
   assert(nPlayers > 1 && nPlayers < 11);
 
   signal input potMasks[nPots];
+  signal input potMaskBits[nPots][10];
   signal input plaintextHoleCards[nPlayers][2];
   signal input plaintextSharedCards[5];
 
@@ -134,7 +134,6 @@ template CompareHandsN(nPlayers, nPots) {
   signal output winnerMasks[nPots];
   
   component compare[nPots];
-  component num2Bits[nPots];
   component isZero[nPots];
   component firstPotGtOne;
   
@@ -143,15 +142,9 @@ template CompareHandsN(nPlayers, nPots) {
   // Compute actual players in each pot first
 
   for (var i = 0; i < nPots; i++) {
-    num2Bits[i] = Num2Bits(10);
-    num2Bits[i].in <== potMasks[i];
-    for (var p = nPlayers; p < 10; p++) {
-      num2Bits[i].out[p] === 0;
-    }
-
     var count = 0;
     for (var p = 0; p < nPlayers; p++) {
-      count += num2Bits[i].out[p];
+      count += potMaskBits[i][p];
     }
     totalPlayers[i] <== count;
   }
@@ -179,12 +172,14 @@ template CompareHandsN(nPlayers, nPots) {
   }
   
   for (var i = 0; i < nPots; i++) {
-    compare[i] = CompareHands(nPlayers);
+    compare[i] = parallel CompareHands(nPlayers);
     compare[i].mask <== potMasks[i];
+    compare[i].maskBits <== potMaskBits[i];
     compare[i].maxInPot <== maxInPot[i];
     compare[i].playerCards <== plaintextHoleCards;
     compare[i].sharedCards <== plaintextSharedCards;
-    
+  }
+  for (var i = 0; i < nPots; i++) {
     winnerMasks[i] <== compare[i].winnerMask;
   }
 }
@@ -203,17 +198,21 @@ template Showdown(nPlayers) {
   signal input ciphertextCards[nTotalCards][4];
   signal input ciphertextPartials[nOthers][nTotalCards][4];  // Encrypted partials from other players [c0.x, c0.y, c1.x, c1.y]
   signal input potMasks[nPots];
+  signal input sealCommitment;
 
-  // Non-hashed Private inputs
+  // Non-hashed private inputs
   signal input privateKey;
   signal input publicKey[2];  // Prover's public key [x, y]
   signal input plaintextCards[nTotalCards];  // Claimed plaintext card values (0-51)
+
+  signal potMaskBits[nPots][10];
 
   signal output out[nPots];
 
   component publicKeyCheck;
   component verifyKey;
   component hashMain;
+  component potBits[nPots];
   component decryptPartials;
   component createOwnPartials;
   component aggregatePartials;
@@ -222,29 +221,36 @@ template Showdown(nPlayers) {
 
 
   // Step 1: Extract publicKeys[playerIndex] and verify it matches publicKey
-  publicKeyCheck = PublicKeyCheck(nPlayers);
+  publicKeyCheck = parallel PublicKeyCheck(nPlayers);
   publicKeyCheck.publicKeys <== publicKeys;
   publicKeyCheck.playerIndex <== playerIndex;
   publicKeyCheck.publicKey <== publicKey;
 
   // Step 2: Verify own private key matches own public key
-  verifyKey = VerifyKey();
+  verifyKey = parallel VerifyKey();
   verifyKey.privateKey <== privateKey;
   verifyKey.publicKey <== publicKey;
 
   // Compute and verify hash
-  hashMain = PokerHashMain(nPlayers, nPots, nTotalCards);
+  hashMain = parallel PokerHashMain(nPlayers, nPots, nTotalCards);
   hashMain.potMasks <== potMasks;
   hashMain.publicKeys <== publicKeys;
   hashMain.playerIndex <== playerIndex;
   hashMain.ciphertextCards <== ciphertextCards;
   hashMain.ciphertextPartials <== ciphertextPartials;
+  hashMain.sealCommitment <== sealCommitment;
   
-  // Verify hash commitment
   hash === hashMain.out;
-  
-  // Step 3: Decrypt partials from other players
-  // Each partial was encrypted to this player's public key by other players
+
+  for (var i = 0; i < nPots; i++) {
+    potBits[i] = Num2Bits(10);
+    potBits[i].in <== potMasks[i];
+    for (var p = nPlayers; p < 10; p++) {
+      potBits[i].out[p] === 0;
+    }
+    potMaskBits[i] <== potBits[i].out;
+  }
+
   decryptPartials = parallel DecryptPartials(nPlayers, nTotalCards);
   decryptPartials.ciphertextPartials <== ciphertextPartials;
   decryptPartials.privateKey <== privateKey;
@@ -253,7 +259,7 @@ template Showdown(nPlayers) {
   createOwnPartials = parallel CreateOwnPartials(nTotalCards);
   createOwnPartials.ciphertextCards <== ciphertextCards;
   createOwnPartials.privateKey <== privateKey;
-  
+
   // Step 5: Aggregate partials for each card
   // sumD = ownPartial + sum(decryptedOtherPartials)
   aggregatePartials = AggregatePartials(nPlayers, nTotalCards);
@@ -264,12 +270,13 @@ template Showdown(nPlayers) {
   // Step 6: Verify decrypted cards match plaintext and split for hand comparison
   verifyDecryptedCards = PokerVerifyDecryptedCards(nPlayers, nTotalCards);
   verifyDecryptedCards.plaintextCards <== plaintextCards;
-  verifyDecryptedCards.potMask <== potMasks[0];
+  verifyDecryptedCards.maskBits <== potMaskBits[0];
   verifyDecryptedCards.decryptedCards <== aggregatePartials.decryptedCards;
   
   // Step 7: Compare hands to determine winners
   compareHandsN = CompareHandsN(nPlayers, nPots);
   compareHandsN.potMasks <== potMasks;
+  compareHandsN.potMaskBits <== potMaskBits;
   compareHandsN.plaintextHoleCards <== verifyDecryptedCards.plaintextHoleCards;
   compareHandsN.plaintextSharedCards <== verifyDecryptedCards.plaintextSharedCards;
   
@@ -290,12 +297,13 @@ template ShowdownHashOut(nPlayers) {
   signal input ciphertextCards[nTotalCards][4];
   signal input ciphertextPartials[nOthers][nTotalCards][4];
   signal input potMasks[nPots];
+  signal input sealCommitment;
 
   // Non-hashed Private inputs
   signal input privateKey;
   signal input publicKey[2];
   signal input plaintextCards[nTotalCards];
-  signal input coefficients[nPots]; // Polynomial hash coefficients (random 128-bit values, sealed to player)
+  signal input coefficients[2];
 
   signal output out;
 
@@ -312,9 +320,25 @@ template ShowdownHashOut(nPlayers) {
   showdown.ciphertextPartials <== ciphertextPartials;
   showdown.privateKey <== privateKey;
   showdown.plaintextCards <== plaintextCards;
+  showdown.sealCommitment <== sealCommitment;
 
-  hashOut = ShowdownPolynomialHash(nPots);
-  hashOut.results <== showdown.out;
+  // Each winner mask is 10 bits. 1024^i places all nine into one coefficient.
+  // The second limb stays 0.
+  signal place[nPots];
+  signal weighted[nPots];
+  signal packedAcc[nPots];
+  place[0] <== 1;
+  weighted[0] <== showdown.out[0];
+  packedAcc[0] <== weighted[0];
+  for (var i = 1; i < nPots; i++) {
+    place[i] <== place[i - 1] * 1024;
+    weighted[i] <== showdown.out[i] * place[i];
+    packedAcc[i] <== packedAcc[i - 1] + weighted[i];
+  }
+
+  hashOut = SealedShowdownHash(2);
+  hashOut.sealCommitment <== sealCommitment;
+  hashOut.results <== [packedAcc[nPots - 1], 0];
   hashOut.coefficients <== coefficients;
 
   out <== hashOut.out;

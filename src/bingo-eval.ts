@@ -22,8 +22,73 @@ export function packBingoTerm(won: boolean, completionIndex: number): number {
   return (won ? 1 : 0) * 256 + completionIndex;
 }
 
+/** Above the largest single prize (`256 + 90`). */
+export const BINGO_90_PRIZE_BASE = 512;
+
+/**
+ * One coefficient for the three 90-ball prizes.
+ * `oneLine + twoLines * 512 + fullHouse * 512^2`.
+ */
+export function packBingo90Prizes(
+  oneLine: number,
+  twoLines: number,
+  fullHouse: number,
+): number {
+  for (const term of [oneLine, twoLines, fullHouse]) {
+    if (!Number.isInteger(term) || term < 0 || term >= BINGO_90_PRIZE_BASE) {
+      throw new Error(
+        `bingo 90 prize term ${term} does not fit in base ${BINGO_90_PRIZE_BASE}`,
+      );
+    }
+  }
+  const base = BINGO_90_PRIZE_BASE;
+  return oneLine + twoLines * base + fullHouse * base * base;
+}
+
 export function unpackBingoTerm(packed: number): { won: boolean; completionIndex: number } {
   return { won: packed >= 256, completionIndex: packed % 256 };
+}
+
+export interface BingoPotSeat {
+  won: boolean;
+  /** 1-based call index. Zero when `won` is false. */
+  completionIndex: number;
+}
+
+/**
+ * Player-backed bingo pot. `cardPrice` is locked once per seat.
+ * Seats that completed on the earliest winning call split the pot.
+ * An odd chip goes to the lower seat index. If nobody completed, each
+ * seat is refunded `cardPrice`.
+ */
+export function bingoBuyInPayouts(
+  cardPrice: bigint,
+  seats: readonly BingoPotSeat[],
+): bigint[] {
+  if (cardPrice < 0n) throw new Error('card price must be non-negative');
+  if (seats.length === 0) return [];
+  let earliest = 0;
+  for (const seat of seats) {
+    if (!seat.won || seat.completionIndex <= 0) continue;
+    if (earliest === 0 || seat.completionIndex < earliest) {
+      earliest = seat.completionIndex;
+    }
+  }
+  if (earliest === 0) return seats.map(() => cardPrice);
+
+  const winning = seats.map(
+    (seat) => seat.won && seat.completionIndex === earliest,
+  );
+  const winnerCount = BigInt(winning.filter(Boolean).length);
+  const pot = cardPrice * BigInt(seats.length);
+  const share = pot / winnerCount;
+  let remainder = pot % winnerCount;
+  return winning.map((isWinner) => {
+    if (!isWinner) return 0n;
+    const extra = remainder > 0n ? 1n : 0n;
+    remainder -= extra;
+    return share + extra;
+  });
 }
 
 function assertUniqueNonZero(cells: readonly number[]): void {

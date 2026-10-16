@@ -2,6 +2,7 @@ const std = @import("std");
 const json_input = @import("json_input.zig");
 const calcwit = @import("calcwit.zig");
 const witness_dat = @import("witness_dat.zig");
+const house_build = @import("house_options").house_build;
 
 extern "c" fn roulette_share_loadCircuitFromData(data: [*c]const u8, size: usize, vtable: *anyopaque) ?*anyopaque;
 extern "c" fn roulette_share_create_ctx(circuit: *anyopaque) ?*anyopaque;
@@ -116,7 +117,9 @@ fn getCircuitFunctions(name: []const u8) ?struct {
         };
     } else
     if (std.mem.eql(u8, name, "roulette_bet_37")) {
-        return .{
+        if (comptime house_build) {
+            return null;
+        } else return .{
             .loadCircuit = roulette_bet_37_loadCircuitFromData,
             .create_ctx = roulette_bet_37_create_ctx,
             .get_size = roulette_bet_37_get_size_of_witness,
@@ -134,7 +137,9 @@ fn getCircuitFunctions(name: []const u8) ?struct {
         };
     } else
     if (std.mem.eql(u8, name, "roulette_bet_38")) {
-        return .{
+        if (comptime house_build) {
+            return null;
+        } else return .{
             .loadCircuit = roulette_bet_38_loadCircuitFromData,
             .create_ctx = roulette_bet_38_create_ctx,
             .get_size = roulette_bet_38_get_size_of_witness,

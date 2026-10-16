@@ -20,7 +20,7 @@ pub fn shareHash(crypto: *const Crypto, cts: []const Ciphertext, pk: PublicKey, 
     var keys: [12]PublicKey = undefined;
     keys[0] = pk;
     @memcpy(keys[1 .. 1 + others.len], others);
-    return poseidon.hash(&.{ crypto.hashCiphertexts(cts), hash.hashPublicKeys12(keys[0..12]) });
+    return hash.shareInputHashHouse(crypto.hashCiphertexts(cts), hash.hashPublicKeys12(keys[0..12]));
 }
 
 pub fn showdownHash(
@@ -31,6 +31,7 @@ pub fn showdownHash(
     partials: []const []const Ciphertext,
     bets: []const Ciphertext,
     n_actual_bets: u64,
+    seal_commitment: Fr,
 ) Fr {
     const h1 = hash.hashPublicKeys12(public_keys);
     var h2_in: [13]Fr = undefined;
@@ -38,7 +39,7 @@ pub fn showdownHash(
     var p: usize = 0;
     while (p < partials.len) : (p += 1) h2_in[p + 1] = crypto.hashCiphertexts(partials[p]);
     const h2 = poseidon.hash(h2_in[0 .. 1 + partials.len]);
-    return poseidon.hash(&.{ h1, player_index, h2, crypto.hashCiphertexts(bets), Fr.fromU64(n_actual_bets) });
+    return poseidon.hash(&.{ h1, player_index, h2, crypto.hashCiphertexts(bets), Fr.fromU64(n_actual_bets), seal_commitment });
 }
 
 pub fn encryptBet(crypto: *const Crypto, typ: u32, modifier: u32, pk: PublicKey, r: Fr) Ciphertext {
@@ -76,7 +77,7 @@ pub const Player = struct {
 
     pub fn shareProve(self: *Player, deck: []const Ciphertext, keys: []const PublicKey, n_actual: u32) !table.ShareOut {
         const h = shareHash(self.table.crypto, deck, self.table.publicKey(), keys);
-        return self.table.linearShareProve(.roulette_share_hashout_main, deck, keys, n_actual, h);
+        return self.table.linearShareProveHouse(.roulette_share_hashout_main, deck, keys, n_actual, h);
     }
 
     pub fn betProve(self: *Player, house: PublicKey, bets: []const [2]u32) !table.Proof {
@@ -118,9 +119,7 @@ pub const Player = struct {
         n_actual: u32,
     ) !table.Proof {
         const idx = self.table.indexOfSelf(public_keys);
-        var coeffs: [MAX_BETS]Fr = undefined;
-        self.table.fillCoeffs(&coeffs);
-        const h = showdownHash(self.table.crypto, public_keys, Fr.fromU64(idx), cards, partials, enc_bets, n_actual);
+        const h = showdownHash(self.table.crypto, public_keys, Fr.fromU64(idx), cards, partials, enc_bets, n_actual, self.table.sealCommitment());
         var winner: [1]u64 = undefined;
         try self.table.crypto.decryptCards(self.table.privateKey(), cards, partials, &winner);
         var flat: [24]u64 = undefined;
@@ -134,7 +133,7 @@ pub const Player = struct {
         var j = prove.json.Json.init(self.table.alloc);
         errdefer j.deinit();
         try j.begin();
-        try j.fieldFr("hash", h);
+        try self.table.writeSealedShowdown(&j, h, 2);
         try j.fieldPoints("publicKeys", public_keys);
         try j.fieldU64("playerIndex", idx);
         try j.fieldCts("ciphertextCards", cards);
@@ -145,7 +144,6 @@ pub const Player = struct {
         try j.fieldFr("privateKey", self.table.privateKey());
         try j.fieldU64("plaintextCard", winner[0]);
         try j.fieldU64s("plaintextBets", &flat);
-        try j.fieldFrs("coefficients", &coeffs);
         const json = try j.finish();
         defer self.table.alloc.free(json);
         return self.table.proveJson(if (self.eu) .roulette_showdown_37_hashout_main else .roulette_showdown_38_hashout_main, json);

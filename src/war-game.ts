@@ -20,11 +20,17 @@ import {
   type HandSettlementResult,
 } from './casino-settlement';
 import {
+  requiredWarShareStake,
+  slashUnsharedPlayers,
+  type WarShareSlash,
+} from './war-share-penalty';
+import {
   type Ciphertext,
   type PublicKey,
 } from './zk-casino';
 import { verify } from './rapidsnark-ffi';
 import type { Groth16Proof, PublicSignals } from 'snarkjs';
+import { readShuffleProof } from './shuffle-signals';
 import path from 'path';
 
 interface ShuffledDeck {
@@ -60,6 +66,8 @@ export interface SharePrivateData {
 
 export interface ShowdownPrivateData {
   publicKey: PublicKey;
+  /** Poseidon of the seal rows Arcis revealed for this seat (seal account, not the prover). */
+  coefficientCommitment: bigint;
 }
 
 export class Game {
@@ -69,9 +77,14 @@ export class Game {
   #inProgress = false;
   #turnPlayerIndex = 0;
   #shuffledDecks: ShuffledDeck[] = [];
-  #war = new War();
+  #war: War;
   #phase: GamePhase = 'Registration';
   #partials: Ciphertext[][][] = new Array(MAX_PLAYERS);
+  #shareStakes: Array<bigint | undefined> = new Array(MAX_PLAYERS);
+  #shared: boolean[] = new Array(MAX_PLAYERS).fill(false);
+  #casinoSharedAt: number | undefined;
+  #shareSlash: WarShareSlash | undefined;
+  #clock: () => number = Date.now;
   #seatPools: SeatPoolConfig | undefined;
   #playerStakes: SeatStake[] = [];
   #dealerStakes: SeatStake[] = [];
@@ -83,6 +96,7 @@ export class Game {
 
   constructor(shoeDecks: 1 | 6 | 8 = 6) {
     this.#shoeDecks = shoeDecks;
+    this.#war = new War(shoeDecks);
     this.#shuffleCircuit = `shuffle_${shoeDecks}_deck_52_main`;
   }
 
@@ -189,6 +203,56 @@ export class Game {
     return this.#seatPools;
   }
 
+  #wager(seat: number): bigint {
+    const posted = [...this.#playerStakes, ...this.#dealerStakes].find(item => item.seatIndex === seat);
+    return posted?.stake ?? 1n;
+  }
+
+  #casinoSeat(): number {
+    const seat = this.#seatPools?.dealerSeats[0];
+    if (seat === undefined) throw new Error('the casino seat is not set');
+    return seat;
+  }
+
+  /** Ten times this seat's wager. Posted before share. */
+  requiredShareStake(seat: number): bigint {
+    return requiredWarShareStake(this.#wager(seat));
+  }
+
+  postShareStake(seat: number, amount: bigint) {
+    if (seat < 0 || seat >= this.#numPlayers) throw new Error(`player ${seat} is not in the hand`);
+    const need = this.requiredShareStake(seat);
+    if (amount !== need) throw new Error(`share stake must be ${need}`);
+    this.#shareStakes[seat] = amount;
+  }
+
+  get shareSlash(): WarShareSlash | undefined {
+    return this.#shareSlash;
+  }
+
+  setClock(clock: () => number) {
+    this.#clock = clock;
+  }
+
+  /**
+   * After the casino has shared, slash every player who still has not shared
+   * once their deadline has passed.
+   */
+  slashUnshared(now = this.#clock()): WarShareSlash {
+    if (this.#casinoSharedAt === undefined) throw new Error('the casino has not shared');
+    const penalty = slashUnsharedPlayers({
+      casinoSeat: this.#casinoSeat(),
+      casinoSharedAt: this.#casinoSharedAt,
+      now,
+      shared: this.#shared.slice(0, this.#numPlayers),
+      wagers: Array.from({ length: this.#numPlayers }, (_, seat) => this.#wager(seat)),
+      stakes: Array.from({ length: this.#numPlayers }, (_, seat) => this.#shareStakes[seat] ?? 0n),
+    });
+    this.#shareSlash = penalty;
+    this.#phase = 'Complete';
+    return penalty;
+  }
+
   settleHand(outcome: HeadToHeadOutcome) {
     return settleHeadToHead(outcome, this.#playerStakes, this.#dealerStakes);
   }
@@ -217,28 +281,26 @@ export class Game {
       throw new Error('Not your turn');
     }
 
-    const signalBigInts = publicSignals.map(s => BigInt(s));
     const transientHashExpected = this.#war.shuffleHash(this.deck, this.#players);
+    const { outputDeckHash, permutationHash, inputHash } = readShuffleProof(publicSignals);
 
-    const transientHash = signalBigInts.pop()!;
-    const permutationHash = signalBigInts.pop()!;
-
-    if (transientHash !== transientHashExpected) {
-      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${transientHash}`);
+    if (inputHash !== transientHashExpected) {
+      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${inputHash}`);
+    }
+    if (this.#war.deckHash(privateData.deck) !== outputDeckHash) {
+      throw new Error('Shuffle output hash does not match the shoe');
+    }
+    if (privateData.permutationHash !== permutationHash) {
+      throw new Error('Shuffle permutation hash does not match the proof');
     }
 
     if (!verify(proof, publicSignals, verifyingKeyPath(this.#shuffleCircuit))) {
       throw new Error('Invalid shuffle proof');
     }
 
-    const deckFromSignals: Ciphertext[] = [];
-    for (let i = 0; i < SHOE_SIZE; i++) {
-      deckFromSignals.push(signalBigInts.slice(i * 4, i * 4 + 4) as Ciphertext);
-    }
-
     this.#shuffledDecks.push({
-      transientHash,
-      deck: deckFromSignals,
+      transientHash: inputHash,
+      deck: privateData.deck,
       permutationHash,
     });
 
@@ -266,6 +328,11 @@ export class Game {
     }
 
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
+    if (this.#shareStakes[playerIndex] !== this.requiredShareStake(playerIndex)) {
+      throw new Error(
+        `player ${playerIndex} must post ${this.requiredShareStake(playerIndex)} as the share stake before sharing`,
+      );
+    }
     const expectedInputHash = this.#war.shareHash(
       this.finalShuffledDeck,
       privateData.publicKey,
@@ -292,6 +359,10 @@ export class Game {
     }
 
     this.#partials[playerIndex] = privateData.ciphertexts;
+    this.#shared[playerIndex] = true;
+    if (playerIndex === this.#casinoSeat() && this.#casinoSharedAt === undefined) {
+      this.#casinoSharedAt = this.#clock();
+    }
 
     const activePartials = this.#partials.filter((p, i) =>
       i < this.#numPlayers && p && p.length
@@ -340,13 +411,17 @@ export class Game {
 
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
     const hashInput: ShowdownHashInput = {
+      sealCommitment: privateData.coefficientCommitment,
       publicKeys: this.#players,
       playerIndex: BigInt(playerIndex),
       ciphertextCards: this.finalShuffledDeck,
       ciphertextPartials: this.getCiphertextPartialsForPlayer(playerIndex),
     };
 
-    const expectedInputHash = this.#war.showdownHash(hashInput);
+    const expectedInputHash = this.#war.showdownHash({
+      ...hashInput,
+      sealCommitment: privateData.coefficientCommitment,
+    });
     const [outputHash, transientHash] = publicSignals.map(s => BigInt(s));
 
     if (transientHash !== expectedInputHash) {

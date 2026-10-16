@@ -8,4 +8,4 @@ pragma circom 2.2.2;
 
 include "./baccarat_showdown.circom";
 
-component main { public [hash] } = ShowdownHashOut(12, 8);
+component main { public [hash] } = ShowdownHashOut(12);

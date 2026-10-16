@@ -20,13 +20,12 @@ template CommitBet() {
   component babyPbk;
   component encrypt;
 
-  constrainBet = ConstrainLt(8, 80);
+  constrainBet = parallel ConstrainLt(8, 80);
+  babyPbk = parallel BabyPbk();
   constrainBet.in <== plaintextBet;
-
-  babyPbk = BabyPbk();
   babyPbk.in <== plaintextBet + 1;
 
-  encrypt = Encrypt();
+  encrypt = parallel Encrypt();
   encrypt.plaintext <== [babyPbk.Ax, babyPbk.Ay];
   encrypt.publicKey <== publicKey;
   encrypt.randomness <== randomness;
@@ -62,7 +61,11 @@ template CommitBets(nPlayers, nBets) {
       commitBet[p][i].plaintextBet <== plaintextBets[i];
       commitBet[p][i].publicKey <== publicKeys[p];
       commitBet[p][i].randomness <== randomness[p][i];
+    }
+  }
 
+  for (var p = 0; p < nPlayers; p++) {
+    for (var i = 0; i < nBets; i++) {
       out[p][i] <== commitBet[p][i].out;
     }
   }
@@ -80,7 +83,9 @@ template DecryptBets(nBets) {
     decrypt[i] = parallel Decrypt();
     decrypt[i].ciphertext <== ciphertextBets[i];
     decrypt[i].privateKey <== privateKey;
+  }
 
+  for (var i = 0; i < nBets; i++) {
     decryptedBets[i] <== decrypt[i].plaintext;
   }
 }
@@ -95,7 +100,9 @@ template VerifyDecryptedBets(nBets) {
   for (var i = 0; i < nBets; i++) {
     babyPbk[i] = parallel BabyPbk();
     babyPbk[i].in <== plaintextBets[i] + 1;
+  }
 
+  for (var i = 0; i < nBets; i++) {
     for (var j = 0; j < 2; j++) {
       isEqual[i][j] = IsEqual();
     }

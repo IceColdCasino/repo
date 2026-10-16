@@ -8,6 +8,12 @@ A single winning pocket is an encrypted “card” on a 37-pocket (EU) or
 (`type || modifier`) before showdown. Circom opens the pocket, decrypts
 each bet under the prover’s key, and applies the payout table.
 
+The house seat shuffles the wheel and does not bet. Payouts come from the
+dealer pool. Coverage before `start_hand` is `max_bet` times the twelve class
+multipliers (35, 17, 17, 11, 8, 8, 5, 2, 2, 1, 1, 1) times the number of
+seats. Action collection and the pool-win edge are each 250 bps. See
+[on-chain](../on-chain.md#dealer-pool).
+
 ## Shoe
 
 | | |
@@ -15,7 +21,7 @@ each bet under the prover’s key, and applies the payout table.
 | Encoding | Pocket `0..36` (EU) or `0..37` (US, `37 = 00`) → `BabyPbk(v+1)` |
 | Shuffle mains | `shuffle_1_deck_37_main`, `shuffle_1_deck_38_main` |
 | Opened at showdown | 1 |
-| Poly-hash terms | 12 bet-code limbs |
+| Showdown terms | 12 bet codes |
 
 The house seat shuffles; it does not place a player bet.
 
@@ -24,8 +30,10 @@ The house seat shuffles; it does not place a player bet.
 1. **Register / shuffle** — one-index shoe (the wheel).
 2. **Bet commit** — `roulette_bet` / `roulette_bet_{37,38}_main` packs and
    ElGamal-encrypts each `type` + `modifier` as `BabyPbk(packed + 1)`.
-3. **Share** — `roulette_share_hashout_main` seals the pocket partials.
-4. **Showdown** — decrypt pocket + bets; `EvaluateBetEU` / `EvaluateBetUS`.
+3. **Share** — `roulette_share_hashout_main` is `ShareHashOut(12, 1)`. The
+   public output is a Poseidon of one ciphertext-hash per other player.
+4. **Showdown** — decrypt pocket and bets. The public field sums
+   `(code_i + 1) · coefficient_i` over all 12 bet classes.
 
 ## Unique ZK
 
@@ -46,7 +54,9 @@ through even-money 1:1; `0` / `00` lose even-money bets.
 
 | Public | Private |
 |--------|---------|
-| Input hash (deck + bet ciphertexts + `nActualBets`), 12-limb output hash | `sk`, winning pocket, bet types/modifiers |
+| `hash`, the 12-term sum, Groth16 proof | `sk`, winning pocket, bet types/modifiers, 14 coefficients, seal commitment |
+
+`hash` is `Poseidon(keys, playerIndex, ciphertextHash, betHash, nActualBets, sealCommitment)`. The showdown template checks that equality. The last two sealed coefficients are not in the sum.
 
 ## Entrypoints
 

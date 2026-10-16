@@ -9,6 +9,12 @@ call sequence. Circom opens the called prefix, marks hits on the card, and
 proves a pattern win plus the 1-based call index at which the pattern
 completed.
 
+Bingo has no house seat and no dealer pool. Each card locks the same price
+into one pot. Seats that complete on the earliest winning call split it.
+75-ball uses the table pattern. 90-ball pays the full-house term; one-line
+and two-lines stay in the proof. Keno stays house-funded. See
+[on-chain](../on-chain.md#bingo).
+
 ## Shoe
 
 | | |
@@ -16,7 +22,7 @@ completed.
 | Encoding | Ball `0..74` or `0..89` → `BabyPbk(v+1)` |
 | Shuffle mains | `shuffle_1_deck_75_main`, `shuffle_1_deck_90_main` |
 | Opened at showdown | Called prefix (`nCalled` ≤ variant size) |
-| Poly-hash terms | 1 (75-ball) or 3 (90-ball) |
+| Showdown terms | 75-ball: `[packed, 0]`. 90-ball: 3 pattern limbs |
 | Card cells | 25 (75-ball) or 27 (90-ball) |
 | Share chunks | 15 × 5 balls (75) or 18 × 5 balls (90) |
 
@@ -25,9 +31,12 @@ completed.
 1. **Register / shuffle** — 75- or 90-ball cage.
 2. **Card commit** — `bingo_card` / `bingo_card_{75,90}_main` encrypts
    cells (and pattern id for 75).
-3. **Share** — `bingo_share_hashout_main` in 5-ball windows.
+3. **Share** — `bingo_share_hashout_main` in 5-ball windows. The public
+   output is `Poseidon(5)` of the five ball hashes. The chain recomputes
+   one ball from that ball’s partials.
 4. **Showdown** — `VerifyCalledBalls` only forces decrypt≡plaintext for
-   `i < nCalled`; evaluate pattern.
+   `i < nCalled`. 75-ball publishes `(packed + 1) · c0 + c1`. 90-ball
+   sums three pattern limbs.
 
 ## Unique ZK
 
@@ -49,7 +58,9 @@ scalars; the game logic is bingo patterns, not a keno hit count.
 
 | Public | Private |
 |--------|---------|
-| Input hash (calls + encrypted card + pattern + `nCalled`), output hash | `sk`, called balls, card cells, completion index |
+| `hash`, the seal polynomial, Groth16 proof | `sk`, called balls, card cells, completion index, 14 coefficients, seal commitment |
+
+75-ball `hash` is `Poseidon(keys, playerIndex, ciphertextHash, cardHash, patternId, nCalled, sealCommitment)`. 90-ball drops `patternId`. The showdown template checks that equality.
 
 ## Entrypoints
 

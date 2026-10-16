@@ -1,4 +1,4 @@
-import { Keno, MAX_KENO_SPOTS, padKenoSpots, parseBetPublicSignals } from './keno';
+import { Keno, MAX_KENO_SPOTS, TOTAL_CARDS, padKenoSpots, parseBetPublicSignals } from './keno';
 import { evaluateKeno } from './keno-eval';
 import { type PublicKey, type Ciphertext } from './zk-casino';
 import { Circuit } from './circuit';
@@ -12,6 +12,7 @@ import {
   type LinearShareOutput,
 } from './zk-player-base';
 import { GameKind } from './game-config';
+import { sealCommitment, sealedShowdownWitness } from './host-showdown-coefficients';
 import { tryOpenGameSession } from './player-zig-session';
 import type { PlayerSession } from './player-native-bridge';
 
@@ -58,6 +59,7 @@ export async function loadKenoCircuits(): Promise<KenoCircuits> {
 
 export class Player extends ZkPlayer<KenoCircuits> {
   #keno = new Keno();
+  #house: boolean;
   #session: PlayerSession | undefined;
   #zigPadding: Ciphertext | undefined;
   #betParams: {
@@ -75,8 +77,9 @@ export class Player extends ZkPlayer<KenoCircuits> {
     coefficients: bigint[];
   } | undefined;
 
-  constructor(circuits: KenoCircuits) {
+  constructor(circuits: KenoCircuits, house = false) {
     super(circuits);
+    this.#house = house;
   }
 
   private usesZig(): boolean {
@@ -89,7 +92,7 @@ export class Player extends ZkPlayer<KenoCircuits> {
   }
 
   override async init(): Promise<void> {
-    this.#session = await tryOpenGameSession({ kind: GameKind.Keno });
+    this.#session = await tryOpenGameSession({ kind: GameKind.Keno, house: this.#house });
     await this.#keno.init();
     if (this.#session) return;
     await super.init();
@@ -120,10 +123,6 @@ export class Player extends ZkPlayer<KenoCircuits> {
 
   protected override get crypto() {
     return this.#keno;
-  }
-
-  override setSealedCoefficients(coeffs: bigint[]): void {
-    super.setSealedCoefficients(coeffs, 1);
   }
 
   preloadShuffle(deck: Ciphertext[], publicKeys: PublicKey[]): void {
@@ -186,6 +185,7 @@ export class Player extends ZkPlayer<KenoCircuits> {
   }
 
   async betProve(houseKey: PublicKey, spots: number[]): Promise<BetOutput> {
+    if (this.#house) throw new Error('house player does not place bets');
     if (this.#session) {
       const plaintextSpots = padKenoSpots(spots);
       const out = await this.#session.bet({
@@ -261,6 +261,7 @@ export class Player extends ZkPlayer<KenoCircuits> {
         ciphertextPartials,
         ciphertextBets,
         nActualBets,
+        sealCommitment: sealCommitment(this.requireHostCoefficients()),
       };
       const plaintextDraw = this.#keno.decryptCards(
         this.privateKey,
@@ -272,7 +273,7 @@ export class Player extends ZkPlayer<KenoCircuits> {
         hashInput,
         plaintextDraw,
         matches: evaluateKeno(plaintextDraw.map(Number), padded, nActualBets),
-        coefficients: this.requireHostCoefficients(1),
+        coefficients: this.requireHostCoefficients(),
       };
     }
     return this.#kenoShowdown;
@@ -291,13 +292,12 @@ export class Player extends ZkPlayer<KenoCircuits> {
       publicKeys, ciphertextCards, ciphertextPartials, ciphertextBets, plaintextSpots, nActualBets,
     );
     this.circuits.showdown.preloadWitness({
-      hash: params.hash,
       ...(params.hashInput as object),
+      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
       publicKey: this.publicKey,
       privateKey: this.privateKey,
       plaintextCards: params.plaintextDraw,
       plaintextBets: padKenoSpots(plaintextSpots),
-      coefficients: params.coefficients.map(c => c.toString()),
     });
   }
 
@@ -317,7 +317,7 @@ export class Player extends ZkPlayer<KenoCircuits> {
         ciphertextBets,
         spots: plaintextSpots,
         nActualBets,
-        coefficients: this.requireHostCoefficients(1),
+        coefficients: this.requireHostCoefficients(),
         privateKey: this.key?.privateKey,
       });
       const plaintextDraw = this.#keno.decryptCards(
@@ -337,13 +337,12 @@ export class Player extends ZkPlayer<KenoCircuits> {
       publicKeys, ciphertextCards, ciphertextPartials, ciphertextBets, plaintextSpots, nActualBets,
     );
     const { proof, publicSignals } = await this.circuits.showdown.prove({
-      hash: params.hash,
       ...(params.hashInput as object),
+      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
       publicKey: this.publicKey,
       privateKey: this.privateKey,
       plaintextCards: params.plaintextDraw,
       plaintextBets: padKenoSpots(plaintextSpots),
-      coefficients: params.coefficients.map(c => c.toString()),
     });
     this.#kenoShowdown = undefined;
     return {

@@ -1,0 +1,12 @@
+[package]
+name = "encrypted-ixs"
+version = "0.1.0"
+edition = "2021"
+keywords = ["arcis-library"]
+
+[dependencies]
+arcis = "=0.14.1"
+arcis-compiler = "=0.14.1"
+blake3 = "=1.8.2"
+hex = "0.4"
+rand = "0.8"

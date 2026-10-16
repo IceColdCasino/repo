@@ -1,3 +1,13 @@
-rapidsnark/
 node_modules/
 build/
+
+# Devnet RPC and Photon URL, including the Helius key.
+.env
+.env.*
+!.env.example
+
+# Build writes throwaway keypairs. Deploy fetches the vanity keypairs from 1Password.
+rust/casino/keys/
+rust/light-casino/keys/
+rust/casino/target/deploy/casino-keypair.json
+rust/light-casino/target/deploy/light_casino-keypair.json

@@ -1,6 +1,5 @@
 import type { BabyJub } from 'circomlibjs';
 import assert from 'node:assert';
-import { hash880Bn254 } from './hash-coeffs';
 import {
   type Ciphertext,
   type PrivateKey,
@@ -13,6 +12,7 @@ import {
 } from './zk-crypto-base';
 import { GameKind } from './game-config';
 import { casinoDeck } from './casino-calc';
+import { showdownTwoCoeffHash } from './showdown-sealed-coeffs';
 import {
   KENO_DRAW,
   KENO_SHOE_SIZE,
@@ -46,6 +46,7 @@ export interface ShowdownHashInput {
   ciphertextPartials: Ciphertext[][];
   ciphertextBets: Ciphertext[];
   nActualBets: number;
+  sealCommitment: bigint;
 }
 
 export function parseBetPublicSignals(publicSignals: string[]) {
@@ -77,7 +78,11 @@ export class Keno extends ZkCrypto {
     return super.shuffle(deck, publicKeys, permutationMatrix, randomness);
   }
 
-  override shareHash(ciphertext: Ciphertext[], publicKey: PublicKey, publicKeys: PublicKey[]) {
+  override shareHash(
+    ciphertext: Ciphertext[],
+    publicKey: PublicKey,
+    publicKeys: PublicKey[],
+  ) {
     return this.calcFr('shareHash', {
       deck: ciphertext,
       publicKey,
@@ -108,6 +113,7 @@ export class Keno extends ZkCrypto {
     assert(ciphertextBets.length === MAX_KENO_SPOTS);
 
     return this.calcFr('showdownHash', {
+      sealCommitment: hashInput.sealCommitment,
       publicKeys,
       playerIndex,
       cards: ciphertextCards,
@@ -139,8 +145,8 @@ export class Keno extends ZkCrypto {
     return this.calcFr('shareOutputHash', { ciphertexts, nActualPlayers });
   }
 
-  computeShowdownOutputHash(matches: number, coefficient: bigint): bigint {
-    return (BigInt(matches) + 1n) * coefficient;
+  computeShowdownOutputHash(matches: number, coefficients: readonly bigint[]): bigint {
+    return showdownTwoCoeffHash(BigInt(matches), coefficients);
   }
 
   override decryptCards(

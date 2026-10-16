@@ -95,8 +95,16 @@ export const CrapsProp = {
 export type CrapsProp = (typeof CrapsProp)[keyof typeof CrapsProp];
 
 export const MAX_CRAPS_BETS = 12;
-/** Showdown poly hash: 12 bet codes + action + pointOut. */
+/** Evaluation vector: 12 bet multipliers, then action and pointOut. */
 export const CRAPS_SHOWDOWN_TERMS = MAX_CRAPS_BETS + 2;
+
+/**
+ * Second showdown coefficient. Action is 0..5 and pointOut is 0 or 4..10,
+ * so `action + pointOut * 6` is unique.
+ */
+export function packCrapsTableTerm(action: number, pointOut: number): number {
+  return action + pointOut * 6;
+}
 export const CRAPS_LOSE = 0;
 export const CRAPS_KEEP = 1;
 export const CRAPS_PAYOUT_SCALE = 30;

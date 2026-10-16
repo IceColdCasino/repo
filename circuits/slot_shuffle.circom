@@ -24,8 +24,8 @@ template SlotShuffle(nReels, nStops) {
   signal input permutationMatrix[nReels][nStops][nStops];
   signal input randomness[nReels][nStops];
 
-  signal output out[nReels][nStops][4];
-  signal output permutationHash;
+  // [0] Poseidon of the shuffled reels, [1] permutation-matrix hash.
+  signal output out[2];
 
   component noFixedPointsCheck[nReels];
   component hashMain;
@@ -33,6 +33,7 @@ template SlotShuffle(nReels, nStops) {
   component pkAggregator;
   component addRandomness[nReels];
   component permutationHasher;
+  component deckHash;
 
   pkAggregator = parallel AggregatePublicKey(nPlayers);
   pkAggregator.publicKeys <== publicKeys;
@@ -54,16 +55,24 @@ template SlotShuffle(nReels, nStops) {
     permute[i] = parallel ApplyPermutations(nStops);
     permute[i].permutationMatrix <== permutationMatrix[i];
     permute[i].cards <== reels[i];
+  }
 
+  for (var i = 0; i < nReels; i++) {
     addRandomness[i] = parallel AddRandomnessN(nStops);
     addRandomness[i].cards <== permute[i].out;
     addRandomness[i].publicKey <== pkAggregator.key;
     addRandomness[i].randomness <== randomness[i];
+  }
 
-    out[i] <== addRandomness[i].out;
+  deckHash = parallel HashDeck(nReels * nStops);
+  for (var i = 0; i < nReels; i++) {
+    for (var j = 0; j < nStops; j++) {
+      deckHash.deck[i * nStops + j] <== addRandomness[i].out[j];
+    }
   }
 
   hash === hashMain.out;
 
-  permutationHash <== permutationHasher.out;
+  out[0] <== deckHash.out;
+  out[1] <== permutationHasher.out;
 }

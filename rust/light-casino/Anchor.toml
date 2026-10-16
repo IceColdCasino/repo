@@ -1,0 +1,21 @@
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+light-casino = "CasinodrqvrdEqRYCMFfWGqQ1aD9mCcGDoWRQNPkWVtc"
+
+[programs.devnet]
+light-casino = "CasinodrqvrdEqRYCMFfWGqQ1aD9mCcGDoWRQNPkWVtc"
+
+[programs.mainnet]
+light-casino = "CasinodrqvrdEqRYCMFfWGqQ1aD9mCcGDoWRQNPkWVtc"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"

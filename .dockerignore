@@ -1,0 +1,15 @@
+.git
+node_modules
+**/node_modules
+**/zig-out
+**/.zig-cache
+**/target
+zkey
+rapidsnark
+/test
+/circuits
+*.log
+rust/casino
+rust/light-casino/src
+rust/light-casino/programs
+rust/light-casino/keys

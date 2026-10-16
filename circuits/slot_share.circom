@@ -9,7 +9,8 @@ pragma circom 2.2.2;
 include "./share.circom";
 include "./slot_coin_bet.circom";
 
-// Share reel stops and seal the single coin-bet to player + house.
+// Share reel stops and seal the coin-bet to each seat. No dealer key:
+// the house shares its partials first, and a player who does not share forfeits.
 template SlotShareHashOut(nPlayers, nReels) {
   assert(nPlayers == 2);
   assert(nReels == 3 || nReels == 5);
@@ -45,8 +46,6 @@ template SlotShareHashOut(nPlayers, nReels) {
   shareHashOut.randomness <== cardRandomness;
   shareHashOut.nActualPlayers <== nActualPlayers;
 
-  outHash <== shareHashOut.out;
-
   allPublicKeys[0] <== publicKey;
   for (var p = 0; p < nOthers; p++) {
     allPublicKeys[p + 1] <== publicKeys[p];
@@ -57,6 +56,10 @@ template SlotShareHashOut(nPlayers, nReels) {
     commitBet[p].coinBet <== coinBet;
     commitBet[p].publicKey <== allPublicKeys[p];
     commitBet[p].randomness <== betRandomness[p];
+  }
+
+  outHash <== shareHashOut.out;
+  for (var p = 0; p < nPlayers; p++) {
     encryptedBets[p] <== commitBet[p].out;
   }
 }

@@ -8,6 +8,7 @@ pragma circom 2.2.2;
 
 include "./partials.circom";
 include "./showdown.circom";
+include "./showdown_seal.circom";
 include "./hash.circom";
 include "./craps_eval.circom";
 include "./craps_bet.circom";
@@ -24,6 +25,7 @@ template CrapsShowdownHashMain(nPlayers, nDice, nBets) {
   signal input nActualBets;
   signal input phase;
   signal input point;
+  signal input sealCommitment;
 
   signal output out;
 
@@ -34,10 +36,13 @@ template CrapsShowdownHashMain(nPlayers, nDice, nBets) {
   component tableBind;
   component finalHash;
 
-  h1 = HashPublicKeys(nPlayers);
+  h1 = parallel HashPublicKeys(nPlayers);
   h1.publicKeys <== publicKeys;
 
-  h2 = Poseidon(nPlayers);
+  betHash = parallel HashCiphertexts(nBets);
+  betHash.ciphertext <== ciphertextBets;
+
+  h2 = parallel Poseidon(nPlayers);
   for (var p = 0; p < nPlayers; p++) {
     _h2[p] = parallel HashCiphertexts(nDice);
     if (p == 0) {
@@ -45,22 +50,22 @@ template CrapsShowdownHashMain(nPlayers, nDice, nBets) {
     } else {
       _h2[p].ciphertext <== ciphertextPartials[p - 1];
     }
+  }
+  for (var p = 0; p < nPlayers; p++) {
     h2.inputs[p] <== _h2[p].out;
   }
 
-  betHash = HashCiphertexts(nBets);
-  betHash.ciphertext <== ciphertextBets;
-
-  tableBind = Poseidon(3);
+  tableBind = parallel Poseidon(3);
   tableBind.inputs <== [nActualBets, phase, point];
 
-  finalHash = Poseidon(5);
+  finalHash = Poseidon(6);
   finalHash.inputs <== [
     h1.out,
     playerIndex,
     h2.out,
     betHash.out,
-    tableBind.out
+    tableBind.out,
+    sealCommitment
   ];
 
   out <== finalHash.out;
@@ -71,8 +76,10 @@ template Showdown(nPlayers, nDice, nFaces, nBets) {
 
   var nOthers = nPlayers - 1;
 
+  // Public input
   signal input hash;
 
+  // Hashed Private inputs
   signal input publicKeys[nPlayers][2];
   signal input playerIndex;
   signal input ciphertextCards[nDice][4];
@@ -81,13 +88,16 @@ template Showdown(nPlayers, nDice, nFaces, nBets) {
   signal input nActualBets;
   signal input phase;
   signal input point;
+  signal input sealCommitment;
 
+  // Non-hashed Private inputs
   signal input privateKey;
   signal input publicKey[2];
   signal input plaintextCards[nDice];
   signal input plaintextBets[nBets][2];
 
-  // 12 bet codes, then table action + pointOut (14 poly-hash terms).
+  // 12 bet multipliers, then table action and pointOut. The hash packs the
+  // multipliers into one coefficient and action + pointOut * 6 into the other.
   signal output out[nBets + 2];
 
   component publicKeyCheck;
@@ -104,16 +114,16 @@ template Showdown(nPlayers, nDice, nFaces, nBets) {
 
   phase * (phase - 1) === 0;
 
-  publicKeyCheck = PublicKeyCheck(nPlayers);
+  publicKeyCheck = parallel PublicKeyCheck(nPlayers);
   publicKeyCheck.publicKeys <== publicKeys;
   publicKeyCheck.playerIndex <== playerIndex;
   publicKeyCheck.publicKey <== publicKey;
 
-  verifyKey = VerifyKey();
+  verifyKey = parallel VerifyKey();
   verifyKey.privateKey <== privateKey;
   verifyKey.publicKey <== publicKey;
 
-  hashMain = CrapsShowdownHashMain(nPlayers, nDice, nBets);
+  hashMain = parallel CrapsShowdownHashMain(nPlayers, nDice, nBets);
   hashMain.publicKeys <== publicKeys;
   hashMain.playerIndex <== playerIndex;
   hashMain.ciphertextCards <== ciphertextCards;
@@ -122,6 +132,8 @@ template Showdown(nPlayers, nDice, nFaces, nBets) {
   hashMain.nActualBets <== nActualBets;
   hashMain.phase <== phase;
   hashMain.point <== point;
+  hashMain.sealCommitment <== sealCommitment;
+
   hash === hashMain.out;
 
   decryptPartials = parallel DecryptPartials(nPlayers, nDice);
@@ -136,30 +148,30 @@ template Showdown(nPlayers, nDice, nFaces, nBets) {
   createOwnPartials.ciphertextCards <== ciphertextCards;
   createOwnPartials.privateKey <== privateKey;
 
-  aggregatePartials = AggregatePartials(nPlayers, nDice);
-  aggregatePartials.ownPartials <== createOwnPartials.ownPartials;
-  aggregatePartials.otherPartials <== decryptPartials.partials;
-  aggregatePartials.ciphertextCards <== ciphertextCards;
-
-  verifyDecryptedCards = VerifyDecryptedCards(nDice, 1, nFaces);
-  verifyDecryptedCards.plaintextCards <== plaintextCards;
-  verifyDecryptedCards.decryptedCards <== aggregatePartials.decryptedCards;
-
-  verifyDecryptedBets = VerifyDecryptedBets(nBets);
-  verifyDecryptedBets.decryptedBets <== decryptBets.decryptedBets;
-  verifyDecryptedBets.plaintextBets <== plaintextBets;
-
-  tableEval = CrapsEval();
+  tableEval = parallel CrapsEval();
   tableEval.diceValues <== plaintextCards;
   tableEval.phase <== phase;
   tableEval.point <== point;
 
-  betEval = EvaluateCrapsBets(nBets);
+  betEval = parallel EvaluateCrapsBets(nBets);
   betEval.diceValues <== plaintextCards;
   betEval.phase <== phase;
   betEval.point <== point;
   betEval.in <== plaintextBets;
   betEval.nActualBets <== nActualBets;
+
+  aggregatePartials = AggregatePartials(nPlayers, nDice);
+  aggregatePartials.ownPartials <== createOwnPartials.ownPartials;
+  aggregatePartials.otherPartials <== decryptPartials.partials;
+  aggregatePartials.ciphertextCards <== ciphertextCards;
+
+  verifyDecryptedCards = parallel VerifyDecryptedCards(nDice, 1, nFaces);
+  verifyDecryptedCards.plaintextCards <== plaintextCards;
+  verifyDecryptedCards.decryptedCards <== aggregatePartials.decryptedCards;
+
+  verifyDecryptedBets = parallel VerifyDecryptedBets(nBets);
+  verifyDecryptedBets.decryptedBets <== decryptBets.decryptedBets;
+  verifyDecryptedBets.plaintextBets <== plaintextBets;
 
   for (var i = 0; i < nBets; i++) {
     out[i] <== betEval.out[i];
@@ -171,8 +183,10 @@ template Showdown(nPlayers, nDice, nFaces, nBets) {
 template ShowdownHashOut(nPlayers, nDice, nFaces, nBets) {
   var nOthers = nPlayers - 1;
 
+  // Poseidon of the hashed inputs, including the seal commitment.
   signal input hash;
 
+  // Hashed Private inputs
   signal input publicKeys[nPlayers][2];
   signal input playerIndex;
   signal input ciphertextCards[nDice][4];
@@ -181,12 +195,19 @@ template ShowdownHashOut(nPlayers, nDice, nFaces, nBets) {
   signal input nActualBets;
   signal input phase;
   signal input point;
+  signal input sealCommitment;
 
+  // Non-hashed private inputs
   signal input privateKey;
   signal input publicKey[2];
   signal input plaintextCards[nDice];
   signal input plaintextBets[nBets][2];
-  signal input coefficients[nBets + 2];
+  signal input coefficients[2];
+
+  signal tableTerm;
+  signal place[nBets];
+  signal weighted[nBets];
+  signal packedAcc[nBets];
 
   signal output out;
 
@@ -195,6 +216,7 @@ template ShowdownHashOut(nPlayers, nDice, nFaces, nBets) {
 
   showdown = Showdown(nPlayers, nDice, nFaces, nBets);
   showdown.hash <== hash;
+  showdown.sealCommitment <== sealCommitment;
   showdown.publicKeys <== publicKeys;
   showdown.playerIndex <== playerIndex;
   showdown.ciphertextCards <== ciphertextCards;
@@ -208,8 +230,24 @@ template ShowdownHashOut(nPlayers, nDice, nFaces, nBets) {
   showdown.plaintextCards <== plaintextCards;
   showdown.plaintextBets <== plaintextBets;
 
-  hashOut = ShowdownPolynomialHash(nBets + 2);
-  hashOut.results <== showdown.out;
+  // Action is 0..5 and pointOut is 0 or 4..10, so action + pointOut * 6
+  // is the second coefficient. Each bet multiplier is below 1024, so
+  // 1024^i places all 12 into the first coefficient.
+  tableTerm <== showdown.out[nBets] + showdown.out[nBets + 1] * 6;
+
+  place[0] <== 1;
+  weighted[0] <== showdown.out[0];
+  packedAcc[0] <== weighted[0];
+
+  for (var i = 1; i < nBets; i++) {
+    place[i] <== place[i - 1] * 1024;
+    weighted[i] <== showdown.out[i] * place[i];
+    packedAcc[i] <== packedAcc[i - 1] + weighted[i];
+  }
+
+  hashOut = SealedShowdownHash(2);
+  hashOut.sealCommitment <== sealCommitment;
+  hashOut.results <== [packedAcc[nBets - 1], tableTerm];
   hashOut.coefficients <== coefficients;
 
   out <== hashOut.out;

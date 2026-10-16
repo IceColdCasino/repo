@@ -30,14 +30,12 @@ template CrapsEval() {
 
   signal total;
   signal isFace[11];
-  signal natural;
   signal craps;
   signal box;
   signal pointMatch[6];
   signal validPointAcc[7];
   signal validPoint;
   signal comeOut;
-  signal comeNatural;
   signal comeCraps;
   signal comePoint;
   signal hitPoint;
@@ -62,7 +60,6 @@ template CrapsEval() {
     isFace[t - 2] <== eqTotal[t - 2].out;
   }
 
-  natural <== isFace[5] + isFace[9];
   craps <== isFace[0] + isFace[1] + isFace[10];
   box <== isFace[2] + isFace[3] + isFace[4] + isFace[6] + isFace[7] + isFace[8];
 
@@ -81,7 +78,6 @@ template CrapsEval() {
   comeOut * point === 0;
   phase * (1 - validPoint) === 0;
 
-  comeNatural <== comeOut * natural;
   comeCraps <== comeOut * craps;
   comePoint <== comeOut * box;
 

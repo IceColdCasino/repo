@@ -10,7 +10,7 @@ include "./card_rank.circom";
 include "circuits/comparators.circom";
 include "circuits/mux1.circom";
 
-template EvaluateHands(shoeSize) {
+template EvaluateHands() {
   var nTotalCards = 4;
 
   signal input cards[nTotalCards];
@@ -29,7 +29,7 @@ template EvaluateHands(shoeSize) {
   component winnerMux;
 
   for (var i = 0; i < nTotalCards; i++) {
-    getRanks[i] = CardToRank(shoeSize);
+    getRanks[i] = CardToRank();
     getRanks[i].card <== cards[i];
     values[i] <== getRanks[i].rank;
   }

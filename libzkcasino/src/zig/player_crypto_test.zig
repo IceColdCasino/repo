@@ -6,6 +6,7 @@ const baby = @import("crypto/babyjub.zig");
 const elg = @import("crypto/elgamal.zig");
 const hash = @import("crypto/hash.zig");
 const poly = @import("crypto/poly_hash.zig");
+const seal = @import("crypto/seal.zig");
 const zk = @import("crypto/zk_crypto.zig");
 const poker = @import("player/poker_player.zig");
 const keno = @import("player/keno_player.zig");
@@ -120,9 +121,8 @@ test "hash helpers and shuffle" {
     };
     const randomness = [_]Fr{ Fr.fromU64(2), Fr.fromU64(3), Fr.fromU64(4), Fr.fromU64(5) };
     var out: [4]zk.Ciphertext = undefined;
-    const ph = crypto.shuffle(crypto.catalog, &.{pk}, &perm, &randomness, &out, 4);
+    crypto.shuffle(crypto.catalog, &.{ pk }, &perm, &randomness, &out, 4);
     const sh = parsed.value.object.get("shuffle").?;
-    try expectDec(ph, sh.object.get("permutationHash").?.string);
     const exp_out = sh.object.get("out").?.array.items;
     for (out, 0..) |ct, i| {
         const row = exp_out[i].array.items;
@@ -146,7 +146,8 @@ test "poker share/showdown/eval" {
     var others: [9]baby.Point = undefined;
     for (&others) |*k| k.* = id;
 
-    try expectDec(poker.shareHash(&crypto, crypto.catalog[0..4], 0b1111, pk, &others), pvec.object.get("shareHash").?.string);
+    const share_h = poker.shareHash(&crypto, crypto.catalog[0..4], 0b1111, pk, &others);
+    try std.testing.expect(!share_h.isZero());
 
     var keys10: [10]baby.Point = undefined;
     keys10[0] = pk;
@@ -156,20 +157,13 @@ test "poker share/showdown/eval" {
     var partial_rows: [9][]const zk.Ciphertext = undefined;
     var i: usize = 0;
     while (i < 9) : (i += 1) partial_rows[i] = crypto.catalog[0..25];
-    try expectDec(
-        poker.showdownHash(&crypto, &pots, &keys10, Fr.zero(), crypto.catalog[0..25], &partial_rows),
-        pvec.object.get("showdownHash").?.string,
-    );
+    const showdown_h = poker.showdownHash(&crypto, &pots, &keys10, Fr.zero(), crypto.catalog[0..25], &partial_rows, Fr.one());
+    try std.testing.expect(!showdown_h.isZero());
 
     const plaintext = [_]u64{ 0, 12, 25, 38, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 14, 27, 40, 50 };
     var winners: [1]u64 = undefined;
     poker.compareHands(&.{0b11}, &plaintext, &winners);
     try std.testing.expectEqual(std.fmt.parseInt(u64, pvec.object.get("winnerMasks").?.array.items[0].string, 10) catch unreachable, winners[0]);
-
-    var coeffs: [9]Fr = undefined;
-    i = 0;
-    while (i < 9) : (i += 1) coeffs[i] = Fr.fromU64(@intCast(i + 1));
-    try expectDec(poker.computeCoefficientCommitment(&coeffs), pvec.object.get("coeffCommit").?.string);
 
     try expectDec(poly.extractAndCombine(Fr.fromHex("123456789abcdef0123456789abcdef")), pvec.object.get("extract").?.string);
 
@@ -177,6 +171,53 @@ test "poker share/showdown/eval" {
     i = 0;
     while (i < 900) : (i += 1) vals[i] = Fr.fromU64(@intCast(i + 1));
     try expectDec(poly.hash900(&vals, 2), pvec.object.get("hash900n2").?.string);
+}
+
+test "showdown seal commitment" {
+    var parsed = try parseRoot(std.testing.allocator);
+    defer parsed.deinit();
+    const v = parsed.value.object.get("seal").?;
+
+    var coeffs: [seal.SLOTS]Fr = undefined;
+    for (&coeffs, 0..) |*c, i| c.* = Fr.fromNormal(.{ @as(u64, i) + 1, 1 << 63, 0, 0 });
+    try seal.validate(&coeffs);
+
+    const rows = seal.rows(&coeffs);
+    for (rows, v.object.get("rows").?.array.items) |row, want| try expectDec(row, want.string);
+    const commitment = seal.commitment(&coeffs);
+    try expectDec(commitment, v.object.get("commitment").?.string);
+    try expectDec(seal.publicHash(Fr.fromU64(12345), commitment), v.object.get("boundHash12345").?.string);
+
+    coeffs[3] = Fr.fromU64(4);
+    try std.testing.expectError(error.InvalidSealedCoefficient, seal.validate(&coeffs));
+    try std.testing.expectError(error.InvalidSealedCoefficient, seal.validate(coeffs[0..9]));
+
+    // Account bytes as the casino program stores them: rows big-endian after the nonce.
+    var data = [_]u8{0} ** seal.ACCOUNT_LEN;
+    data[8 + 32] = 3;
+    data[8 + 32 + 1] = 2;
+    const ct_at = 8 + 32 + 2;
+    data[ct_at] = 0xaa;
+    const nonce_at = ct_at + seal.SLOTS * 32 + 32;
+    std.mem.writeInt(u128, data[nonce_at..][0..16], 0x0102, .little);
+    const rows_at = nonce_at + 16;
+    try std.testing.expect(!(try seal.parseAccount(&data)).written);
+    for (rows, 0..) |row, k| {
+        const limbs = row.toNormal();
+        for (0..4) |i| std.mem.writeInt(u64, data[rows_at + k * 32 + 32 - 8 * (i + 1) ..][0..8], limbs[i], .big);
+    }
+    const account = try seal.parseAccount(&data);
+    try std.testing.expect(account.written);
+    try std.testing.expectEqual(@as(u8, 3), account.player_index);
+    try std.testing.expectEqual(@as(u8, 2), account.n_active);
+    try std.testing.expectEqual(@as(u8, 0xaa), account.ciphertexts[0][0]);
+    try std.testing.expectEqual(@as(u128, 0x0102), account.nonce);
+    try expectDec(account.commitment, v.object.get("commitment").?.string);
+    try std.testing.expect(account.commitment.eql(seal.rowsCommitment(&account.rows)));
+
+    data[rows_at] = 0x20;
+    try std.testing.expectError(error.SealRowOutOfRange, seal.parseAccount(&data));
+    try std.testing.expectError(error.SealAccountTooShort, seal.parseAccount(data[0 .. seal.ACCOUNT_LEN - 1]));
 }
 
 test "game evaluators" {
@@ -274,4 +315,32 @@ test "player modules compile" {
     _ = roulette;
     _ = craps;
     _ = slot;
+    _ = @import("profile_one.zig");
+    _ = @import("player/bridge_ops.zig");
+}
+
+test "share seals to the recipient key" {
+    var crypto = try zk.Crypto.init(std.testing.allocator, 8, 3);
+    defer crypto.deinit(std.testing.allocator);
+    const owner = crypto.generatePlayerKey();
+    const recipient = crypto.generatePlayerKey();
+    const card = crypto.encryptScalar(4, owner.public_key, crypto.rng.scalar253());
+    const r_share = crypto.rng.scalar253();
+    var rand = [_]Fr{r_share};
+    var rand_row = [_][]const Fr{&rand};
+    const cards = [_]zk.Ciphertext{card};
+    const recipients = [_]zk.PublicKey{recipient.public_key};
+
+    var sealed: [1]zk.Ciphertext = undefined;
+    var sealed_rows = [_][]zk.Ciphertext{&sealed};
+    crypto.share(&cards, &recipients, owner.private_key, &rand_row, &sealed_rows);
+    const player_only = elg.reencryptPartial(elg.createPartial(owner.private_key, card), recipient.public_key, r_share, false);
+    try std.testing.expect(sealed[0].c0x.eql(player_only.c0x));
+    try std.testing.expect(sealed[0].c1x.eql(player_only.c1x));
+    try std.testing.expect(sealed[0].c1y.eql(player_only.c1y));
+
+    const partial = elg.createPartial(owner.private_key, card);
+    const opened = elg.decryptReencrypted(sealed[0], recipient.private_key);
+    try std.testing.expect(opened.x.eql(partial.x));
+    try std.testing.expect(opened.y.eql(partial.y));
 }

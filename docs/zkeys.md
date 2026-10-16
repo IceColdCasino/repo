@@ -8,8 +8,8 @@ the host tests prove. Git LFS tracks the whole directory (`zkey/**` in
 `.gitattributes`).
 
 A proof is an argument that a witness satisfies one compiled circuit under
-one setup. The prover (libzkcasino, via rapidsnark) reads the proving key.
-The verifier (`src/rapidsnark-ffi.ts`, and every `Game` method that calls
+one setup. The prover reads the proving key through the library `zkey lib`
+prints. The verifier (`src/rapidsnark-ffi.ts`, and every `Game` method that calls
 it) reads the verification key. A proof only verifies against the
 verification key exported from the same `.zkey`.
 
@@ -43,10 +43,9 @@ does not keep it.
 2. Sizes a Hermez powers-of-tau file (`~/ptau/powersOfTau28_hez_final_*.ptau`)
    to the constraint count. The smallest power is 16. The largest accepted
    power is 28. A second argument overrides the power.
-3. Runs `snarkjs groth16 setup` on a RAM disk, then one `zkey contribute`.
-   The contribution entropy comes from `/dev/random`.
-4. Exports the verification key and copies `<main>_0001.zkey` and
-   `<main>_verification_key.json` into `zkey/`.
+3. Runs the Homebrew `zkey` once. Setup and contribute stay in memory, and
+   the final key and verification key are written into `zkey/`.
+4. Copies the witness calculator into `libzkcasino` for mains the game tests load.
 
 That contribution is a local development setup, not a multi-party ceremony.
 The entropy used in `zkey contribute` is the toxic waste for that key. It
@@ -54,10 +53,9 @@ is not stored in this repository. Anyone who kept it can forge proofs for
 that circuit. Re-running `calc.sh` for a main replaces both files; proofs
 made under the previous key do not verify.
 
-Regenerating a key needs `circom`, `bun`, `snarkjs` (pulled by the script),
+Regenerating a key needs `circom`, the IceColdCasino/groth16 `zkey` formula,
 `node_modules/circomlib`, and the powers-of-tau file. The script downloads
-a missing tau file into `~/ptau/`. Large showdowns need a bigger RAM disk
-(`RAMDISK_SIZE_MB`) and a larger Node heap (`NODE_OPTIONS`).
+a missing tau file into `~/ptau/`.
 
 ## Keys the tests load
 

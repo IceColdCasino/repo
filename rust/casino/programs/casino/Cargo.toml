@@ -1,0 +1,24 @@
+[package]
+name = "casino"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+testing = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "arcium-anchor/idl-build"]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "casino"
+
+[dependencies]
+anchor-lang = { version = "=1.0.2", features = ["init-if-needed"] }
+anchor-spl = { version = "=1.0.2", features = ["associated_token"] }
+arcium-anchor = "=0.14.1"
+arcium-macros = "=0.14.1"
+arcium-client = { version = "=0.14.1", default-features = false }
+bytemuck = { version = "1.16", features = ["derive"] }
+getrandom = { version = "0.2", features = ["custom"] }
+shared-zk-ids = { path = "../../../shared-zk-ids" }
+solana-sha256-hasher = "2.3.0"

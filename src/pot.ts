@@ -79,6 +79,11 @@ export class Pot {
     return this.#playerBets.get(playerIndex) || 0n;
   }
 
+  /** Chips this seat put in, including a fold that left the chips in the pot. */
+  contribution(playerIndex: number): bigint {
+    return (this.#playerBets.get(playerIndex) ?? 0n) + (this.#foldedBets.get(playerIndex) ?? 0n);
+  }
+
   get amount(): bigint {
     return this.#amount;
   }

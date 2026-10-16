@@ -10,11 +10,13 @@ const craps = @import("player/craps_player.zig");
 const bingo = @import("player/bingo_player.zig");
 const slot = @import("player/slot_player.zig");
 const blackjack = @import("player/blackjack_player.zig");
+const profile_one = @import("profile_one.zig");
 
 const PublicKey = zk.PublicKey;
 const Engine = prove.Engine;
 
 fn openEngine() !Engine {
+    if (std.c.getenv("ZK_PROFILE") != null) return error.SkipZigTest;
     return Engine.init(std.testing.allocator) catch |err| switch (err) {
         error.RepoRootNotFound, error.RapidsnarkOpen, error.CwdUnavailable => return error.SkipZigTest,
         else => return err,
@@ -31,6 +33,11 @@ fn expectValid(engine: *Engine, id: prove.CircuitId, proof: prove.Proof) !void {
     try std.testing.expect(proof.proof_json.len > 8);
     try std.testing.expect(proof.public_json.len > 2);
     try std.testing.expect(try engine.verify(id, proof));
+}
+
+test "profile one circuit" {
+    const name_z = std.c.getenv("ZK_PROFILE_CIRCUIT") orelse return error.SkipZigTest;
+    try profile_one.run(std.testing.allocator, std.mem.span(name_z));
 }
 
 test "game players compile" {
@@ -216,7 +223,9 @@ test "slot shareProve + verify" {
     var centers: [3]zk.Ciphertext = undefined;
     encryptUnder(&crypto, player.table.publicKey(), crypto.catalog, &centers);
 
-    var out = try player.shareProve(&centers, &keys, 1);
+    var dealer: [3]PublicKey = undefined;
+    for (&dealer) |*k| k.* = PublicKey.identity();
+    var out = try player.shareProve(&centers, &keys, 1, &dealer);
     defer out.deinit();
     try expectValid(&engine, .slot_share_3_reel_hashout_main, out.proof);
 }
@@ -242,7 +251,8 @@ test "roulette shareProve + verify" {
     var cards: [1]zk.Ciphertext = undefined;
     encryptUnder(&crypto, player.table.publicKey(), crypto.catalog, &cards);
 
-    var out = try player.shareProve(&cards, &others, 2);
+    const dealer = [_]PublicKey{PublicKey.identity()};
+    var out = try player.shareProve(&cards, &others, 2, &dealer);
     defer out.deinit();
     try expectValid(&engine, .roulette_share_hashout_main, out.proof);
 }

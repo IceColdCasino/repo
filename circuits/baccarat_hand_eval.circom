@@ -109,7 +109,7 @@ template DealerDrawsAfterPlayerDraw() {
        + drawFlag[4] + drawFlag[5] + drawFlag[6];
 }
 
-template EvaluateHands(shoeSize) {
+template EvaluateHands() {
   signal input cards[6];
 
   signal values[6];
@@ -152,7 +152,7 @@ template EvaluateHands(shoeSize) {
   component tie;
 
   for (var i = 0; i < 6; i++) {
-    cardToRank[i] = CardToRank(shoeSize);
+    cardToRank[i] = CardToRank();
     cardToRank[i].card <== cards[i];
     values[i] <== cardToRank[i].rank;
   }

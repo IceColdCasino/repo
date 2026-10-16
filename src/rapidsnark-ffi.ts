@@ -1,7 +1,7 @@
-import { dlopen, FFIType, ptr, suffix } from 'bun:ffi';
-import * as path from 'node:path';
+import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { readFileSync } from 'node:fs';
 import type { Groth16Proof } from 'snarkjs';
+import { proverLibPath } from './prover-lib';
 
 // Error codes
 const PROVER_OK = 0x0;
@@ -13,8 +13,8 @@ const VERIFIER_VALID_PROOF = 0x0;
 const VERIFIER_INVALID_PROOF = 0x1;
 const VERIFIER_ERROR = 0x2;
 
-// Load the rapidsnark library
-const rapidsnarkPath = path.join(__dirname, `../rapidsnark/lib/librapidsnark.${suffix}`);
+// libgroth16 from `zkey lib`. RAPIDSNARK_LIB overrides that path.
+const rapidsnarkPath = proverLibPath();
 
 const lib = dlopen(rapidsnarkPath, {
   // Prover functions

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# PATH prefers this directory over ~/.local/bin (see arciumDockerEnv).
+# Arcium rewrites Anchor.toml, then execs `anchor localnet`. Sleep so
+# localnet-orchestrator can sync genesis addresses to artifact pubkeys
+# before Anchor reads the file. The real shim keeps stdin open.
+set -euo pipefail
+if [[ "${1:-}" == "localnet" ]]; then
+  sleep 2
+fi
+exec "${HOME}/.local/bin/anchor" "$@"

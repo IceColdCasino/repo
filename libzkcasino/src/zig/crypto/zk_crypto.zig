@@ -78,7 +78,7 @@ pub const Crypto = struct {
 
     pub fn init(allocator: std.mem.Allocator, shoe_size: usize, seed: u64) !Crypto {
         const storage = try allocator.alloc(Ciphertext, shoe_size);
-        fillIdentity(storage);
+        fillShoe(storage);
         return .{
             .rng = Rng.init(seed),
             .catalog = storage,
@@ -150,7 +150,7 @@ pub const Crypto = struct {
         @memcpy(keys[1 .. 1 + others.len], others);
         const n = 1 + others.len;
         const pk_hash = hash.hashPublicKeysN(keys[0..n]);
-        return poseidon.hash(&.{ self.hashCiphertexts(cts), pk_hash });
+        return hash.shareInputHashHouse(self.hashCiphertexts(cts), pk_hash);
     }
 
     pub fn shuffleHash(_: *const Crypto, deck: []const Ciphertext, keys: []const PublicKey) Fr {
@@ -185,7 +185,8 @@ pub const Crypto = struct {
         randomness: []const Fr,
         out: []Ciphertext,
         matrix_size: usize,
-    ) Fr {
+    ) void {
+        _ = matrix_size;
         const n = deck.len;
         const pk_agg = baby.aggregate(keys);
         var i: usize = 0;
@@ -204,10 +205,22 @@ pub const Crypto = struct {
             const new_c1 = baby.add(card.c1(), baby.mul(pk_agg, r));
             out[i] = Ciphertext.fromPoints(new_c0, new_c1);
         }
-        return hash.hashPermutationMatrix(matrix, matrix_size);
     }
 
+    /// Seal each partial to the recipient key only.
     pub fn share(
+        self: *const Crypto,
+        cts: []const Ciphertext,
+        recipients: []const PublicKey,
+        sk: Fr,
+        randomness: []const []const Fr,
+        out: [][]Ciphertext,
+    ) void {
+        self.shareHouse(cts, recipients, sk, randomness, out);
+    }
+
+    /// Seal each partial to the recipient key only.
+    pub fn shareHouse(
         self: *const Crypto,
         cts: []const Ciphertext,
         recipients: []const PublicKey,
@@ -322,6 +335,16 @@ pub fn fillIdentity(dest: []Ciphertext) void {
     for (dest, 0..) |*slot, i| {
         const pt = baby.mulBase8Limbs(.{ @as(u64, @intCast(i + 1)), 0, 0, 0 });
         slot.* = Ciphertext.fromPoints(Point.identity(), pt);
+    }
+}
+
+/// 6- and 8-deck shoes are `0..51` repeated once per deck. Every other
+/// catalog stays a single `0..n-1` identity (one deck is already `0..51`).
+pub fn fillShoe(dest: []Ciphertext) void {
+    if (dest.len == 6 * 52 or dest.len == 8 * 52) {
+        fillRepeatedRank(dest, dest.len / 52, 52);
+    } else {
+        fillIdentity(dest);
     }
 }
 

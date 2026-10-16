@@ -81,12 +81,16 @@ template CommitCardCells(nCells) {
   for (var i = 0; i < nCells; i++) {
     babyPbk[i] = parallel BabyPbk();
     babyPbk[i].in <== plaintextCells[i] + 1;
+  }
 
+  for (var i = 0; i < nCells; i++) {
     encrypt[i] = parallel Encrypt();
     encrypt[i].plaintext <== [babyPbk[i].Ax, babyPbk[i].Ay];
     encrypt[i].publicKey <== publicKey;
     encrypt[i].randomness <== randomness[i];
+  }
 
+  for (var i = 0; i < nCells; i++) {
     out[i] <== encrypt[i].ciphertext;
   }
 }
@@ -112,7 +116,7 @@ template BingoCard75() {
 
   plaintextCells[12] === 0;
 
-  unique = UniqueNonZero(25);
+  unique = parallel UniqueNonZero(25);
   unique.cells <== plaintextCells;
 
   for (var i = 0; i < 25; i++) {
@@ -124,11 +128,11 @@ template BingoCard75() {
     range[i].in <== plaintextCells[i];
   }
 
-  finalHash = Poseidon(3);
+  finalHash = parallel Poseidon(3);
   finalHash.inputs <== [publicKey[0], publicKey[1], 25];
   hash === finalHash.out;
 
-  commit = CommitCardCells(25);
+  commit = parallel CommitCardCells(25);
   commit.publicKey <== publicKey;
   commit.plaintextCells <== plaintextCells;
   commit.randomness <== randomness;
@@ -158,7 +162,7 @@ template BingoCard90() {
   component commit;
   component rowEq[3];
 
-  unique = UniqueNonZero(27);
+  unique = parallel UniqueNonZero(27);
   unique.cells <== plaintextCells;
 
   for (var r = 0; r < 3; r++) {
@@ -180,11 +184,11 @@ template BingoCard90() {
     rowEq[r].out === 1;
   }
 
-  finalHash = Poseidon(3);
+  finalHash = parallel Poseidon(3);
   finalHash.inputs <== [publicKey[0], publicKey[1], 27];
   hash === finalHash.out;
 
-  commit = CommitCardCells(27);
+  commit = parallel CommitCardCells(27);
   commit.publicKey <== publicKey;
   commit.plaintextCells <== plaintextCells;
   commit.randomness <== randomness;

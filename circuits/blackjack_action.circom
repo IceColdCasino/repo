@@ -24,18 +24,26 @@ template BlackjackActionHashMain(nPlayers, nTotalCards) {
   signal input canSplit;
   signal input hitSoft17;
   signal input isDealer;
+  signal input upcardCiphertext[4];
+  signal input upcardPartials[nOthers][4];
+  // 1 iff the dealer upcard is an Ace. Players prove this to buy insurance.
+  signal input insuranceEligible;
+  signal input sealCommitment;
 
   signal output out;
 
   component h1;
   component _h2[nPlayers];
   component h2;
+  component upOwn;
+  component upOther[nOthers];
+  component upcardHash;
   component finalHash;
 
-  h1 = HashPublicKeys(nPlayers);
+  h1 = parallel HashPublicKeys(nPlayers);
   h1.publicKeys <== publicKeys;
 
-  h2 = Poseidon(nPlayers);
+  h2 = parallel Poseidon(nPlayers);
 
   for (var p = 0; p < nPlayers; p++) {
     _h2[p] = parallel HashCiphertexts(nTotalCards);
@@ -44,17 +52,35 @@ template BlackjackActionHashMain(nPlayers, nTotalCards) {
     } else {
       _h2[p].ciphertext <== ciphertextPartials[p - 1];
     }
+  }
+
+  for (var p = 0; p < nPlayers; p++) {
     h2.inputs[p] <== _h2[p].out;
   }
 
-  finalHash = Poseidon(6);
+  upOwn = parallel HashCiphertexts(1);
+  upOwn.ciphertext[0] <== upcardCiphertext;
+  upcardHash = parallel Poseidon(nPlayers);
+  upcardHash.inputs[0] <== upOwn.out;
+  for (var p = 0; p < nOthers; p++) {
+    upOther[p] = parallel HashCiphertexts(1);
+    upOther[p].ciphertext[0] <== upcardPartials[p];
+  }
+  for (var p = 0; p < nOthers; p++) {
+    upcardHash.inputs[p + 1] <== upOther[p].out;
+  }
+
+  finalHash = Poseidon(9);
   finalHash.inputs <== [
     h1.out,
     h2.out,
+    upcardHash.out,
     cardCount,
     canSplit,
     hitSoft17,
-    isDealer
+    isDealer,
+    insuranceEligible,
+    sealCommitment
   ];
 
   out <== finalHash.out;
@@ -104,8 +130,8 @@ template EvaluateActionHand(maxCards) {
   eq2 = IsEqual();
   eq2.in <== [cardCount, 2];
 
-  rank0 = CardToRank(shoeSize());
-  rank1 = CardToRank(shoeSize());
+  rank0 = CardToRank();
+  rank1 = CardToRank();
   rank0.card <== cards[0];
   rank1.card <== cards[1];
 
@@ -200,14 +226,14 @@ template EvaluateDealerActionHand(maxCards) {
 }
 
 // Unified player/dealer action. Card slots sized for dealer max (13).
-// Public outputs (via ActionHashOut): status poly-hash and dealerUpIsAce.
+// The only public output is the sealed polynomial of `out`.
+// Dealer `out`: 0=must hit, 1=bust, 2=natural blackjack, 3=must stand.
 template Action(nPlayers) {
   var nTotalCards = maxDealerCards();
   var nOthers = nPlayers - 1;
 
   signal input hash;
 
-  signal input publicKey[2];
   signal input publicKeys[nPlayers][2];
   signal input ciphertextCards[nTotalCards][4];
   signal input ciphertextPartials[nOthers][nTotalCards][4];
@@ -215,13 +241,20 @@ template Action(nPlayers) {
   signal input canSplit;
   signal input hitSoft17;
   signal input isDealer;
+  signal input upcardCiphertext[4];
+  signal input upcardPartials[nOthers][4];
+  signal input insuranceEligible;
+  signal input sealCommitment;
 
   signal input privateKey;
+  signal input publicKey[2];
   signal input plaintextCards[nTotalCards];
+  signal input upcardPlaintext;
+
+  signal upcardRow[1][4];
+  signal upcardCol[nOthers][1][4];
 
   signal output out;
-  // Computed: Ace(upcard) when isDealer=1, else 0. Not a free witness.
-  signal output dealerUpIsAce;
 
   component hashMain;
   component verifyKey;
@@ -229,11 +262,15 @@ template Action(nPlayers) {
   component createOwnPartials;
   component aggregatePartials;
   component verifyDecryptedCards;
+  component decryptUpcard;
+  component ownUpcard;
+  component aggregateUpcard;
+  component verifyUpcard;
+  component upRank;
+  component eqAce;
   component playerEval;
   component dealerEval;
   component muxRole;
-  component upRank;
-  component eqAce;
 
   isDealer * (isDealer - 1) === 0;
   // Role-specific flags must be zero on the unused path.
@@ -248,9 +285,13 @@ template Action(nPlayers) {
   hashMain.canSplit <== canSplit;
   hashMain.hitSoft17 <== hitSoft17;
   hashMain.isDealer <== isDealer;
+  hashMain.upcardCiphertext <== upcardCiphertext;
+  hashMain.upcardPartials <== upcardPartials;
+  hashMain.insuranceEligible <== insuranceEligible;
+  hashMain.sealCommitment <== sealCommitment;
   hash === hashMain.out;
 
-  verifyKey = VerifyKey();
+  verifyKey = parallel VerifyKey();
   verifyKey.privateKey <== privateKey;
   verifyKey.publicKey <== publicKey;
 
@@ -267,17 +308,43 @@ template Action(nPlayers) {
   aggregatePartials.otherPartials <== decryptPartials.partials;
   aggregatePartials.ciphertextCards <== ciphertextCards;
 
-  verifyDecryptedCards = VerifyShoeDecryptedCards(nTotalCards);
+  verifyDecryptedCards = parallel VerifyShoeDecryptedCards(nTotalCards);
   verifyDecryptedCards.plaintextCards <== plaintextCards;
   verifyDecryptedCards.decryptedCards <== aggregatePartials.decryptedCards;
   verifyDecryptedCards.nUsedCards <== cardCount;
 
-  // Dealer upcard Ace flag from plaintext slot 0 (gated by isDealer).
-  upRank = CardToRank(shoeSize());
-  upRank.card <== plaintextCards[0];
+  // Dealer face-up card. insuranceEligible is 1 exactly when its rank is Ace.
+  upcardRow[0] <== upcardCiphertext;
+  for (var p = 0; p < nOthers; p++) {
+    upcardCol[p][0] <== upcardPartials[p];
+  }
+  // The dealer's own first card is the upcard.
+  isDealer * (upcardPlaintext - plaintextCards[0]) === 0;
+
+  decryptUpcard = parallel DecryptPartials(nPlayers, 1);
+  decryptUpcard.ciphertextPartials <== upcardCol;
+  decryptUpcard.privateKey <== privateKey;
+
+  ownUpcard = parallel CreateOwnPartials(1);
+  ownUpcard.ciphertextCards <== upcardRow;
+  ownUpcard.privateKey <== privateKey;
+
+  aggregateUpcard = AggregatePartials(nPlayers, 1);
+  aggregateUpcard.ownPartials <== ownUpcard.ownPartials;
+  aggregateUpcard.otherPartials <== decryptUpcard.partials;
+  aggregateUpcard.ciphertextCards <== upcardRow;
+
+  verifyUpcard = parallel VerifyShoeDecryptedCards(1);
+  verifyUpcard.plaintextCards[0] <== upcardPlaintext;
+  verifyUpcard.decryptedCards <== aggregateUpcard.decryptedCards;
+  verifyUpcard.nUsedCards <== 1;
+
+  insuranceEligible * (insuranceEligible - 1) === 0;
+  upRank = CardToRank();
+  upRank.card <== upcardPlaintext;
   eqAce = IsEqual();
   eqAce.in <== [upRank.rank, 12];
-  dealerUpIsAce <== isDealer * eqAce.out;
+  insuranceEligible === eqAce.out;
 
   playerEval = EvaluateActionHand(nTotalCards);
   playerEval.cards <== plaintextCards;
@@ -298,25 +365,30 @@ template Action(nPlayers) {
 }
 
 template ActionHashOut(nPlayers) {
+  // Public input
   signal input hash;
 
+  // Hashed Private inputs
   signal input publicKeys[nPlayers][2];
-  signal input publicKey[2];
   signal input ciphertextCards[maxDealerCards()][4];
   signal input ciphertextPartials[nPlayers - 1][maxDealerCards()][4];
   signal input cardCount;
   signal input canSplit;
   signal input hitSoft17;
   signal input isDealer;
+  signal input upcardCiphertext[4];
+  signal input upcardPartials[nPlayers - 1][4];
+  signal input insuranceEligible;
+  signal input sealCommitment;
 
+  // Non-hashed Private inputs
   signal input privateKey;
+  signal input publicKey[2];
   signal input plaintextCards[maxDealerCards()];
-  // coefficients[0]: status term (always random).
-  // coefficients[1]: dealerUpIsAce term — random when isDealer=1, else 0.
+  signal input upcardPlaintext;
   signal input coefficients[2];
 
   signal output out;
-  signal output dealerUpIsAce;
 
   component action;
   component hashOut;
@@ -331,16 +403,18 @@ template ActionHashOut(nPlayers) {
   action.canSplit <== canSplit;
   action.hitSoft17 <== hitSoft17;
   action.isDealer <== isDealer;
+  action.upcardCiphertext <== upcardCiphertext;
+  action.upcardPartials <== upcardPartials;
+  action.insuranceEligible <== insuranceEligible;
+  action.sealCommitment <== sealCommitment;
   action.privateKey <== privateKey;
   action.plaintextCards <== plaintextCards;
+  action.upcardPlaintext <== upcardPlaintext;
 
-  // Ace flag only mixes into the dealer action poly hash.
-  (1 - isDealer) * coefficients[1] === 0;
-
-  hashOut = ShowdownPolynomialHash(2);
-  hashOut.results <== [action.out, action.dealerUpIsAce];
+  hashOut = SealedShowdownHash(2);
+  hashOut.sealCommitment <== sealCommitment;
+  hashOut.results <== [action.out, 0];
   hashOut.coefficients <== coefficients;
 
   out <== hashOut.out;
-  dealerUpIsAce <== action.dealerUpIsAce;
 }

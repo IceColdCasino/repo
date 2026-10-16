@@ -1,6 +1,7 @@
 import {
   Bingo,
   MAX_PLAYERS,
+  N_OTHERS,
   BINGO_CHUNK_BALLS,
   parseSharePublicSignals,
   parseCardPublicSignals,
@@ -12,6 +13,7 @@ import { bingoShareChunks } from './game-config';
 import { type Ciphertext, type PublicKey } from './zk-casino';
 import type { Groth16Proof, PublicSignals } from 'snarkjs';
 import { ZkGame, IDENTITY_POINT, type CasinoGamePhase } from './zk-game-base';
+import { readShuffleProof } from './shuffle-signals';
 
 export type GamePhase = CasinoGamePhase;
 export { IDENTITY_POINT };
@@ -19,6 +21,7 @@ export { IDENTITY_POINT };
 export class Game extends ZkGame {
   #bingo: Bingo;
   #partials: Ciphertext[][][][] = [];
+  #chunkBallHash: (bigint[] | undefined)[][] = [];
   #encryptedCards: (Ciphertext[] | undefined)[] = new Array(MAX_PLAYERS);
   #plaintextCards: (number[] | undefined)[] = new Array(MAX_PLAYERS);
   #nShareChunks = 1;
@@ -77,6 +80,7 @@ export class Game extends ZkGame {
   override start() {
     super.start();
     this.#partials = Array.from({ length: MAX_PLAYERS }, () => []);
+    this.#chunkBallHash = Array.from({ length: MAX_PLAYERS }, () => []);
   }
 
   #assertCardWindow(playerIndex: number) {
@@ -121,19 +125,19 @@ export class Game extends ZkGame {
     this.assertPhase('Shuffle', 'Game is not in shuffle phase');
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
     this.assertTurn(playerIndex);
-    const signalBigInts = publicSignals.map(s => BigInt(s));
     const transientHashExpected = this.#bingo.shuffleHash(this.deck, this.players);
-    const transientHash = signalBigInts.pop()!;
-    const permutationHash = signalBigInts.pop()!;
-    if (transientHash !== transientHashExpected) {
-      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${transientHash}`);
+    const { outputDeckHash, permutationHash, inputHash } = readShuffleProof(publicSignals);
+    if (inputHash !== transientHashExpected) {
+      throw new Error(`Input hash mismatch: expected ${transientHashExpected}, got ${inputHash}`);
+    }
+    if (this.#bingo.deckHash(privateData.deck) !== outputDeckHash) {
+      throw new Error('Shuffle output hash does not match the shoe');
+    }
+    if (privateData.permutationHash !== permutationHash) {
+      throw new Error('Shuffle permutation hash does not match the proof');
     }
     this.verifyProof(proof, publicSignals, `shuffle_1_deck_${this.variant}_main`, 'Invalid shuffle proof');
-    const deckFromSignals: Ciphertext[] = [];
-    for (let i = 0; i < this.#bingo.shoeSize; i++) {
-      deckFromSignals.push(signalBigInts.slice(i * 4, i * 4 + 4) as Ciphertext);
-    }
-    this.shuffledDecks.push({ transientHash, deck: deckFromSignals, permutationHash });
+    this.shuffledDecks.push({ transientHash: inputHash, deck: privateData.deck, permutationHash });
     this.advanceAfterShuffle('Share');
   }
 
@@ -162,22 +166,57 @@ export class Game extends ZkGame {
       throw new Error(`Input hash mismatch: expected ${expectedInputHash}, got ${parsed.inputHash}`);
     }
     this.verifyProof(proof, publicSignals, 'bingo_share_hashout_main', 'Invalid share partials proof');
-    const expectedOutputHash = this.#bingo.computeShareOutputHash(
+    const commitment = this.#bingo.shareBallCommitment(
       privateData.ciphertexts,
       this.numPlayers,
     );
-    if (parsed.outHash !== expectedOutputHash) {
-      throw new Error(`Output hash mismatch: circuit has ${parsed.outHash}, expected ${expectedOutputHash}`);
+    if (parsed.outHash !== commitment.finalHash) {
+      throw new Error(`Output hash mismatch: circuit has ${parsed.outHash}, expected ${commitment.finalHash}`);
     }
     if (this.#partials[playerIndex]![chunkIndex]?.length) {
       throw new Error('Partials are already shared for this player/chunk');
     }
     this.#partials[playerIndex]![chunkIndex] = privateData.ciphertexts;
+    this.#chunkBallHash[playerIndex]![chunkIndex] = commitment.balls;
     const done = this.#partials
       .slice(0, this.numPlayers)
       .every(p => p[chunkIndex]?.length);
     if (done) {
       this.setPhase('Showdown');
+    }
+  }
+
+  /**
+   * Ball hashes published with the share. The chain folds them into the proof
+   * output, then checks one opened ball against its stored hash.
+   */
+  shareTierCommitment(ciphertexts: Ciphertext[][]): { hashes: bigint[]; finalHash: bigint } {
+    const commitment = this.#bingo.shareBallCommitment(ciphertexts, this.numPlayers);
+    return { hashes: commitment.balls, finalHash: commitment.finalHash };
+  }
+
+  /**
+   * One revealed ball: every recipient's partials for that ball must match the
+   * ball hash committed inside the share output. The other balls in the
+   * five-ball window stay sealed.
+   */
+  assertRevealedBall(
+    playerIndex: number,
+    chunkIndex: number,
+    ballIndex: number,
+    column: Ciphertext[],
+  ): void {
+    if (ballIndex < 0 || ballIndex >= BINGO_CHUNK_BALLS) {
+      throw new Error(`Ball ${ballIndex} is outside the ${BINGO_CHUNK_BALLS}-ball share window`);
+    }
+    const expected = this.#chunkBallHash[playerIndex]?.[chunkIndex]?.[ballIndex];
+    if (expected === undefined) throw new Error('Ball share hash is not on record');
+    if (column.length !== N_OTHERS) {
+      throw new Error(`Expected ${N_OTHERS} recipient partials for one ball, got ${column.length}`);
+    }
+    const got = this.#bingo.ballShareHash(column);
+    if (got !== expected) {
+      throw new Error(`Revealed ball ${ballIndex} does not match the share ball hash`);
     }
   }
 
@@ -236,7 +275,7 @@ export class Game extends ZkGame {
   verifyShowdown(
     proof: Groth16Proof,
     publicSignals: PublicSignals,
-    privateData: { publicKey: PublicKey },
+    privateData: { publicKey: PublicKey ; coefficientCommitment: bigint },
   ) {
     if (this.gamePhase !== 'Showdown' && this.gamePhase !== 'Share') {
       throw new Error('Not in Showdown phase');
@@ -246,6 +285,7 @@ export class Game extends ZkGame {
     }
     const playerIndex = this.getPlayerIndex(privateData.publicKey);
     const hashInput: ShowdownHashInput = {
+      sealCommitment: privateData.coefficientCommitment,
       publicKeys: this.players,
       playerIndex: BigInt(playerIndex),
       ciphertextCards: this.showdownCiphertextCards(),
@@ -254,7 +294,10 @@ export class Game extends ZkGame {
       nCalled: this.nCalled,
       patternId: this.#patternId,
     };
-    const expectedInputHash = this.#bingo.showdownHash(hashInput);
+    const expectedInputHash = this.#bingo.showdownHash({
+      ...hashInput,
+      sealCommitment: privateData.coefficientCommitment,
+    });
     const [outputHash, transientHash] = publicSignals.map(s => BigInt(s));
     if (transientHash !== expectedInputHash) {
       throw new Error('Input hash does not match expected');

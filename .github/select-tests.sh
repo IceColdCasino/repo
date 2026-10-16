@@ -5,8 +5,8 @@
 # every game. Docs and other files select nothing.
 set -euo pipefail
 
-ARM=blacksmith-16vcpu-ubuntu-2404-arm
-MAC=blacksmith-12vcpu-macos-latest
+ARM=ubuntu-24.04-arm
+MAC=macos-latest
 ORDER=(poker blackjack baccarat war roulette craps keno slots bingo)
 
 declare -A ON=()
@@ -36,6 +36,8 @@ classify() {
   note_typecheck "$p"
   case "$p" in
     *.md|docs/*) return ;;
+    # Solana e2e and its chain client are not the Groth16 proof suite.
+    test/e2e/*|src/chain/*|src/arcium/*|src/testing/*|rust/*) return ;;
   esac
   case "$p" in
     *shuffle_1_deck_52*) add poker baccarat; return ;;
@@ -79,7 +81,7 @@ meta() {
   case "$1" in
     poker) TEST=complete_poker_game_with_proofs.test.ts; SET=poker; LFS='zkey/register_main*,zkey/shuffle_1_deck_52_main*,zkey/poker_*' ;;
     blackjack) TEST=complete_blackjack_game_with_proofs.test.ts; SET=blackjack; LFS='zkey/register_main*,zkey/shuffle_6_deck_52_main*,zkey/blackjack_*' ;;
-    baccarat) TEST=complete_baccarat_game_with_proofs.test.ts; SET=baccarat; LFS='zkey/register_main*,zkey/shuffle_1_deck_52_main*,zkey/baccarat_*' ;;
+    baccarat) TEST=complete_baccarat_game_with_proofs.test.ts; SET=baccarat; LFS='zkey/register_main*,zkey/shuffle_6_deck_52_main*,zkey/baccarat_*' ;;
     war) TEST=complete_war_game_with_proofs.test.ts; SET=war; LFS='zkey/register_main*,zkey/shuffle_6_deck_52_main*,zkey/war_*' ;;
     roulette) TEST=complete_roulette_game_with_proofs.test.ts; SET=roulette; LFS='zkey/register_main*,zkey/shuffle_1_deck_37_main*,zkey/shuffle_1_deck_38_main*,zkey/roulette_*' ;;
     craps) TEST=complete_craps_game_with_proofs.test.ts; SET=craps; LFS='zkey/register_main*,zkey/shuffle_2_dice_6_main*,zkey/craps_*' ;;
@@ -107,7 +109,7 @@ json+=']'
 if [ "${#selected[@]}" -eq 0 ]; then
   HAS_GAMES=false
   # A skipped job still needs a non-empty matrix value.
-  json='[{"game":"none","runner":"blacksmith-4vcpu-ubuntu-2404","test":"none","circuit_set":"poker","lfs":"zkey/register_main*"}]'
+  json='[{"game":"none","runner":"ubuntu-24.04","test":"none","circuit_set":"poker","lfs":"zkey/register_main*"}]'
 else
   HAS_GAMES=true
 fi

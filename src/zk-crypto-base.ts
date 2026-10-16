@@ -166,7 +166,11 @@ export abstract class ZkCrypto {
     return this.hashCiphertexts(deck);
   }
 
-  shareHash(ciphertext: Ciphertext[], publicKey: PublicKey, publicKeys: PublicKey[]): bigint {
+  shareHash(
+    ciphertext: Ciphertext[],
+    publicKey: PublicKey,
+    publicKeys: PublicKey[],
+  ): bigint {
     return this.calcFr('shareHash', {
       deck: ciphertext,
       publicKey,
@@ -193,7 +197,8 @@ export abstract class ZkCrypto {
     permutationMatrix: bigint[],
     randomness?: bigint[],
     matrixSize: number = deck.length,
-  ): { ciphertexts: Ciphertext[]; permutationHash: bigint } {
+  ): { ciphertexts: Ciphertext[] } {
+    void matrixSize;
     const babyjub = this.babyjub;
     const n = deck.length;
     const pkAgg = this.aggregatePublicKeys(publicKeys);
@@ -215,10 +220,7 @@ export abstract class ZkCrypto {
       const newC1 = babyjub.addPoint(c1, babyjub.mulPointEscalar(pkAggPoint, r));
       return [...newC0, ...newC1].map(p => babyjub.F.toObject(p)) as Ciphertext;
     });
-    return {
-      ciphertexts,
-      permutationHash: this.hashPermutationMatrix(permutationMatrix, matrixSize),
-    };
+    return { ciphertexts };
   }
 
   generateShuffleRandomness(numCards: number): bigint[] {
@@ -271,13 +273,19 @@ export abstract class ZkCrypto {
     return this.encrypt(plaintext, publicKey, randomness);
   }
 
-  decryptReencryptedPartial(encryptedPartial: Ciphertext, recipientSk: PrivateKey): Delta {
+  decryptReencryptedPartial(
+    encryptedPartial: Ciphertext,
+    recipientSk: PrivateKey,
+    dealerSk: bigint = 0n,
+  ): Delta {
     const babyjub = this.babyjub;
     const c0 = encryptedPartial.slice(0, 2).map(p => babyjub.F.e(p)) as Point;
     const c1 = encryptedPartial.slice(2, 4).map(p => babyjub.F.e(p)) as Point;
-    const skC0: Point = babyjub.mulPointEscalar(c0, recipientSk);
-    const negSkC0 = [babyjub.F.neg(skC0[0]), skC0[1]] as Point;
-    return babyjub.addPoint(c1, negSkC0).map(p => babyjub.F.toObject(p)) as Delta;
+    const player = babyjub.mulPointEscalar(c0, recipientSk);
+    const dealer = babyjub.mulPointEscalar(c0, dealerSk);
+    const sum = babyjub.addPoint(player, dealer);
+    const neg = [babyjub.F.neg(sum[0]), sum[1]] as Point;
+    return babyjub.addPoint(c1, neg).map(p => babyjub.F.toObject(p)) as Delta;
   }
 
   protected get plaintextCatalog(): Ciphertext[] {
@@ -288,9 +296,10 @@ export abstract class ZkCrypto {
     privateKey: PrivateKey,
     ciphertext: Ciphertext,
     receivedEncryptedPartials: Ciphertext[],
+    dealerSk: bigint = 0n,
   ): number {
     const decryptedPartials = receivedEncryptedPartials
-      .map(encryptedPartial => this.decryptReencryptedPartial(encryptedPartial, privateKey));
+      .map(encryptedPartial => this.decryptReencryptedPartial(encryptedPartial, privateKey, dealerSk));
     decryptedPartials.push(this.createPartialDecryption(privateKey, ciphertext));
     const sumD = decryptedPartials.reduce(
       (acc, val) => this.babyjub.addPoint(acc, val.map(p => this.babyjub.F.e(p)) as Point),

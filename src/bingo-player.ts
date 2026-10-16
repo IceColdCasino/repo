@@ -11,10 +11,12 @@ import {
 } from './bingo-eval';
 import { type PlayerKey, type PublicKey, type Ciphertext } from './zk-casino';
 import { padPublicKeysForShuffle } from './shuffle-common';
+import { readShuffleProof } from './shuffle-signals';
 import { Circuit } from './circuit';
 import type { Groth16Proof } from 'snarkjs';
 import assert from 'assert';
 import { GameKind } from './game-config';
+import { requireHostShowdownCoefficients, sealCommitment, sealedShowdownWitness } from './host-showdown-coefficients';
 import { tryOpenGameSession } from './player-zig-session';
 import type { PlayerSession } from './player-native-bridge';
 
@@ -103,7 +105,11 @@ export class Player {
     randomness: bigint[];
     fingerprint: string;
   } | undefined;
-  #shareParams: { hash: bigint; cardRandomness: bigint[][]; nActualPlayers: number } | undefined;
+  #shareParams: {
+    hash: bigint;
+    cardRandomness: bigint[][];
+    nActualPlayers: number;
+  } | undefined;
   #showdownParams: BingoShowdownParams | undefined;
   #sealedCoefficients: bigint[] | undefined;
   #session: PlayerSession | undefined;
@@ -163,10 +169,7 @@ export class Player {
   }
 
   setSealedCoefficients(coeffs: bigint[]): void {
-    const need = this.variant === 90 ? 3 : 1;
-    if (coeffs.length !== need) throw new Error(`Expected ${need} sealed coefficients, got ${coeffs.length}`);
-    if (coeffs.some(c => c === 0n)) throw new Error('Sealed coefficient must be non-zero');
-    this.#sealedCoefficients = [...coeffs];
+    this.#sealedCoefficients = requireHostShowdownCoefficients(coeffs);
     this.#showdownParams = undefined;
   }
 
@@ -229,7 +232,7 @@ export class Player {
     }
     const params = this.prepareShuffle(deck, publicKeys);
     const shuffleKeys = padPublicKeysForShuffle(publicKeys);
-    const { ciphertexts, permutationHash } = this.#bingo.shuffle(
+    const { ciphertexts } = this.#bingo.shuffle(
       deck,
       shuffleKeys,
       params.permutationMatrix,
@@ -243,7 +246,12 @@ export class Player {
       randomness: params.randomness,
     });
     this.#shuffleParams = undefined;
-    return { proof, publicSignals, deck: ciphertexts, permutationHash };
+    return {
+      proof,
+      publicSignals,
+      deck: ciphertexts,
+      permutationHash: readShuffleProof(publicSignals).permutationHash,
+    };
   }
 
   private prepareCard(cells: number[]) {
@@ -308,10 +316,15 @@ export class Player {
     };
   }
 
-  private prepareShare(deck: Ciphertext[], publicKeys: PublicKey[], nActualPlayers: number) {
-    if (!this.#shareParams || this.#shareParams.nActualPlayers !== nActualPlayers) {
+  private prepareShare(
+    deck: Ciphertext[],
+    publicKeys: PublicKey[],
+    nActualPlayers: number,
+  ) {
+    const hash = this.#bingo.shareHash(deck, this.publicKey, publicKeys);
+    if (!this.#shareParams || this.#shareParams.hash !== hash) {
       this.#shareParams = {
-        hash: this.#bingo.shareHash(deck, this.publicKey, publicKeys),
+        hash,
         cardRandomness: new Array(publicKeys.length).fill(0n).map(() =>
           new Array(BINGO_CHUNK_BALLS).fill(0n).map(() => this.#bingo.getRandom()),
         ),
@@ -321,7 +334,11 @@ export class Player {
     return this.#shareParams;
   }
 
-  preloadShare(deck: Ciphertext[], publicKeys: PublicKey[], nActualPlayers: number): void {
+  preloadShare(
+    deck: Ciphertext[],
+    publicKeys: PublicKey[],
+    nActualPlayers: number,
+  ): void {
     if (this.usesZig()) return;
     const params = this.prepareShare(deck, publicKeys, nActualPlayers);
     this.#circuits.share.preloadWitness({
@@ -335,7 +352,11 @@ export class Player {
     });
   }
 
-  async shareProve(deck: Ciphertext[], publicKeys: PublicKey[], nActualPlayers: number): Promise<ShareOutput> {
+  async shareProve(
+    deck: Ciphertext[],
+    publicKeys: PublicKey[],
+    nActualPlayers: number,
+  ): Promise<ShareOutput> {
     if (this.#session) {
       const out = await this.#session.share(deck, publicKeys, nActualPlayers, this.#key?.privateKey);
       return {
@@ -345,7 +366,12 @@ export class Player {
       };
     }
     const params = this.prepareShare(deck, publicKeys, nActualPlayers);
-    const ciphertexts = this.#bingo.share(deck, publicKeys, this.#privateKey, params.cardRandomness);
+    const ciphertexts = this.#bingo.share(
+      deck,
+      publicKeys,
+      this.#privateKey,
+      params.cardRandomness,
+    );
     const { proof, publicSignals } = await this.#circuits.share.prove({
       hash: params.hash,
       ciphertext: deck,
@@ -373,11 +399,7 @@ export class Player {
         pk.every((value, i) => value === this.publicKey[i]),
       );
       if (playerIndex < 0) throw new Error('Player public key not found');
-      const need = this.variant === 90 ? 3 : 1;
-      if (!this.#sealedCoefficients || this.#sealedCoefficients.length !== need) {
-        throw new Error('showdown coefficients must come from the host');
-      }
-      const coefficients = [...this.#sealedCoefficients];
+      const coefficients = requireHostShowdownCoefficients(this.#sealedCoefficients);
       const hashInput = {
         publicKeys,
         playerIndex: BigInt(playerIndex),
@@ -386,6 +408,7 @@ export class Player {
         ciphertextCardCells,
         nCalled,
         patternId,
+        sealCommitment: sealCommitment(coefficients),
       };
       const hash = this.#bingo.showdownHash(hashInput);
       const plaintextBalls = this.#bingo.decryptCards(
@@ -422,13 +445,12 @@ export class Player {
       ...Array.from({ length: this.#bingo.shoeSize - nCalled }, () => 0n),
     ];
     const base = {
-      hash: params.hash,
       ...(params.hashInput as object),
+      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCards: paddedBalls,
       plaintextCells,
-      coefficients: params.coefficients.map(c => c.toString()),
       nCalled,
     };
     return this.variant === 75 ? { ...base, patternId } : base;
@@ -463,10 +485,6 @@ export class Player {
     patternId: BingoPattern75 = 0,
   ): Promise<ShowdownOutput> {
     if (this.#session) {
-      const need = this.variant === 90 ? 3 : 1;
-      if (!this.#sealedCoefficients || this.#sealedCoefficients.length !== need) {
-        throw new Error('showdown coefficients must come from the host');
-      }
       const out = await this.#session.showdown({
         publicKeys,
         cards: ciphertextCards,
@@ -475,7 +493,7 @@ export class Player {
         cells: plaintextCells,
         nCalled,
         patternId,
-        coefficients: this.#sealedCoefficients,
+        coefficients: requireHostShowdownCoefficients(this.#sealedCoefficients),
         privateKey: this.#key?.privateKey,
       });
       const plaintextBalls = this.#bingo.decryptCards(
