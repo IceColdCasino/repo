@@ -1,4 +1,5 @@
 pub mod field_element;
+pub mod share_penalty;
 
 pub use field_element::{FieldElement, field_element_from_low_high, field_element_from_u64, field_element_from_u128, field_element_zero};
 
@@ -647,6 +648,69 @@ mod circuits {
             is_fold.reveal(),
             is_all_in.reveal(),
             bet_delta.reveal(),
+        )
+    }
+
+    /// Slash a bad share without revealing the chips.
+    ///
+    /// `player_bets` and `share_stakes` are the encrypted contribution and the
+    /// encrypted share-integrity stake for each of the 10 seats. `cheater_mask`
+    /// is public because a street-hash mismatch is public. A set bit moves that
+    /// seat's bet and stake onto `house_balance`. A clear bit refunds both.
+    /// An empty mask, or a bit past `num_players`, changes nothing.
+    /// Only `accepted` is revealed.
+    ///
+    /// Plaintext mirror and tests: `share_penalty::apply_share_unseal_penalty`.
+    #[instruction]
+    pub fn apply_share_unseal_penalty(
+        player_bets: Enc<Shared, [u64; 10]>,
+        share_stakes: Enc<Shared, [u64; 10]>,
+        house_balance: Enc<Shared, u64>,
+        cheater_mask: u16,
+        num_players: u8,
+    ) -> (
+        Enc<Shared, [u64; 10]>,
+        Enc<Shared, [u64; 10]>,
+        Enc<Shared, u64>,
+        bool,
+    ) {
+        let bets = player_bets.to_arcis();
+        let stakes = share_stakes.to_arcis();
+        let mut house = house_balance.to_arcis();
+        let mask = cheater_mask as u64;
+        let n = num_players as usize;
+
+        let mut accepted = cheater_mask != 0 && num_players > 0 && num_players <= 10;
+        for seat in 0..16 {
+            let bit = (mask >> seat) % 2;
+            if seat >= n && bit == 1 {
+                accepted = false;
+            }
+        }
+
+        let mut refunds = bets;
+        let mut stake_out = stakes;
+        if accepted {
+            refunds = [0u64; 10];
+            stake_out = [0u64; 10];
+            for seat in 0..10 {
+                if seat < n {
+                    let cheated = (mask >> seat) % 2;
+                    if cheated == 1 {
+                        house = house + bets[seat] + stakes[seat];
+                    } else {
+                        refunds[seat] = bets[seat];
+                        stake_out[seat] = stakes[seat];
+                    }
+                }
+            }
+        }
+
+        (
+            player_bets.owner.from_arcis(refunds),
+            share_stakes.owner.from_arcis(stake_out),
+            house_balance.owner.from_arcis(house),
+            accepted.reveal(),
         )
     }
 

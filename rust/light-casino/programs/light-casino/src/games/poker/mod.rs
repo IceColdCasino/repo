@@ -1,6 +1,5 @@
-//! Poker share hash, showdown hash, and pot accounting.
+//! Poker share hash and showdown hash.
 
-pub mod pot;
 pub mod share_penalty;
 mod share;
 mod showdown;
