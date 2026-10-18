@@ -68,7 +68,7 @@ async function shareChunk(game: Game, players: Player[], nActualPlayers: number,
 async function showdown(game: Game, players: Player[], nActualPlayers: number, cards: number[][]) {
   let expectedBalls: string | undefined;
   for (let p = 0; p < nActualPlayers; p++) {
-    const sealed = hostShowdownCoefficients(2);
+    const sealed = hostShowdownCoefficients();
     players[p]!.setSealedCoefficients(sealed);
     const { proof, publicSignals, plaintextBalls } = await players[p]!.showdownProve(
       game.publicKeys,

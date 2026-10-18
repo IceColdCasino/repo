@@ -102,7 +102,11 @@ pub fn dispatch(self: *State, payload: []const u8, backend: Backend) ![]u8 {
     }
     if (std.mem.eql(u8, op, "calc")) {
         const calc = @import("calc.zig");
-        try calc.run(self.alloc, crypto, 0, root, &w);
+        const kind_u: u32 = if (root.object.get("kind")) |raw|
+            std.math.cast(u32, parseU64(raw) catch 0) orelse 0
+        else
+            0;
+        try calc.run(self.alloc, crypto, kind_u, root, &w);
         return w.toOwned();
     }
     return error.UnknownPlayerOp;
@@ -135,27 +139,45 @@ fn writeRegister(self: *State, crypto: *Crypto, root: std.json.Value, w: *Writer
 
 fn writeShuffle(self: *State, crypto: *Crypto, root: std.json.Value, w: *Writer, backend: Backend) !void {
     _ = try ensureKey(self, crypto, root);
-    const deck_n = try parseCtList(self.alloc, root.object.get("deck") orelse return error.MissingDeck);
-    defer self.alloc.free(deck_n.ptr[0..deck_n.len]);
-    if (deck_n.len == 0 or deck_n.len > MAX_DECK) return error.InvalidDeck;
+    std.debug.print("[player] shuffle start\n", .{});
+    var identity: [MAX_DECK]Ciphertext = undefined;
+    var parsed: ?CtList = null;
+    const deck_cards: []const Ciphertext = if (root.object.get("deck")) |raw| blk: {
+        const list = try parseCtList(self.alloc, raw);
+        if (list.len == 0) {
+            self.alloc.free(list.ptr[0..list.len]);
+            @import("../crypto/zk_crypto.zig").fillIdentity(identity[0..]);
+            break :blk identity[0..];
+        }
+        if (list.len > MAX_DECK) {
+            self.alloc.free(list.ptr[0..list.len]);
+            return error.InvalidDeck;
+        }
+        parsed = list;
+        break :blk list.ptr[0..list.len];
+    } else blk: {
+        @import("../crypto/zk_crypto.zig").fillIdentity(identity[0..]);
+        break :blk identity[0..];
+    };
+    defer if (parsed) |list| self.alloc.free(list.ptr[0..list.len]);
     const keys_n = try parsePointList(root.object.get("publicKeys") orelse return error.MissingPublicKeys);
     var padded: [12]PublicKey = undefined;
     const keys = hash.padShuffleKeys(keys_n.buf[0..keys_n.len], &padded);
 
     var matrix_buf: [MAX_DECK * MAX_DECK]u8 = undefined;
-    const matrix = matrix_buf[0 .. deck_n.len * deck_n.len];
-    crypto.generateShufflePermutation(deck_n.len, matrix);
+    const matrix = matrix_buf[0 .. deck_cards.len * deck_cards.len];
+    crypto.generateShufflePermutation(deck_cards.len, matrix);
 
     var rand_buf: [MAX_DECK]Field = undefined;
-    const randomness = rand_buf[0..deck_n.len];
-    crypto.generateShuffleRandomness(deck_n.len, randomness);
+    const randomness = rand_buf[0..deck_cards.len];
+    crypto.generateShuffleRandomness(deck_cards.len, randomness);
 
     var out_buf: [MAX_DECK]Ciphertext = undefined;
-    const out = out_buf[0..deck_n.len];
-    crypto.shuffle(deck_n.ptr[0..deck_n.len], keys, matrix, randomness, out, deck_n.len);
-    const input_hash = crypto.shuffleHash(deck_n.ptr[0..deck_n.len], keys_n.buf[0..keys_n.len]);
+    const out = out_buf[0..deck_cards.len];
+    crypto.shuffle(deck_cards, keys, matrix, randomness, out, deck_cards.len);
+    const input_hash = crypto.shuffleHash(deck_cards, keys_n.buf[0..keys_n.len]);
 
-    const input = try prove_json.shuffleJson(self.alloc, input_hash, deck_n.ptr[0..deck_n.len], keys, matrix, randomness);
+    const input = try prove_json.shuffleJson(self.alloc, input_hash, deck_cards, keys, matrix, randomness);
     defer self.alloc.free(input);
     const proved = try backend.prove(backend.ctx, SHUFFLE_CIRCUIT, input);
     defer backend.free(backend.ctx, proved);
@@ -256,11 +278,13 @@ fn writeShowdown(self: *State, crypto: *Crypto, root: std.json.Value, w: *Writer
     const partial_rows = try parseCtGrid(root.object.get("partials") orelse return error.MissingPartials, &row_storage, &row_slices);
 
     const do_prove = parseBool(root.object.get("prove"), true);
+    var live: [seal.LIVE]Field = undefined;
     var coeffs: [seal.SLOTS]Field = undefined;
     var have_coeffs = false;
     if (root.object.get("coefficients")) |raw_coeffs| {
-        try parseFrList(raw_coeffs, &coeffs);
-        try seal.validate(&coeffs);
+        const n = try parseFrListCount(raw_coeffs, &live);
+        if (n != seal.LIVE) return error.FrListSize;
+        try seal.padLive(&live, &coeffs);
         have_coeffs = true;
     } else if (do_prove) {
         return error.MissingHostCoefficients;

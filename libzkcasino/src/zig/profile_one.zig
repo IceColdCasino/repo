@@ -96,14 +96,13 @@ fn parseId(name: []const u8) !CircuitId {
     return error.UnknownCircuit;
 }
 
-/// Live slots get a distinct low limb. Later slots stay at bit 127 only and
-/// are not part of the seal commitment.
-fn sealShowdown(player: *table.TablePlayer, buf: *[showdown_seal.SLOTS]Fr, n_live: usize) void {
-    for (buf, 0..) |*c, i| {
-        const low: u64 = if (i < n_live) @intCast(i + 1) else 0;
-        c.* = Fr.fromNormal(.{ low, 1 << 63, 0, 0 });
+/// The two showdown coefficients. Each has bit 127 set and a distinct low limb.
+fn sealShowdown(player: *table.TablePlayer) void {
+    var live: [showdown_seal.LIVE]Fr = undefined;
+    for (&live, 0..) |*c, i| {
+        c.* = Fr.fromNormal(.{ @as(u64, i) + 1, 1 << 63, 0, 0 });
     }
-    player.setSealed(buf);
+    player.setSealed(&live);
 }
 
 fn encryptUnder(crypto: *Crypto, pk: PublicKey, src: []const Ciphertext, dest: []Ciphertext) void {
@@ -310,8 +309,7 @@ fn runPokerShowdown(alloc: std.mem.Allocator, engine: *Engine) !void {
     defer crypto.deinit(alloc);
     var player = poker.Player.init(alloc, engine, &crypto);
     player.generateKey();
-    var sealed: [showdown_seal.SLOTS]Fr = undefined;
-    sealShowdown(&player.table, &sealed, 2);
+    sealShowdown(&player.table);
     var others: [9]PlayerKey = undefined;
     otherKeys(&crypto, &others);
     var pubs: [10]PublicKey = undefined;
@@ -335,8 +333,7 @@ fn runWarShowdown(alloc: std.mem.Allocator, engine: *Engine) !void {
     defer crypto.deinit(alloc);
     var player = war.Player.init(alloc, engine, &crypto);
     player.generateKey();
-    var sealed: [showdown_seal.SLOTS]Fr = undefined;
-    sealShowdown(&player.table, &sealed, 2);
+    sealShowdown(&player.table);
     var others: [11]PlayerKey = undefined;
     otherKeys(&crypto, &others);
     var pubs: [12]PublicKey = undefined;
@@ -354,8 +351,7 @@ fn runBaccaratShowdown(alloc: std.mem.Allocator, engine: *Engine) !void {
     defer crypto.deinit(alloc);
     var player = baccarat.Player.init(alloc, engine, &crypto);
     player.generateKey();
-    var sealed: [showdown_seal.SLOTS]Fr = undefined;
-    sealShowdown(&player.table, &sealed, 2);
+    sealShowdown(&player.table);
     var others: [11]PlayerKey = undefined;
     otherKeys(&crypto, &others);
     var pubs: [12]PublicKey = undefined;
@@ -386,8 +382,7 @@ fn runBlackjackAction(alloc: std.mem.Allocator, engine: *Engine) !void {
     defer crypto.deinit(alloc);
     var player = blackjack.Player.init(alloc, engine, &crypto);
     player.generateKey();
-    var sealed: [showdown_seal.SLOTS]Fr = undefined;
-    sealShowdown(&player.table, &sealed, 2);
+    sealShowdown(&player.table);
     var others: [7]PlayerKey = undefined;
     otherKeys(&crypto, &others);
     var pubs: [8]PublicKey = undefined;
@@ -412,8 +407,7 @@ fn runBlackjackShowdown(alloc: std.mem.Allocator, engine: *Engine) !void {
     defer crypto.deinit(alloc);
     var player = blackjack.Player.init(alloc, engine, &crypto);
     player.generateKey();
-    var sealed: [showdown_seal.SLOTS]Fr = undefined;
-    sealShowdown(&player.table, &sealed, 2);
+    sealShowdown(&player.table);
     var others: [7]PlayerKey = undefined;
     otherKeys(&crypto, &others);
     var pubs: [8]PublicKey = undefined;
@@ -446,8 +440,7 @@ fn runRouletteShowdown(alloc: std.mem.Allocator, engine: *Engine, eu: bool) !voi
     defer crypto.deinit(alloc);
     var player = roulette.Player.init(alloc, engine, &crypto, eu);
     player.generateKey();
-    var sealed: [showdown_seal.SLOTS]Fr = undefined;
-    sealShowdown(&player.table, &sealed, 2);
+    sealShowdown(&player.table);
     var others: [11]PlayerKey = undefined;
     otherKeys(&crypto, &others);
     var pubs: [12]PublicKey = undefined;
@@ -489,8 +482,7 @@ fn runCrapsShowdown(alloc: std.mem.Allocator, engine: *Engine) !void {
     defer crypto.deinit(alloc);
     var player = craps.Player.init(alloc, engine, &crypto);
     player.generateKey();
-    var sealed: [showdown_seal.SLOTS]Fr = undefined;
-    sealShowdown(&player.table, &sealed, 2);
+    sealShowdown(&player.table);
     var others: [11]PlayerKey = undefined;
     otherKeys(&crypto, &others);
     var pubs: [12]PublicKey = undefined;
@@ -531,8 +523,7 @@ fn runKenoShowdown(alloc: std.mem.Allocator, engine: *Engine) !void {
     defer crypto.deinit(alloc);
     var player = keno.Player.init(alloc, engine, &crypto);
     player.generateKey();
-    var sealed: [showdown_seal.SLOTS]Fr = undefined;
-    sealShowdown(&player.table, &sealed, 2);
+    sealShowdown(&player.table);
     var others: [11]PlayerKey = undefined;
     otherKeys(&crypto, &others);
     var pubs: [12]PublicKey = undefined;
@@ -570,8 +561,7 @@ fn runSlotShowdown(alloc: std.mem.Allocator, engine: *Engine, n_reels: u32) !voi
     defer crypto.deinit(alloc);
     var player = slot.Player.init(alloc, engine, &crypto, n_reels);
     player.generateKey();
-    var sealed: [showdown_seal.SLOTS]Fr = undefined;
-    sealShowdown(&player.table, &sealed, 2);
+    sealShowdown(&player.table);
     const house = crypto.generatePlayerKey();
     const pubs = [_]PublicKey{ player.table.publicKey(), house.public_key };
     const dealt = try deal(alloc, &crypto, &pubs);
@@ -617,8 +607,7 @@ fn runBingoShowdown(alloc: std.mem.Allocator, engine: *Engine, variant: u32) !vo
     defer crypto.deinit(alloc);
     var player = bingo.Player.init(alloc, engine, &crypto, variant);
     player.generateKey();
-    var sealed: [showdown_seal.SLOTS]Fr = undefined;
-    sealShowdown(&player.table, &sealed, 2);
+    sealShowdown(&player.table);
     var others: [11]PlayerKey = undefined;
     otherKeys(&crypto, &others);
     var pubs: [12]PublicKey = undefined;

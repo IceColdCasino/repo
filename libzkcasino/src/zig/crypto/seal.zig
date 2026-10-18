@@ -31,6 +31,17 @@ pub fn validate(coeffs: []const Fr) error{InvalidSealedCoefficient}!void {
     }
 }
 
+/// Copy the two live coefficients and fill the unused account slots with 2^127.
+pub fn padLive(live: []const Fr, out: *[SLOTS]Fr) error{InvalidSealedCoefficient}!void {
+    if (live.len != LIVE) return error.InvalidSealedCoefficient;
+    for (live, 0..) |c, i| {
+        if (!isSlot(c)) return error.InvalidSealedCoefficient;
+        out[i] = c;
+    }
+    const unused = Fr.fromNormal(.{ 0, 1 << 63, 0, 0 });
+    for (LIVE..SLOTS) |i| out[i] = unused;
+}
+
 /// rows[k] = Σ weight[k][i * 128 + j] over the set bits j of the two live coefficients.
 pub fn rows(coeffs: *const [SLOTS]Fr) [ROWS]Fr {
     var out = [_]Fr{Fr.zero()} ** ROWS;

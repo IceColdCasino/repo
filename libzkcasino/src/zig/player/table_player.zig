@@ -57,7 +57,8 @@ pub const TablePlayer = struct {
     key: ?PlayerKey = null,
     engine: *Engine,
     owns_crypto: bool = false,
-    sealed: []const Fr = &.{},
+    sealed_buf: [seal.SLOTS]Fr = .{Fr.zero()} ** seal.SLOTS,
+    sealed_ready: bool = false,
 
     pub fn init(alloc: std.mem.Allocator, engine: *Engine, crypto: *Crypto) TablePlayer {
         return .{ .alloc = alloc, .engine = engine, .crypto = crypto };
@@ -100,7 +101,8 @@ pub const TablePlayer = struct {
     }
 
     pub fn setSealed(self: *TablePlayer, coeffs: []const Fr) void {
-        self.sealed = coeffs;
+        seal.padLive(coeffs, &self.sealed_buf) catch @panic("showdown coefficients must be 2 values below 2^128 with bit 127 set");
+        self.sealed_ready = true;
     }
 
     pub fn indexOfSelf(self: *const TablePlayer, keys: []const PublicKey) usize {
@@ -111,15 +113,13 @@ pub const TablePlayer = struct {
         @panic("player public key not found");
     }
 
-    /// The 14 host-sealed showdown coefficients. The witness and the seal
-    /// commitment use the first two. Later slots stay in the account and are
-    /// not weighted.
+    /// Account slots for the two host coefficients. Unused slots are 2^127
+    /// and are not weighted.
     pub fn sealedSlots(self: *const TablePlayer) *const [seal.SLOTS]Fr {
-        if (self.sealed.len == 0) {
+        if (!self.sealed_ready) {
             @panic("showdown coefficients must come from the host");
         }
-        seal.validate(self.sealed) catch @panic("sealed showdown coefficients must be 14 values below 2^128 with bit 127 set");
-        return self.sealed[0..seal.SLOTS];
+        return &self.sealed_buf;
     }
 
     pub fn sealCommitment(self: *const TablePlayer) Fr {
@@ -130,7 +130,7 @@ pub const TablePlayer = struct {
 
     pub fn writeSealedShowdown(self: *const TablePlayer, j: *prove.json.Json, input_hash: Fr, n_terms: usize) !void {
         const slots = self.sealedSlots();
-        if (n_terms == 0 or n_terms > seal.SLOTS) @panic("showdown coefficient count");
+        if (n_terms != seal.LIVE) @panic("showdown coefficient count");
         try j.fieldFr("hash", input_hash);
         try j.fieldFr("sealCommitment", seal.commitment(slots));
         try j.fieldFrs("coefficients", slots[0..n_terms]);
@@ -140,10 +140,10 @@ pub const TablePlayer = struct {
     /// The ace coefficient is host-sealed too, and the circuit forces it to 0
     /// unless this player is the dealer.
     pub fn fillActionCoeffs(self: *TablePlayer, out: *[2]Fr) void {
-        if (self.sealed.len != 2) @panic("action coefficients must come from the host");
-        if (self.sealed[0].eql(Fr.zero())) @panic("action status coefficient must be non-zero");
-        out[0] = self.sealed[0];
-        out[1] = self.sealed[1];
+        const slots = self.sealedSlots();
+        if (slots[0].eql(Fr.zero())) @panic("action status coefficient must be non-zero");
+        out[0] = slots[0];
+        out[1] = slots[1];
     }
 
     pub fn registerProve(self: *TablePlayer) !RegisterOut {

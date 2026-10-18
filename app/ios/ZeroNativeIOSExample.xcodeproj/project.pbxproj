@@ -1,0 +1,423 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AppDelegate.swift */; };
+		A10000000000000000000002 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* SceneDelegate.swift */; };
+		A10000000000000000000003 /* ZeroNativeHostViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* ZeroNativeHostViewController.swift */; };
+		A10000000000000000000004 /* ZeroNativeAssetSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* ZeroNativeAssetSchemeHandler.swift */; };
+		A10000000000000000000005 /* ZeroNativeBridgeScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* ZeroNativeBridgeScript.swift */; };
+		A10000000000000000000006 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* libapp.a */; };
+		A10000000000000000000007 /* E2ETestRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* E2ETestRunner.swift */; };
+		A10000000000000000000008 /* IosE2eReportHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* IosE2eReportHandler.swift */; };
+		B10000000000000000000001 /* SimulatorE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* SimulatorE2ETests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B30000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A70000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A60000000000000000000001;
+			remoteInfo = ZKPoker;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A60000000000000000000004 /* Bundle App Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle App Resources";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "bash \"${SRCROOT}/scripts/bundle-app-resources.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* ZeroNativeHostViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZeroNativeHostViewController.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* ZeroNativeAssetSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZeroNativeAssetSchemeHandler.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* ZeroNativeBridgeScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZeroNativeBridgeScript.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libapp.a; path = Libraries/libapp.a; sourceTree = "<group>"; };
+		A20000000000000000000007 /* zero_native.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zero_native.h; sourceTree = "<group>"; };
+		A20000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000009 /* E2ETestRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ETestRunner.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* IosE2eReportHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IosE2eReportHandler.swift; sourceTree = "<group>"; };
+		A30000000000000000000001 /* ZKPoker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZKPoker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B20000000000000000000001 /* SimulatorE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorE2ETests.swift; sourceTree = "<group>"; };
+		B31000000000000000000001 /* ZKPokerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZKPokerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A50000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000002 /* ZeroNativeIOSExample */,
+				B50000000000000000000001 /* ZKPokerUITests */,
+				A50000000000000000000003 /* Libraries */,
+				A50000000000000000000004 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A50000000000000000000002 /* ZeroNativeIOSExample */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* AppDelegate.swift */,
+				A20000000000000000000002 /* SceneDelegate.swift */,
+				A20000000000000000000003 /* ZeroNativeHostViewController.swift */,
+				A20000000000000000000004 /* ZeroNativeAssetSchemeHandler.swift */,
+				A20000000000000000000005 /* ZeroNativeBridgeScript.swift */,
+				A20000000000000000000009 /* E2ETestRunner.swift */,
+				A20000000000000000000010 /* IosE2eReportHandler.swift */,
+				A20000000000000000000007 /* zero_native.h */,
+				A20000000000000000000008 /* Info.plist */,
+			);
+			path = ZeroNativeIOSExample;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000003 /* Libraries */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000006 /* libapp.a */,
+			);
+			path = Libraries;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000004 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A30000000000000000000001 /* ZKPoker.app */,
+				B31000000000000000000001 /* ZKPokerUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B50000000000000000000001 /* ZKPokerUITests */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000001 /* SimulatorE2ETests.swift */,
+			);
+			path = ZKPokerUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A60000000000000000000001 /* ZKPoker */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A90000000000000000000003 /* Build configuration list for PBXNativeTarget "ZKPoker" */;
+			buildPhases = (
+				A60000000000000000000002 /* Sources */,
+				A40000000000000000000001 /* Frameworks */,
+				A60000000000000000000004 /* Bundle App Resources */,
+				A60000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ZKPoker;
+			productName = ZKPoker;
+			productReference = A30000000000000000000001 /* ZKPoker.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B60000000000000000000001 /* ZKPokerUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B90000000000000000000001 /* Build configuration list for PBXNativeTarget "ZKPokerUITests" */;
+			buildPhases = (
+				B60000000000000000000002 /* Sources */,
+				B40000000000000000000001 /* Frameworks */,
+				B60000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B30100000000000000000001 /* PBXTargetDependency */,
+			);
+			name = ZKPokerUITests;
+			productName = ZKPokerUITests;
+			productReference = B31000000000000000000001 /* ZKPokerUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A70000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					A60000000000000000000001 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+					B60000000000000000000001 = {
+						CreatedOnToolsVersion = 15.4;
+						TestTargetID = A60000000000000000000001;
+					};
+				};
+			};
+			buildConfigurationList = A90000000000000000000001 /* Build configuration list for PBXProject "ZeroNativeIOSExample" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A50000000000000000000001;
+			productRefGroup = A50000000000000000000004 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A60000000000000000000001 /* ZKPoker */,
+				B60000000000000000000001 /* ZKPokerUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A60000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B60000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* AppDelegate.swift in Sources */,
+				A10000000000000000000002 /* SceneDelegate.swift in Sources */,
+				A10000000000000000000003 /* ZeroNativeHostViewController.swift in Sources */,
+				A10000000000000000000004 /* ZeroNativeAssetSchemeHandler.swift in Sources */,
+				A10000000000000000000005 /* ZeroNativeBridgeScript.swift in Sources */,
+				A10000000000000000000007 /* E2ETestRunner.swift in Sources */,
+				A10000000000000000000008 /* IosE2eReportHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B60000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000001 /* SimulatorE2ETests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B30100000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A60000000000000000000001 /* ZKPoker */;
+			targetProxy = B30000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A80000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+			};
+			name = Debug;
+		};
+		A80000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+			};
+			name = Release;
+		};
+		A80000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/ZeroNativeIOSExample",
+					"$(PROJECT_DIR)/Libraries",
+				);
+				INFOPLIST_FILE = ZeroNativeIOSExample/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libraries",
+				);
+				OTHER_LDFLAGS = (
+					"-lc++",
+					"-framework",
+					WebKit,
+					"-Wl,-ld_classic",
+					"-Wl,-force_load,$(PROJECT_DIR)/Libraries/libapp.a",
+					"$(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/lib/darwin/libclang_rt.iossim.a",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.zero_native.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = ZeroNativeIOSExample/ZeroNative-Bridging-Header.h;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A80000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/ZeroNativeIOSExample",
+					"$(PROJECT_DIR)/Libraries",
+				);
+				INFOPLIST_FILE = ZeroNativeIOSExample/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libraries",
+				);
+				OTHER_LDFLAGS = (
+					"-lc++",
+					"-framework",
+					WebKit,
+					"-Wl,-ld_classic",
+					"-Wl,-force_load,$(PROJECT_DIR)/Libraries/libapp.a",
+					"$(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/lib/darwin/libclang_rt.iossim.a",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.zero_native.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = ZeroNativeIOSExample/ZeroNative-Bridging-Header.h;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B80000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.zero_native.app.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ZKPoker;
+			};
+			name = Debug;
+		};
+		B80000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.zero_native.app.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ZKPoker;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A90000000000000000000001 /* Build configuration list for PBXProject "ZeroNativeIOSExample" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A80000000000000000000001 /* Debug */,
+				A80000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A90000000000000000000003 /* Build configuration list for PBXNativeTarget "ZKPoker" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A80000000000000000000003 /* Debug */,
+				A80000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B90000000000000000000001 /* Build configuration list for PBXNativeTarget "ZKPokerUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B80000000000000000000001 /* Debug */,
+				B80000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A70000000000000000000001 /* Project object */;
+}

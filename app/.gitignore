@@ -1,0 +1,27 @@
+# Zig build artifacts (local and global caches, outputs)
+.zig-cache/
+.zig-cache-local/
+zig-out/
+
+# Build intermediates (iOS simulator, witness, etc.)
+.build*/
+.build-ios*/
+*.o
+*.a
+
+# E2E / native player workspaces (created by two-player desktop tests and iOS E2E)
+e2e-workspaces/
+
+# Vite output. Runtime launch-config.js can hold a local RPC and signing keys.
+frontend/dist/
+
+# dyld rpath is `lib` relative to the app directory.
+/lib
+
+
+# Logs produced when launching the desktop app for tests
+mac-app.log
+*.log
+
+# Other
+.DS_Store

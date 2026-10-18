@@ -77,7 +77,7 @@ async function showdown(
   let expectedDraw: string | undefined;
   for (let p = 0; p < nActualPlayers; p++) {
     if (game.isDealer(p)) continue;
-    const sealed = hostShowdownCoefficients(2);
+    const sealed = hostShowdownCoefficients();
     players[p]!.setSealedCoefficients(sealed);
     const { proof, publicSignals, plaintextDraw } = await players[p]!.showdownProve(
       game.publicKeys,

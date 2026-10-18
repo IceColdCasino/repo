@@ -79,7 +79,7 @@ async function showdown(game: Game, players: Player[]) {
   for (let p = 0; p < game.nPlayers; p++) {
     const player = players[p]!;
     
-    const sealed = hostShowdownCoefficients(2);
+    const sealed = hostShowdownCoefficients();
     player.setSealedCoefficients(sealed);
     console.time(`Showdown Prove ${p}`);
     const { proof, publicSignals, publicKey, winnerMasks, coefficientCommitment } = await player.showdownProve(

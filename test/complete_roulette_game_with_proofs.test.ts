@@ -138,7 +138,7 @@ async function showdown(
     const ciphertextBets = game.getEncryptedBetsForPlayer(p);
     const nActualBets = game.getNActualBetsForPlayer(p);
 
-    const sealed = hostShowdownCoefficients(2);
+    const sealed = hostShowdownCoefficients();
     player.setSealedCoefficients(sealed);
     console.time(`Showdown Prove ${p}`);
     const { proof, publicSignals, publicKey, plaintextCard, payouts } =

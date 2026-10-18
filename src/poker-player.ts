@@ -87,8 +87,7 @@ export class Player {
   }
 
   /**
-   * Use Arcis-sealed coefficients for the next showdown proof: all 14 slots
-   * decrypted from SealedShowdownCoefficients. The pots use the first 9.
+   * Use the two Arcis-sealed coefficients for the next showdown proof.
    */
   setSealedCoefficients(coeffs: bigint[]): void {
     this.#sealedCoefficients = requireHostShowdownCoefficients(coeffs);

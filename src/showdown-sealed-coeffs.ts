@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { PublicKey } from '@solana/web3.js';
 import type { AnchorProvider } from '@coral-xyz/anchor';
 import type { TableEncryptionKey } from './bet-encryption';
-import { casinoSealAccount, type SealedShowdownAccount } from './casino-calc';
+import { casinoSealAccount, decodeSealAccount, type SealedShowdownAccount } from './casino-calc';
 import { SEAL_SLOTS } from './host-showdown-coefficients';
 
 export type { SealedShowdownAccount };
@@ -54,66 +54,98 @@ export function showdownTwoResultHash(
   second: bigint,
   coefficients: readonly bigint[],
 ): bigint {
-  if (coefficients.length < 2) {
-    throw new Error(`Expected at least 2 showdown coefficients, got ${coefficients.length}`);
+  if (coefficients.length !== 2) {
+    throw new Error(`Expected 2 showdown coefficients, got ${coefficients.length}`);
   }
   return (first + 1n) * coefficients[0]! + (second + 1n) * coefficients[1]!;
 }
 
 /**
- * Decrypt the sealed coefficients and pad the unused slots with 2^127.
- * The seal commitment weights the first two. libzkcasino checks that those
- * two values produce the rows Arcis revealed.
+ * Confirm the decrypted slots reproduce the account rows.
+ * Bun uses the synchronous player library. The macOS app's player command
+ * only completes asynchronously, so the WebView awaits that command.
+ */
+async function sealAccountMatchingCoefficients(
+  data: Uint8Array,
+  coefficients: readonly bigint[],
+): Promise<SealedShowdownAccount> {
+  try {
+    return casinoSealAccount(data, coefficients);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/not synchronous|not available/i.test(message)) throw err;
+  }
+  const invoke = (globalThis as {
+    window?: { zero?: { invoke?: (command: string, payload?: unknown) => unknown } };
+  }).window?.zero?.invoke;
+  if (typeof invoke !== 'function') {
+    throw new Error('player calc bridge is not available');
+  }
+  const result = await invoke('player', {
+    op: 'calc',
+    fn: 'sealAccount',
+    kind: 0,
+    variant: 0,
+    data: Buffer.from(data).toString('hex'),
+    coefficients: coefficients.map((value) => value.toString()),
+  }) as { ok?: boolean; error?: string; written?: boolean; commitment?: string };
+  if (!result || result.ok === false) {
+    throw new Error(typeof result?.error === 'string' ? result.error : 'sealAccount failed');
+  }
+  if (result.written !== true || result.commitment == null) {
+    throw new Error('Seal account rows are not written');
+  }
+  return {
+    ...decodeSealAccount(data),
+    coefficientCommitment: BigInt(result.commitment),
+  };
+}
+
+/**
+ * Decrypt the two sealed coefficients. libzkcasino checks that they produce
+ * the rows Arcis revealed. Unused account slots are not coefficients.
  */
 export async function openSealedShowdown(
   playerKey: TableEncryptionKey,
   mxePublicKey: Uint8Array,
   sealed: SealedShowdownAccount,
 ): Promise<{ coefficients: bigint[]; coefficientCommitment: bigint }> {
-  if (sealed.nActive < 1) {
-    throw new Error('Seal account has no active coefficients');
+  if (sealed.nActive !== 2) {
+    throw new Error(`Seal account must hold 2 coefficients, got ${sealed.nActive}`);
   }
   const coefficients = await decryptSealedCoefficients(
     playerKey,
     mxePublicKey,
     sealed.coefficientsCiphertext,
     sealed.nonce,
-    sealed.nActive,
   );
-  const checked = casinoSealAccount(sealed.data, coefficients);
+  const checked = await sealAccountMatchingCoefficients(sealed.data, coefficients);
   if (checked.coefficientCommitment === undefined) {
     throw new Error('Seal account rows are not written');
   }
   return { coefficients, coefficientCommitment: checked.coefficientCommitment };
 }
 
-const SEAL_TOP_BIT = 1n << 127n;
-
 /**
  * Decrypt Arcis-sealed showdown coefficients.
  *
  * Each slot is its own `Enc<Shared, u128>`. Slot `i` uses `nonce + i`.
- * `activeCount` is the polynomial width. Every game uses 2.
- * The rest of the 14 account slots are not weighted.
+ * A seal always holds two coefficients. The rest of the account slots are empty.
  */
 export async function decryptSealedCoefficients(
   playerKey: TableEncryptionKey,
   mxePublicKey: Uint8Array,
   ciphertexts: Uint8Array[],
   nonce: bigint,
-  activeCount: number,
 ): Promise<bigint[]> {
   if (ciphertexts.length !== SEAL_SLOTS) {
     throw new Error(
       `Expected ${SEAL_SLOTS} sealed coefficient ciphertexts, got ${ciphertexts.length}`,
     );
   }
-  if (!Number.isInteger(activeCount) || activeCount < 1 || activeCount > SEAL_SLOTS) {
-    throw new Error(`activeCount ${activeCount} is out of range`);
-  }
   const cipher = sharedCipher(playerKey, mxePublicKey);
   const coeffs: bigint[] = [];
-  for (let slot = 0; slot < activeCount; slot++) {
+  for (let slot = 0; slot < 2; slot++) {
     const ciphertext = ciphertexts[slot];
     if (!ciphertext || ciphertext.length !== 32 || ciphertext.every((byte) => byte === 0)) {
       throw new Error(`seal coefficient ${slot} ciphertext is empty`);
@@ -126,7 +158,6 @@ export async function decryptSealedCoefficients(
     }
     coeffs.push(BigInt(decrypted[0]!));
   }
-  while (coeffs.length < SEAL_SLOTS) coeffs.push(SEAL_TOP_BIT);
   return coeffs;
 }
 
@@ -261,8 +292,8 @@ export function computeWinnerMaskHash(
   coefficients: bigint[],
   numPlayers = 10,
 ): bigint {
-  if (coefficients.length < 2) {
-    throw new Error(`Expected at least 2 sealed coefficients, got ${coefficients.length}`);
+  if (coefficients.length !== 2) {
+    throw new Error(`Expected 2 sealed coefficients, got ${coefficients.length}`);
   }
   const packed = packPokerWinnerMasks(
     winnerMasks.map((mask) => activeWinnerMask(mask, numPlayers)),

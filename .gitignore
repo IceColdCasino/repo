@@ -11,3 +11,7 @@ rust/casino/keys/
 rust/light-casino/keys/
 rust/casino/target/deploy/casino-keypair.json
 rust/light-casino/target/deploy/light_casino-keypair.json
+test-ledger/
+.local/
+*.log
+rust/shared-zk-ids/target/

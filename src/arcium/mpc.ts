@@ -34,7 +34,7 @@ import {
   CardRevealNotAllowedError,
   expectedRevealLimbCount,
 } from '../backend/reveal-policy';
-import { casinoSealAccount, type SealedShowdownAccount } from '../casino-calc';
+import { decodeSealAccount, type SealedShowdownAccount } from '../casino-calc';
 
 const POKER_BUILD_DIR = (typeof process !== 'undefined' && typeof process.cwd === 'function')
   ? path.join(process.cwd(), 'rust/casino/build')
@@ -148,6 +148,15 @@ const CIRCUIT_OFFSET_ALIAS: Record<string, string> = {
   sealShowdownPair: 'seal_showdown_pair',
 };
 
+function launchClusterOffset(): number | null {
+  const launch = (globalThis as {
+    window?: { __ZK_LAUNCH_CONFIG?: { clusterOffset?: number | string } };
+  }).window?.__ZK_LAUNCH_CONFIG;
+  if (launch?.clusterOffset == null) return null;
+  const n = Number(launch.clusterOffset);
+  return Number.isFinite(n) ? n : null;
+}
+
 function circuitOffsetName(camelName: string): string {
   const aliased = CIRCUIT_OFFSET_ALIAS[camelName];
   if (aliased) return aliased;
@@ -168,11 +177,21 @@ export class ArciumMPCHelper {
     installDurableConfirm(provider.connection);
     // Localnet default 0. Do NOT call getArciumEnv() — it throws in browsers
     // ("Arcium local env is not available in browser") and breaks WebView share/bet.
-    if (typeof process !== 'undefined' && process.env && process.env.ARCIUM_CLUSTER_OFFSET == null) {
-      process.env.ARCIUM_CLUSTER_OFFSET = '0';
+    // Launch config carries the devnet cluster. A process shim that starts at 0
+    // must not hide that offset.
+    const launchOffset = launchClusterOffset();
+    if (typeof process !== 'undefined' && process.env) {
+      const current = process.env.ARCIUM_CLUSTER_OFFSET;
+      if ((current == null || current === '0') && launchOffset != null && launchOffset !== 0) {
+        process.env.ARCIUM_CLUSTER_OFFSET = String(launchOffset);
+      } else if (current == null) {
+        process.env.ARCIUM_CLUSTER_OFFSET = '0';
+      }
     }
     const parsed = Number(
-      typeof process !== 'undefined' ? process.env?.ARCIUM_CLUSTER_OFFSET : 0,
+      launchOffset != null && launchOffset !== 0
+        ? launchOffset
+        : (typeof process !== 'undefined' ? process.env?.ARCIUM_CLUSTER_OFFSET : 0),
     );
     this.clusterOffset = Number.isFinite(parsed) ? parsed : 0;
     this.clusterAccount = getClusterAccAddress(this.clusterOffset);
@@ -1379,7 +1398,7 @@ export class ArciumMPCHelper {
     const pda = this.deriveSealedShowdownCoeffsPDA(owner);
     const info = await this.provider.connection.getAccountInfo(pda);
     if (!info) throw new Error(`Account does not exist ${pda.toBase58()}`);
-    const sealed = casinoSealAccount(Uint8Array.from(info.data));
+    const sealed = decodeSealAccount(Uint8Array.from(info.data));
     await this.reclaimFinalizedComputations();
     return sealed;
   }

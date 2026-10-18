@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-07T19:07:27.859Z",
+  "phases": {
+    "register_p0": {
+      "platform": "ios",
+      "playerIndex": 0,
+      "payloadFile": "register_p0_payload.json"
+    },
+    "register_p1": {
+      "platform": "macos",
+      "playerIndex": 1,
+      "payloadFile": "register_p1_payload.json"
+    },
+    "shuffle_p1": {
+      "platform": "macos",
+      "playerIndex": 1,
+      "payloadFile": "shuffle_p1_payload.json",
+      "dependsOn": [
+        "register_p0",
+        "register_p1"
+      ]
+    },
+    "shuffle_p0": {
+      "platform": "ios",
+      "playerIndex": 0,
+      "payloadFile": "shuffle_p0_payload.json",
+      "dependsOn": [
+        "shuffle_p1"
+      ]
+    },
+    "share_p1": {
+      "platform": "macos",
+      "playerIndex": 1,
+      "payloadFile": "share_p1_payload.json",
+      "dependsOn": [
+        "shuffle_p0"
+      ]
+    },
+    "share_p0": {
+      "platform": "ios",
+      "playerIndex": 0,
+      "payloadFile": "share_p0_payload.json",
+      "dependsOn": [
+        "share_p1"
+      ]
+    },
+    "showdown_p0": {
+      "platform": "ios",
+      "playerIndex": 0,
+      "payloadFile": "showdown_p0_payload.json",
+      "dependsOn": [
+        "share_p0"
+      ]
+    },
+    "showdown_p1": {
+      "platform": "macos",
+      "playerIndex": 1,
+      "payloadFile": "showdown_p1_payload.json",
+      "dependsOn": [
+        "share_p0"
+      ]
+    }
+  }
+}

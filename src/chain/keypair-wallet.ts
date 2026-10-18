@@ -13,6 +13,12 @@ export class KeypairWallet {
   ): Promise<T> {
     if ('partialSign' in tx && typeof tx.partialSign === 'function') {
       (tx as web3.Transaction).partialSign(this.payer);
+      return tx;
+    }
+    // compute_pots is a v0 transaction (MXE lookup table). VersionedTransaction
+    // has sign(), not partialSign(); leaving it unsigned fails preflight.
+    if ('sign' in tx && typeof (tx as web3.VersionedTransaction).sign === 'function') {
+      (tx as web3.VersionedTransaction).sign([this.payer]);
     }
     return tx;
   }

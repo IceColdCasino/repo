@@ -1,0 +1,121 @@
+diff --git a/c/misc.hpp b/c/misc.hpp
+index 4933c16..ced09e6 100644
+--- a/c/misc.hpp
++++ b/c/misc.hpp
+@@ -14,6 +14,23 @@
+ #include <functional>
+ #include <queue>
+ 
++#if defined(__APPLE__)
++#include <TargetConditionals.h>
++#endif
++
++#if defined(__APPLE__) || defined(__linux__)
++#include <pthread.h>
++#define RAPIDSNARK_THREAD_LARGE_STACK 1
++#ifndef RAPIDSNARK_WORKER_STACK_BYTES
++// iOS default pthread stacks (~512KiB) overflow in parallel MSM/FFT.
++// Match zk_bridge worker stacks (64MiB) so large shuffle/share MSMs cannot
++// silently smash the heap and crash on the next circuit init.
++#define RAPIDSNARK_WORKER_STACK_BYTES (64u * 1024u * 1024u)
++#endif
++#else
++#define RAPIDSNARK_THREAD_LARGE_STACK 0
++#endif
++
+ uint32_t log2 (uint32_t value);
+ 
+ #ifdef _OPENMP
+@@ -75,7 +92,11 @@ class ThreadWorker
+     std::mutex mutex;
+     std::condition_variable occupied;
+     std::condition_variable finished;
++#if RAPIDSNARK_THREAD_LARGE_STACK
++    pthread_t pthread = 0;
++#else
+     std::thread thread;
++#endif
+     uint64_t threadId = 0;
+ 
+     void worker() {
+@@ -105,17 +126,39 @@ class ThreadWorker
+         }
+     }
+ 
++#if RAPIDSNARK_THREAD_LARGE_STACK
++    static void *workerTrampoline(void *arg) {
++        static_cast<ThreadWorker *>(arg)->worker();
++        return nullptr;
++    }
++#endif
++
+ public:
+     ThreadWorker() :
+-        stop(false),
+-        thread(&ThreadWorker::worker, this)
+-    {}
++        stop(false)
++#if !RAPIDSNARK_THREAD_LARGE_STACK
++        , thread(&ThreadWorker::worker, this)
++#endif
++    {
++#if RAPIDSNARK_THREAD_LARGE_STACK
++        pthread_attr_t attr;
++        pthread_attr_init(&attr);
++        pthread_attr_setstacksize(&attr, RAPIDSNARK_WORKER_STACK_BYTES);
++        const int rc = pthread_create(&pthread, &attr, &ThreadWorker::workerTrampoline, this);
++        pthread_attr_destroy(&attr);
++        assert(rc == 0);
++#endif
++    }
+ 
+     ~ThreadWorker() {
+         stop = true;
+         occupied.notify_one();
+ 
++#if RAPIDSNARK_THREAD_LARGE_STACK
++        pthread_join(pthread, nullptr);
++#else
+         thread.join();
++#endif
+     }
+ 
+     void setQueue(std::shared_ptr<ThreadJobQueue>& newQueue) {
+@@ -168,9 +211,23 @@ public:
+     }
+ 
+     static unsigned int defaultThreadCount() {
++#if defined(RAPIDSNARK_SINGLE_THREAD) && RAPIDSNARK_SINGLE_THREAD
++        return 1;
++#else
+         unsigned int n = std::thread::hardware_concurrency();
+-
+-        return n == 0 ? 1 : n;
++        if (n == 0) {
++            n = 1;
++        }
++#if defined(__APPLE__) && \
++    ((defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || \
++     (defined(TARGET_OS_SIMULATOR) && TARGET_OS_SIMULATOR))
++        // Cap workers so N * RAPIDSNARK_WORKER_STACK_BYTES stays reasonable on mobile.
++        if (n > 4) {
++            n = 4;
++        }
++#endif
++        return n;
++#endif
+     }
+ 
+     static ThreadPool& defaultPool() {
+@@ -216,6 +273,11 @@ public:
+             return;
+         }
+ 
++#if defined(RAPIDSNARK_SINGLE_THREAD) && RAPIDSNARK_SINGLE_THREAD
++        func(begin, end, 0);
++        return;
++#endif
++
+         std::lock_guard<std::mutex> poolLock(poolMutex);
+ 
+         const auto     jobs = divideWork(begin, end, nThreads);

@@ -489,7 +489,7 @@ export class Player {
   private showdownWitnessInput(params: RouletteShowdownParams) {
     return {
       ...(params.hashInput as object),
-      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
+      ...sealedShowdownWitness(params.hash, params.coefficients),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCard: params.plaintextCard,

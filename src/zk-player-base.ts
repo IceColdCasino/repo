@@ -126,7 +126,7 @@ export abstract class ZkPlayer<C extends RegisterCircuitSet> {
     return this.key.privateKey;
   }
 
-  /** Host-sealed showdown coefficients: all 14 Arcis seal slots. */
+  /** The two host-sealed showdown coefficients. */
   setSealedCoefficients(coeffs: bigint[]): void {
     this.sealedCoefficients = requireHostShowdownCoefficients(coeffs);
     this.showdownParams = undefined;

@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Load artifacts/ genesis accounts at the pubkey stored in each JSON file.
+
+arcium localnet rewrites Anchor.toml addresses, then Anchor passes those
+addresses to solana-test-validator. Nodes derive the account from the pubkey
+inside the JSON, so a mismatched load address leaves MXE keygen unreachable.
+"""
+import json
+import os
+import sys
+
+REAL = os.path.expanduser(
+    "~/.local/share/solana/install/active_release/bin/solana-test-validator"
+)
+
+
+def pubkey_in(path: str) -> str | None:
+    try:
+        parsed = json.load(open(path))
+    except Exception:
+        return None
+    if isinstance(parsed, list):
+        parsed = parsed[0] if parsed else {}
+    if not isinstance(parsed, dict):
+        return None
+    pub = parsed.get("pubkey")
+    return pub if isinstance(pub, str) and pub else None
+
+
+def rewrite(argv: list[str]) -> list[str]:
+    out: list[str] = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--account" and i + 2 < len(argv):
+            addr, path = argv[i + 1], argv[i + 2]
+            i += 3
+            if path.startswith("artifacts/") or "/artifacts/" in path:
+                pub = pubkey_in(path)
+                if pub:
+                    addr = pub
+            out.extend(["--account", addr, path])
+        else:
+            out.append(argv[i])
+            i += 1
+    return out
+
+
+def main() -> None:
+    if not os.access(REAL, os.X_OK):
+        sys.stderr.write(f"solana-test-validator wrapper: missing {REAL}\n")
+        sys.exit(127)
+    argv = sys.argv[1:]
+    if argv[:1] in (["--version"], ["--help"]):
+        os.execv(REAL, [REAL, *argv])
+    os.execv(REAL, [REAL, *rewrite(argv)])
+
+
+if __name__ == "__main__":
+    main()

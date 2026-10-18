@@ -51,8 +51,6 @@ pub const Session = struct {
     crypto: *Crypto,
     kind: Kind,
     variant: u32,
-    sealed_buf: [16]Fr = undefined,
-    sealed_len: usize = 0,
     player: PlayerU,
 
     pub fn init(alloc: std.mem.Allocator, engine: *table.Engine, kind: Kind, variant: u32) !Session {
@@ -243,12 +241,10 @@ fn requireKey(self: *Session, root: std.json.Value) !void {
 
 fn applySeal(self: *Session, root: std.json.Value) !void {
     const raw = root.object.get("coefficients") orelse return error.MissingHostCoefficients;
-    const slots = self.sealed_buf[0..seal.SLOTS];
-    const n = try ops.parseFrListCount(raw, slots);
-    if (n != seal.SLOTS) return error.FrListSize;
-    try seal.validate(slots);
-    self.sealed_len = seal.SLOTS;
-    self.tablePtr().setSealed(slots);
+    var live: [seal.LIVE]Fr = undefined;
+    const n = try ops.parseFrListCount(raw, &live);
+    if (n != seal.LIVE) return error.FrListSize;
+    self.tablePtr().setSealed(&live);
 }
 
 fn writeKey(self: *Session, root: std.json.Value, w: *Writer) !void {

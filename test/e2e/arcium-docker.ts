@@ -296,6 +296,21 @@ function remapArciumSubnet(text: string): string {
     // Desktop leftover → Apple DHCP assignment (or explicit override).
     .replace(/ipv4_address: 172\.21\.0\.99/g, `ipv4_address: ${td}`)
     .replace(/local_ip = "172\.21\.0\.99"/g, `local_ip = "${td}"`);
+  // Backup dealer / nodes stay on 172.20 in arcium's compose. Apple DHCP
+  // hands them .5/.6/.7 after the primary dealer and two arx nodes.
+  if (isAppleContainerRuntime()) {
+    next = next
+      .replace(/ipv4_address: 172\.20\.0\.98/g, 'ipv4_address: 172.21.0.5')
+      .replace(/local_ip = "172\.20\.0\.98"/g, 'local_ip = "172.21.0.5"')
+      .replace(/ipv4_address: 172\.20\.0\.102/g, 'ipv4_address: 172.21.0.6')
+      .replace(/ipv4_address: 172\.20\.0\.103/g, 'ipv4_address: 172.21.0.7');
+  } else {
+    next = next
+      .replace(/ipv4_address: 172\.20\.0\.98/g, 'ipv4_address: 172.21.0.98')
+      .replace(/local_ip = "172\.20\.0\.98"/g, 'local_ip = "172.21.0.98"')
+      .replace(/ipv4_address: 172\.20\.0\.102/g, 'ipv4_address: 172.21.0.102')
+      .replace(/ipv4_address: 172\.20\.0\.103/g, 'ipv4_address: 172.21.0.103');
+  }
   if (isAppleContainerRuntime()) {
     // Document expected DHCP order (compose ipv4_address is ignored by Apple).
     next = next
@@ -787,10 +802,14 @@ export function patchArciumDockerArtifacts(): void {
     }
   }
 
-  if (fs.existsSync(TRUSTED_DEALER_CONFIG)) {
-    const text = fs.readFileSync(TRUSTED_DEALER_CONFIG, 'utf8');
+  for (const dealerConfig of [
+    TRUSTED_DEALER_CONFIG,
+    path.join(ARTIFACTS_DIR, 'backup_trusted_dealer_config.toml'),
+  ]) {
+    if (!fs.existsSync(dealerConfig)) continue;
+    const text = fs.readFileSync(dealerConfig, 'utf8');
     const next = pinDockerHostGateway(remapArciumSubnet(text));
-    if (next !== text) fs.writeFileSync(TRUSTED_DEALER_CONFIG, next);
+    if (next !== text) fs.writeFileSync(dealerConfig, next);
   }
 
   // Node configs also embed host.docker.internal for Solana RPC/WSS.
@@ -825,8 +844,17 @@ export function arciumDockerPullError(log: string): string | null {
  */
 export function ensureArxNodeConfigs(): void {
   if (!fs.existsSync(ARTIFACTS_DIR)) return;
+  const backupDealer = path.join(ARTIFACTS_DIR, 'backup_trusted_dealer_config.toml');
+  if (fs.existsSync(backupDealer)) {
+    const text = fs.readFileSync(backupDealer, 'utf8');
+    const next = pinDockerHostGateway(remapArciumSubnet(text));
+    if (next !== text) fs.writeFileSync(backupDealer, next);
+  }
   for (const name of fs.readdirSync(ARTIFACTS_DIR)) {
-    if (!name.startsWith('node_config') || !name.endsWith('.toml')) continue;
+    // backup_node_config_*.toml is what the backup cluster reads. Leaving
+    // host.docker.internal in those files makes the nodes panic, and arcium
+    // then tears down the working primary after the backup timeout.
+    if (!name.includes('node_config') || !name.endsWith('.toml')) continue;
     const filePath = path.join(ARTIFACTS_DIR, name);
     const text = fs.readFileSync(filePath, 'utf8');
     let next = isAppleContainerRuntime() ? pinDockerHostGateway(text) : text;

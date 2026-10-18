@@ -88,6 +88,74 @@ export function casinoFr(
   return dec(call(kind, variant, fn, fields).value);
 }
 
+const SEAL_ACCOUNT_SLOTS = 14;
+const SEAL_ACCOUNT_ROWS = 4;
+
+/** Borsh body the seal callback writes, before the unused commitment field. */
+const SEAL_ROWS_END =
+  8 + 32 + 2 + SEAL_ACCOUNT_SLOTS * 32 + 32 + 16 + SEAL_ACCOUNT_ROWS * 32;
+
+function anyNonZero(bytes: Uint8Array): boolean {
+  for (let i = 0; i < bytes.length; i += 1) {
+    if (bytes[i] !== 0) return true;
+  }
+  return false;
+}
+
+function readU128LE(data: Uint8Array, offset: number): bigint {
+  let value = 0n;
+  for (let i = 0; i < 16; i += 1) {
+    value |= BigInt(data[offset + i]!) << BigInt(8 * i);
+  }
+  return value;
+}
+
+/**
+ * Read a seal account without the native player.
+ *
+ * The macOS player command is asynchronous. `casinoSealAccount` goes through
+ * a synchronous bridge and throws in the WebView, so the showdown wait never
+ * observes a callback that has already landed.
+ */
+export function decodeSealAccount(data: Uint8Array): SealedShowdownAccount {
+  if (data.length < SEAL_ROWS_END) {
+    throw new Error(`seal account is ${data.length} bytes, need ${SEAL_ROWS_END}`);
+  }
+  let at = 8;
+  const gameId = data.slice(at, at + 32);
+  at += 32;
+  const playerIndex = data[at]!;
+  const nActive = data[at + 1]!;
+  at += 2;
+  const coefficientsCiphertext: Uint8Array[] = [];
+  let anyCiphertext = false;
+  for (let slot = 0; slot < SEAL_ACCOUNT_SLOTS; slot += 1) {
+    const ciphertext = data.slice(at, at + 32);
+    at += 32;
+    anyCiphertext = anyCiphertext || anyNonZero(ciphertext);
+    coefficientsCiphertext.push(ciphertext);
+  }
+  const encryptionPubkey = data.slice(at, at + 32);
+  at += 32;
+  const nonce = readU128LE(data, at);
+  at += 16;
+  let anyRow = false;
+  for (let row = 0; row < SEAL_ACCOUNT_ROWS; row += 1) {
+    anyRow = anyRow || anyNonZero(data.subarray(at, at + 32));
+    at += 32;
+  }
+  return {
+    data,
+    written: anyCiphertext && anyRow,
+    gameId,
+    playerIndex,
+    nActive,
+    coefficientsCiphertext,
+    encryptionPubkey,
+    nonce,
+  };
+}
+
 /** `SealedShowdownCoefficients` as libzkcasino decodes it. */
 export interface SealedShowdownAccount {
   /** Raw account data, for re-checking decrypted coefficients against the rows. */

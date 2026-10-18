@@ -61,7 +61,7 @@ async function share(game: Game, players: Player[], coinBets: number[]) {
 
 async function showdown(game: Game, players: Player[], variant: SlotVariant) {
   const bettor = game.isDealer(0) ? 1 : 0;
-  const sealed = hostShowdownCoefficients(2);
+  const sealed = hostShowdownCoefficients();
   players[bettor]!.setSealedCoefficients(sealed);
   const { proof, publicSignals, plaintextCenters } = await players[bettor]!.showdownProve(
     game.publicKeys,

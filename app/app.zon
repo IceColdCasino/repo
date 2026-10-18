@@ -1,0 +1,39 @@
+.{
+    .id ="dev.zero_native.app",
+    .name ="app",
+    .display_name ="ZK Poker",
+    .version = "0.1.0",
+    .icons = .{ "assets/icon.icns" },
+    .platforms = .{ "macos", "linux", "ios" },
+    .permissions = .{},
+    .capabilities = .{ "webview", "js_bridge" },
+    .bridge = .{
+        .commands = .{
+            .{ .name = "zk.ping", .origins = .{ "zero://app", "zero://inline" } },
+            .{ .name = "zk.prove", .origins = .{ "zero://app", "zero://inline" } },
+            .{ .name = "zk.witness.generate", .origins = .{ "zero://app", "zero://inline" } },
+        },
+    },
+    .frontend = .{
+        .dist ="frontend/dist",
+        .entry = "index.html",
+        .spa_fallback = true,
+        .dev = .{
+            .url ="http://127.0.0.1:5173/",
+            .command = .{ "npm", "--prefix", "frontend", "run", "dev", "--", "--host", "127.0.0.1" },
+            .ready_path = "/",
+            .timeout_ms = 30000,
+        },
+    },
+    .security = .{
+        .navigation = .{
+            .allowed_origins = .{ "zero://app", "zero://inline", "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5178" },
+            .external_links = .{ .action = "deny" },
+        },
+    },
+    .web_engine = "system",
+    .cef = .{ .dir = "third_party/cef/macos", .auto_install = false },
+    .windows = .{
+        .{ .label = "main", .title ="ZK Poker", .width = 1920, .height = 1080, .restore_state = true },
+    },
+}

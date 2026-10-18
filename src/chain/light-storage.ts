@@ -45,7 +45,7 @@ export type UsedPermutationProof = {
  * - `LIGHT_E2E=1` — require indexer (and prefer on-chain system program)
  */
 export async function isLightAvailable(
-  indexerUrl: string = LIGHT_INDEXER_URL,
+  indexerUrl: string = lightIndexerUrl(),
   timeoutMs = 1_500,
 ): Promise<boolean> {
   if (process.env.LIGHT_E2E === '0') return false;

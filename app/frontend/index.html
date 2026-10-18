@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>App</title>
+    <!-- zero:// WebView: resolve ./assets relative to app root (matches iOS host). -->
+    <script>
+      (function () {
+        if (typeof location !== 'undefined' && location.protocol === 'zero:') {
+          var base = document.createElement('base');
+          base.href = 'zero://app/';
+          document.head.insertBefore(base, document.head.firstChild);
+        }
+      })();
+    </script>
+    <!-- Native desktop E2E: Zig writes frontend/dist/launch-config.js from ZK_LAUNCH_* before WebView load. -->
+    <script src="./launch-config.js"></script>
+    <!-- Early bridge detector: runs at HTML parse time, before any modules.
+         Captures exact moment window.zero appears for "should be immediate" diagnosis. -->
+    <script>
+      (function () {
+        var start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        var D = (window.__zkBridgeDebug = window.__zkBridgeDebug || { events: [], start: start, firstSeenAt: null, lastSnapshot: null });
+        function now() { return ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - start; }
+        function snap(label) {
+          var hasWin = typeof window !== 'undefined';
+          var z = hasWin ? window.zero : undefined;
+          var hasZ = !!z;
+          var invokeType = z ? typeof z.invoke : 'n/a';
+          var keys = z ? Object.keys(z) : [];
+          var rec = {
+            t: now().toFixed(1) + 'ms',
+            label: label,
+            hasWindow: hasWin,
+            hasZero: hasZ,
+            invokeType: invokeType,
+            zeroKeys: keys,
+            zeroHasInvokeFn: invokeType === 'function'
+          };
+          D.events.push(rec);
+          if (hasZ && typeof z.invoke === 'function' && !D.firstSeenAt) {
+            D.firstSeenAt = rec.t;
+          }
+          D.lastSnapshot = rec;
+          // Also to console for host process capture
+          try { console.log('[EARLY-BRIDGE]', JSON.stringify(rec)); } catch (e) {}
+        }
+        snap('html-head-inline');
+        // Poll aggressively for first 2s to catch late injection with precise timing.
+        var attempts = 0;
+        var iv = setInterval(function () {
+          attempts++;
+          var z = (typeof window !== 'undefined') ? window.zero : null;
+          if (z && typeof z.invoke === 'function') {
+            snap('early-poll-hit#' + attempts);
+            clearInterval(iv);
+            // Install a Mutation/defineProperty watcher? But for now, one last snap after microtask.
+            setTimeout(function(){ snap('post-poll-microtask'); }, 0);
+          } else if (attempts > 200) { // ~2s at 10ms
+            snap('early-poll-timeout');
+            clearInterval(iv);
+          } else if (attempts % 10 === 0) {
+            snap('early-poll#' + attempts);
+          }
+        }, 10);
+        // Also listen for a possible 'zeroBridgeReady' or similar custom event the host might dispatch.
+        try {
+          window.addEventListener('zeroBridgeReady', function(){ snap('zeroBridgeReady-event'); }, { once: true });
+          window.addEventListener('bridgeReady', function(){ snap('bridgeReady-event'); }, { once: true });
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

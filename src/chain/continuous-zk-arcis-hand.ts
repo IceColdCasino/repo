@@ -69,7 +69,6 @@ import {
   encryptRecipientMajorRowsForStaging,
   toRecipientCardMajorShareValues,
   toTwoPlayerRecipientCardMajorShareValues,
-  splitHashHalves,
 } from './share-deck-staging';
 import {
   mapPool,
@@ -294,6 +293,7 @@ export class ContinuousZkArcisHand {
 
   /** Full-hand CompDef set (upload once per localnet; then skipped). */
   static readonly HAND_COMP_DEFS = [
+    'verifyDeckHashChunk',
     'revealCard',
     'validateBet',
     ...sealShowdownCompDefNames(2),
@@ -616,7 +616,6 @@ export class ContinuousZkArcisHand {
     }, { verified: true });
     this.shareCiphertextsForStaging[playerIndex] = ciphertexts;
 
-    const { low, high } = splitHashHalves(signals[0]!);
     const streets = pokerStreetFieldGroups(ciphertexts);
     const laneFund = this.lifecycle.prepareShareLanes(
       this.bettingTable.players[playerIndex]!,
@@ -628,8 +627,8 @@ export class ContinuousZkArcisHand {
       this.arcium.beginVerifyShareHash(
         this.gameId,
         playerIndex,
-        low,
-        high,
+        0n,
+        0n,
         this.bettingTable.tableState,
         this.bettingTable.players[playerIndex],
         {
@@ -858,7 +857,6 @@ export class ContinuousZkArcisHand {
       prepared,
       shareVerifyConcurrency,
       async (item) => {
-        const { low, high } = splitHashHalves(item.publicSignals[0]!);
         const streets = pokerStreetFieldGroups(item.ciphertexts);
         const laneFund = this.lifecycle.prepareShareLanes(
           this.bettingTable.players[item.p]!,
@@ -870,8 +868,8 @@ export class ContinuousZkArcisHand {
           this.arcium.beginVerifyShareHash(
             this.gameId,
             item.p,
-            low,
-            high,
+            0n,
+            0n,
             this.bettingTable.tableState,
             this.bettingTable.players[item.p],
             {

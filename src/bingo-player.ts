@@ -446,7 +446,7 @@ export class Player {
     ];
     const base = {
       ...(params.hashInput as object),
-      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
+      ...sealedShowdownWitness(params.hash, params.coefficients),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCards: paddedBalls,

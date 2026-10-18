@@ -1942,6 +1942,29 @@ export class OnchainGameLifecycle {
     )[0];
   }
 
+  /**
+   * The hand operator signs lane funding. A seated starter, the provider
+   * wallet, or the whitelist admin (the payer of initialize_game) can sign.
+   */
+  private async operatorFundAuth(
+    operator: web3.PublicKey,
+    seat: web3.Keypair | undefined,
+  ): Promise<{ signers: web3.Keypair[]; walletSigns: boolean }> {
+    if (seat?.publicKey.equals(operator)) {
+      return { signers: [seat], walletSigns: false };
+    }
+    if (operator.equals(this.provider.wallet.publicKey)) {
+      return { signers: [], walletSigns: true };
+    }
+    const { WHITELIST_ADMIN } = await import('./admin-provider');
+    if (operator.equals(WHITELIST_ADMIN)) {
+      const admin = await loadWhitelistAdminProvider(this.provider.connection);
+      const adminKp = (admin.wallet as { payer?: web3.Keypair }).payer;
+      if (adminKp) return { signers: [adminKp], walletSigns: false };
+    }
+    throw new Error('lane fund requires the game operator to sign');
+  }
+
   private async seatVault(player: web3.PublicKey): Promise<web3.PublicKey> {
     const remembered = rentVaultFor(player);
     if (remembered) return remembered;
@@ -2062,11 +2085,7 @@ export class OnchainGameLifecycle {
     }
     const lanes = Array.from({ length: plan.lanes }, () => web3.Keypair.generate());
     const operator = new web3.PublicKey(opts.gameState.operator);
-    const operatorIsSeat = opts.authority?.publicKey.equals(operator) ?? false;
-    const operatorIsProvider = operator.equals(this.provider.wallet.publicKey);
-    if (!operatorIsSeat && !operatorIsProvider) {
-      throw new Error('shuffle lane fund requires the game operator to sign');
-    }
+    const fundAuth = await this.operatorFundAuth(operator, opts.authority);
     const amount = Buffer.alloc(8);
     amount.writeBigUInt64LE(BigInt(plan.amountPerLane));
     const fundBatch = (batch: web3.Keypair[]) => new web3.TransactionInstruction({
@@ -2082,8 +2101,8 @@ export class OnchainGameLifecycle {
     });
     let handedOff = false;
     try {
-    const fundSigners = operatorIsSeat && opts.authority ? [opts.authority] : [];
-    const fundWalletSigns = operatorIsProvider && !operatorIsSeat;
+    const fundSigners = fundAuth.signers;
+    const fundWalletSigns = fundAuth.walletSigns;
     for (let i = 0; i < lanes.length; i += SHUFFLE_LANES_PER_TX) {
       const batch = lanes.slice(i, i + SHUFFLE_LANES_PER_TX);
       const send = async (unpaid: web3.Keypair[]) => {
@@ -2673,11 +2692,7 @@ export class OnchainGameLifecycle {
     const playerStatePDA = this.deriveLightPDA('player', Buffer.from([playerIndex]));
     const game = await this.fetchLightGameState(gameStatePDA);
     const operator = new web3.PublicKey(game.operator);
-    const operatorIsProvider = operator.equals(this.provider.wallet.publicKey);
-    const operatorIsSeat = authority.publicKey.equals(operator);
-    if (!operatorIsSeat && !operatorIsProvider) {
-      throw new Error('share lane fund requires the game operator to sign');
-    }
+    const fundAuth = await this.operatorFundAuth(operator, authority);
     const amount = Buffer.alloc(8);
     amount.writeBigUInt64LE(BigInt(fund));
     const fundBatch = (batch: web3.Keypair[]) => new web3.TransactionInstruction({
@@ -2691,7 +2706,7 @@ export class OnchainGameLifecycle {
       ],
       data: Buffer.concat([ixDiscriminator('fund_shuffle_lanes'), amount]),
     });
-    const signers = operatorIsSeat ? [authority] : [];
+    const signers = fundAuth.signers;
     for (let i = 0; i < lanes.length; i += SHUFFLE_LANES_PER_TX) {
       const batch = lanes.slice(i, i + SHUFFLE_LANES_PER_TX);
       const send = async (unpaid: web3.Keypair[]) => {
@@ -2700,7 +2715,7 @@ export class OnchainGameLifecycle {
           [fundBatch(unpaid)],
           operator,
           signers,
-          operatorIsProvider && !operatorIsSeat,
+          fundAuth.walletSigns,
           latest,
         );
       };
@@ -3850,6 +3865,16 @@ export class OnchainGameLifecycle {
     handIndex = 0,
   ): Promise<void> {
     if (!this.pokerProgram) throw new Error('ShowdownMaterialsNotVerified');
+    // The receipt is already consumed. Another verify only resimulates and
+    // never reaches pot settlement.
+    try {
+      const pokerState = await (this.pokerProgram.account as any).gameState.fetch(
+        this.derivePokerPDA('game_state'),
+      );
+      if (pokerState.showdownFinalized || pokerState.showdown_finalized) return;
+    } catch {
+      // Fall through and submit the receipt.
+    }
     const signer = this.authorityPubkey(authority);
     const gameStatePDA = this.deriveLightPDA('game_state');
     const gameState = await this.fetchLightGameState(gameStatePDA);

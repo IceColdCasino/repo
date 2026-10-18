@@ -370,7 +370,7 @@ export class Player {
     );
     this.#circuits.showdown.preloadWitness({
       ...(params.hashInput as object),
-      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
+      ...sealedShowdownWitness(params.hash, params.coefficients),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCards: params.plaintextCenters,
@@ -413,7 +413,7 @@ export class Player {
     );
     const { proof, publicSignals } = await this.#circuits.showdown.prove({
       ...(params.hashInput as object),
-      ...sealedShowdownWitness(params.hash, params.coefficients, 2),
+      ...sealedShowdownWitness(params.hash, params.coefficients),
       publicKey: this.publicKey,
       privateKey: this.#privateKey,
       plaintextCards: params.plaintextCenters,

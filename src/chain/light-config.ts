@@ -10,14 +10,34 @@ export const LIGHT_RPC_URL_DEFAULT = 'http://127.0.0.1:8899';
 export const LIGHT_INDEXER_URL_DEFAULT = 'http://127.0.0.1:8784';
 export const LIGHT_PROVER_URL_DEFAULT = 'http://127.0.0.1:3001';
 
+type LaunchLightConfig = {
+  solanaRpc?: string;
+  lightIndexerUrl?: string;
+  lightProverUrl?: string;
+};
+
+/** WebView launch file. Devnet cannot use the local Photon/prover. */
+function launchLightConfig(): LaunchLightConfig | null {
+  const launch = (globalThis as {
+    window?: { __ZK_LAUNCH_CONFIG?: LaunchLightConfig };
+  }).window?.__ZK_LAUNCH_CONFIG;
+  return launch ?? null;
+}
+
 /** Resolved at call time so LIGHT_*_URL env overrides work after import. */
 export function lightRpcUrl(): string {
-  return process.env.LIGHT_RPC_URL ?? LIGHT_RPC_URL_DEFAULT;
+  const launch = launchLightConfig();
+  if (launch?.solanaRpc) return launch.solanaRpc;
+  return process.env.LIGHT_RPC_URL ?? process.env.SOLANA_RPC_URL ?? LIGHT_RPC_URL_DEFAULT;
 }
 export function lightIndexerUrl(): string {
+  const launch = launchLightConfig();
+  if (launch?.lightIndexerUrl) return launch.lightIndexerUrl;
   return process.env.LIGHT_INDEXER_URL ?? LIGHT_INDEXER_URL_DEFAULT;
 }
 export function lightProverUrl(): string {
+  const launch = launchLightConfig();
+  if (launch?.lightProverUrl) return launch.lightProverUrl;
   return process.env.LIGHT_PROVER_URL ?? LIGHT_PROVER_URL_DEFAULT;
 }
 

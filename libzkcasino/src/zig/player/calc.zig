@@ -102,9 +102,11 @@ pub fn run(alloc: std.mem.Allocator, crypto: *const Crypto, kind_u: u32, root: s
         return;
     }
     if (std.mem.eql(u8, name, "sealCommitment")) {
+        var live: [seal.LIVE]Fr = undefined;
+        const n = try ops.parseFrListCount(root.object.get("coefficients") orelse return error.MissingHostCoefficients, &live);
+        if (n != seal.LIVE) return error.FrListSize;
         var coeffs: [seal.SLOTS]Fr = undefined;
-        try ops.parseFrList(root.object.get("coefficients") orelse return error.MissingHostCoefficients, &coeffs);
-        try seal.validate(&coeffs);
+        try seal.padLive(&live, &coeffs);
         try writeFr(w, seal.commitment(&coeffs));
         return;
     }
@@ -155,9 +157,11 @@ fn writeSealAccount(alloc: std.mem.Allocator, root: std.json.Value, w: *Writer) 
     const account = try seal.parseAccount(try std.fmt.hexToBytes(data, hex));
     if (root.object.get("coefficients")) |raw| {
         if (!account.written) return error.SealAccountNotWritten;
+        var live: [seal.LIVE]Fr = undefined;
+        const n = try ops.parseFrListCount(raw, &live);
+        if (n != seal.LIVE) return error.FrListSize;
         var coeffs: [seal.SLOTS]Fr = undefined;
-        try ops.parseFrList(raw, &coeffs);
-        try seal.validate(&coeffs);
+        try seal.padLive(&live, &coeffs);
         if (!seal.commitment(&coeffs).eql(account.commitment)) return error.SealCoefficientsMismatch;
     }
 

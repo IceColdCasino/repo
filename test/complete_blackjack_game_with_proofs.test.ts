@@ -131,7 +131,7 @@ async function actionCheckOnePlayer(game: Game, players: Player[]) {
   const player = players[0]!;
   const sourceIndices = [0, 1];
 
-  player.setSealedCoefficients(hostShowdownCoefficients(2));
+  player.setSealedCoefficients(hostShowdownCoefficients());
   console.time('Action Prove 0');
   const { proof, publicSignals, status, actionHash } = await player.actionProve(
     game.publicKeys,
@@ -176,7 +176,7 @@ async function showdown(game: Game, players: Player[]) {
     dealerShareSlots: [2, 3],
   });
 
-  const sealed = hostShowdownCoefficients(2);
+  const sealed = hostShowdownCoefficients();
   player.setSealedCoefficients(sealed);
   console.time('Showdown Prove 0');
   const { proof, publicSignals, publicKey, outcomesHash } = await player.showdownProve(
@@ -209,7 +209,7 @@ async function showdownSevenPlayers(game: Game, players: Player[]) {
   const handLayout = players[0]!.buildHandLayoutFromShareSlots(decrypted, buildSevenPlayerDeal());
 
   console.time('Parallel 7-player showdown proofs');
-  const sealed = hostShowdownCoefficients(2);
+  const sealed = hostShowdownCoefficients();
   const proved = await Promise.all(Array.from({ length: 7 }, (_, p) => {
     players[p]!.setSealedCoefficients(sealed);
     return players[p]!.showdownProve(
