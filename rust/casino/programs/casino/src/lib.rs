@@ -31,6 +31,7 @@ pub mod betting;
 pub mod token;
 pub mod ix;
 pub mod whitelist;
+pub mod session;
 pub mod dealer_pool;
 pub mod casino_settlement;
 pub mod casino_pool;
@@ -4297,6 +4298,53 @@ pub mod casino {
         Ok(())
     }
 
+    /// Register the owner's own key as the room session. It stays valid until
+    /// `close_room_session`. No clock expiry.
+    pub fn open_room_session(ctx: Context<OpenRoomSession>) -> Result<()> {
+        let owner = ctx.accounts.owner.key();
+        session::init_session(
+            &mut ctx.accounts.room_session,
+            &mut ctx.accounts.room_session_lock,
+            ctx.accounts.room.room_id,
+            owner,
+            owner,
+        )
+        .map_err(session::map_session_error)
+    }
+
+    /// The owner authorizes a different key for this room and whitelists it.
+    /// That key is the seat. The owner's lock still allows only one of their
+    /// session keys to play.
+    pub fn open_delegated_room_session(
+        ctx: Context<OpenDelegatedRoomSession>,
+    ) -> Result<()> {
+        let owner = ctx.accounts.owner.key();
+        let session_key = ctx.accounts.session.key();
+        require!(session_key != owner, ErrorCode::InvalidSessionKey);
+        let entry = &mut ctx.accounts.session_whitelist;
+        if entry.player == Pubkey::default() {
+            entry.room_id = ctx.accounts.room.room_id;
+            entry.player = session_key;
+        }
+        require!(
+            entry.player == session_key && entry.room_id == ctx.accounts.room.room_id,
+            ErrorCode::InvalidSessionKey
+        );
+        session::init_session(
+            &mut ctx.accounts.room_session,
+            &mut ctx.accounts.room_session_lock,
+            ctx.accounts.room.room_id,
+            owner,
+            session_key,
+        )
+        .map_err(session::map_session_error)
+    }
+
+    /// Owner reclaim. Refused while the session is seated.
+    pub fn close_room_session(_ctx: Context<CloseRoomSession>) -> Result<()> {
+        Ok(())
+    }
+
     pub fn sit_at_table(
         ctx: Context<SitAtTable>,
         physical_seat: u8,
@@ -4310,6 +4358,12 @@ pub mod casino {
         let table = &mut ctx.accounts.table_state;
         let player_key = ctx.accounts.player.key();
         table.assign_seat(physical_seat, player_key)?;
+        session::begin_play(
+            &mut ctx.accounts.room_session,
+            &mut ctx.accounts.room_session_lock,
+            table.table_id,
+        )
+        .map_err(session::map_session_error)?;
 
         let bit = table_bit(table.table_id)?;
         let room_wallet = &mut ctx.accounts.room_wallet;
@@ -4454,10 +4508,17 @@ pub mod casino {
             ErrorCode::InActiveHand
         );
 
+        let table_id = table.table_id;
         table.clear_seat(&player_key)?;
         table.refresh_pending_order();
+        session::end_play(
+            &mut ctx.accounts.room_session,
+            &mut ctx.accounts.room_session_lock,
+            table_id,
+        )
+        .map_err(session::map_session_error)?;
 
-        let bit = table_bit(table.table_id)?;
+        let bit = table_bit(table_id)?;
         // V7: seat chips return via Enc `unlock_table` only — refuse plaintext drain.
         require!(
             ctx.accounts.table_escrow.balance_u64 == 0
@@ -4486,6 +4547,12 @@ pub mod casino {
         require!(ctx.accounts.table_escrow.is_seated, ErrorCode::NotSeated);
         let table = &ctx.accounts.table_state;
         let player_key = ctx.accounts.player.key();
+        let seated = table_bit(table.table_id)?;
+        require!(
+            ctx.accounts.room_session.active_tables & seated != 0
+                && ctx.accounts.room_session_lock.occupied_tables & seated != 0,
+            ErrorCode::SessionNotPlaying
+        );
         require!(
             !player_in_active_hand(
                 &table.seats,
@@ -6987,6 +7054,22 @@ pub struct LeaveTable<'info> {
         bump
     )]
     pub table_escrow: Account<'info, TableEscrow>,
+    #[account(
+        mut,
+        seeds = [b"room_session", &table_state.room_id[..], player.key().as_ref()],
+        bump,
+        constraint = room_session.session == player.key() @ ErrorCode::InvalidSessionKey,
+        constraint = room_session.room_id == table_state.room_id @ ErrorCode::InvalidSessionKey,
+    )]
+    pub room_session: Account<'info, session::RoomSessionKey>,
+    #[account(
+        mut,
+        seeds = [b"room_session_lock", &table_state.room_id[..], room_session.owner.as_ref()],
+        bump,
+        constraint = room_session_lock.owner == room_session.owner @ ErrorCode::InvalidSessionKey,
+        constraint = room_session_lock.room_id == table_state.room_id @ ErrorCode::InvalidSessionKey,
+    )]
+    pub room_session_lock: Account<'info, session::RoomSessionLock>,
 }
 
 #[queue_computation_accounts("unlock_table", payer)]
@@ -9727,6 +9810,12 @@ pub enum ErrorCode {
     NotCasinoAdmin,
     #[msg("House encrypted wallet is not ready to receive the rake")]
     HouseRakeWalletMissing,
+    #[msg("This player already has a session key at this table")]
+    SessionAlreadyPlaying,
+    #[msg("Session key is not playing this table")]
+    SessionNotPlaying,
+    #[msg("Session key does not belong to this owner")]
+    InvalidSessionKey,
 }
 
 #[account]

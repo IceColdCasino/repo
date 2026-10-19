@@ -21,6 +21,12 @@ import { loadCasinoProgram } from '../../testing/deploy';
 import { casinoVaultRemaining, sitOutInstruction } from '../rent-vault';
 
 const CLOSE_SESSION = createHash('sha256').update('global:close_session').digest().subarray(0, 8);
+const OPEN_ROOM_SESSION = createHash('sha256').update('global:open_room_session').digest().subarray(0, 8);
+const OPEN_DELEGATED_ROOM_SESSION = createHash('sha256')
+  .update('global:open_delegated_room_session')
+  .digest()
+  .subarray(0, 8);
+const CLOSE_ROOM_SESSION = createHash('sha256').update('global:close_room_session').digest().subarray(0, 8);
 const CLOSE_SESSION_ACCOUNTS = createHash('sha256')
   .update('global:close_session_accounts')
   .digest()
@@ -115,6 +121,27 @@ export class OnchainRoomLifecycle {
       [Buffer.from('game_state'), Buffer.from(gameId)],
       this.pokerProgram.programId,
     )[0];
+  }
+
+  roomSessionPDA(session: web3.PublicKey): web3.PublicKey {
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from('room_session'), Buffer.from(this.roomId), session.toBuffer()],
+      this.pokerProgram.programId,
+    )[0];
+  }
+
+  roomSessionLockPDA(owner: web3.PublicKey): web3.PublicKey {
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from('room_session_lock'), Buffer.from(this.roomId), owner.toBuffer()],
+      this.pokerProgram.programId,
+    )[0];
+  }
+
+  /** Owner pubkey stored on the session account. The player key when it is not open yet. */
+  async sessionOwner(player: web3.PublicKey): Promise<web3.PublicKey> {
+    const info = await this.provider.connection.getAccountInfo(this.roomSessionPDA(player));
+    if (!info || info.data.length < 72) return player;
+    return new web3.PublicKey(info.data.subarray(40, 72));
   }
 
   whitelistPDA(player: web3.PublicKey): web3.PublicKey {
@@ -567,6 +594,88 @@ export class OnchainRoomLifecycle {
     this.arcium.noteComputation(offsetBn, playerKp, true);
   }
 
+  /**
+   * Open a room session for this player's own key. It stays valid until
+   * `closeRoomSession`. A second call is a no-op.
+   */
+  async openRoomSession(player: web3.PublicKey | web3.Keypair = this.provider.wallet.publicKey): Promise<void> {
+    const playerKp = 'secretKey' in (player as object) ? (player as web3.Keypair) : null;
+    const playerPk = playerKp ? playerKp.publicKey : (player as web3.PublicKey);
+    const existing = await this.provider.connection.getAccountInfo(this.roomSessionPDA(playerPk));
+    if (existing) return;
+    const ix = new web3.TransactionInstruction({
+      programId: this.pokerProgram.programId,
+      keys: [
+        { pubkey: this.provider.wallet.publicKey, isSigner: true, isWritable: true },
+        { pubkey: playerPk, isSigner: true, isWritable: false },
+        { pubkey: this.roomPDA(), isSigner: false, isWritable: false },
+        { pubkey: this.whitelistPDA(playerPk), isSigner: false, isWritable: false },
+        { pubkey: this.roomSessionPDA(playerPk), isSigner: false, isWritable: true },
+        { pubkey: this.roomSessionLockPDA(playerPk), isSigner: false, isWritable: true },
+        { pubkey: web3.SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: OPEN_ROOM_SESSION,
+    });
+    const extra = playerKp && !playerKp.publicKey.equals(this.provider.wallet.publicKey) ? [playerKp] : [];
+    await this.sendSigned([ix], extra);
+  }
+
+  /**
+   * Owner authorizes `session` for this room. The session key is whitelisted
+   * and is the key that sits. The owner can sit at many tables, and only one
+   * of their session keys can occupy a given table.
+   */
+  async openDelegatedRoomSession(owner: web3.Keypair, session: web3.Keypair): Promise<void> {
+    const existing = await this.provider.connection.getAccountInfo(this.roomSessionPDA(session.publicKey));
+    if (existing) return;
+    const ix = new web3.TransactionInstruction({
+      programId: this.pokerProgram.programId,
+      keys: [
+        { pubkey: this.provider.wallet.publicKey, isSigner: true, isWritable: true },
+        { pubkey: owner.publicKey, isSigner: true, isWritable: false },
+        { pubkey: session.publicKey, isSigner: true, isWritable: false },
+        { pubkey: this.roomPDA(), isSigner: false, isWritable: false },
+        { pubkey: this.whitelistPDA(owner.publicKey), isSigner: false, isWritable: false },
+        { pubkey: this.whitelistPDA(session.publicKey), isSigner: false, isWritable: true },
+        { pubkey: this.roomSessionPDA(session.publicKey), isSigner: false, isWritable: true },
+        { pubkey: this.roomSessionLockPDA(owner.publicKey), isSigner: false, isWritable: true },
+        { pubkey: web3.SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: OPEN_DELEGATED_ROOM_SESSION,
+    });
+    const extra = [owner, session].filter(
+      (kp) => !kp.publicKey.equals(this.provider.wallet.publicKey),
+    );
+    await this.sendSigned([ix], extra);
+  }
+
+  /**
+   * Reclaim a session that is not seated. `ownerKp` signs when the owner is
+   * not the provider wallet. For a self-session the player key is the owner.
+   */
+  async closeRoomSession(
+    session: web3.PublicKey | web3.Keypair,
+    ownerKp?: web3.Keypair,
+  ): Promise<void> {
+    const sessionKp = 'secretKey' in (session as object) ? (session as web3.Keypair) : null;
+    const sessionPk = sessionKp ? sessionKp.publicKey : (session as web3.PublicKey);
+    const owner = ownerKp?.publicKey ?? await this.sessionOwner(sessionPk);
+    const ix = new web3.TransactionInstruction({
+      programId: this.pokerProgram.programId,
+      keys: [
+        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: this.roomSessionPDA(sessionPk), isSigner: false, isWritable: true },
+      ],
+      data: CLOSE_ROOM_SESSION,
+    });
+    const extra = [ownerKp, sessionKp].filter(
+      (kp): kp is web3.Keypair => !!kp
+        && kp.publicKey.equals(owner)
+        && !kp.publicKey.equals(this.provider.wallet.publicKey),
+    );
+    await this.sendSigned([ix], extra.slice(0, 1));
+  }
+
   async sitAtTable(
     tableId: bigint,
     physicalSeat: number,
@@ -575,6 +684,8 @@ export class OnchainRoomLifecycle {
   ): Promise<web3.PublicKey> {
     const playerKp = 'secretKey' in (player as object) ? (player as web3.Keypair) : null;
     const playerPk = playerKp ? playerKp.publicKey : (player as web3.PublicKey);
+    await this.openRoomSession(player);
+    const owner = await this.sessionOwner(playerPk);
     const tableState = this.tablePDA(tableId);
     const tableEscrow = this.tableEscrowPDA(playerPk, tableId);
     const builder = (this.pokerProgram.methods as any)
@@ -587,6 +698,8 @@ export class OnchainRoomLifecycle {
         tableState,
         roomWallet: this.roomWalletPDA(playerPk),
         tableEscrow,
+        roomSession: this.roomSessionPDA(playerPk),
+        roomSessionLock: this.roomSessionLockPDA(owner),
         systemProgram: web3.SystemProgram.programId,
       });
     if (playerKp && !playerKp.publicKey.equals(this.provider.wallet.publicKey)) {
@@ -932,6 +1045,7 @@ export class OnchainRoomLifecycle {
   }
 
   async leaveTable(tableId: bigint, player = this.provider.wallet.publicKey): Promise<void> {
+    const owner = await this.sessionOwner(player);
     await (this.pokerProgram.methods as any)
       .leaveTable()
       .accounts({
@@ -940,6 +1054,8 @@ export class OnchainRoomLifecycle {
         tableState: this.tablePDA(tableId),
         roomWallet: this.roomWalletPDA(player),
         tableEscrow: this.tableEscrowPDA(player, tableId),
+        roomSession: this.roomSessionPDA(player),
+        roomSessionLock: this.roomSessionLockPDA(owner),
       })
       .remainingAccounts(casinoVaultRemaining(player, this.pokerProgram.programId))
       .rpc();
@@ -948,6 +1064,7 @@ export class OnchainRoomLifecycle {
   async sitOut(tableId: bigint, player: web3.PublicKey | web3.Keypair = this.provider.wallet.publicKey): Promise<void> {
     const playerKp = 'secretKey' in (player as object) ? (player as web3.Keypair) : null;
     const playerPk = playerKp ? playerKp.publicKey : (player as web3.PublicKey);
+    const owner = await this.sessionOwner(playerPk);
     const ix = sitOutInstruction({
       casinoProgramId: this.pokerProgram.programId,
       player: playerPk,
@@ -955,6 +1072,8 @@ export class OnchainRoomLifecycle {
       tableState: this.tablePDA(tableId),
       roomWallet: this.roomWalletPDA(playerPk),
       tableEscrow: this.tableEscrowPDA(playerPk, tableId),
+      roomSession: this.roomSessionPDA(playerPk),
+      roomSessionLock: this.roomSessionLockPDA(owner),
     });
     const latest = await this.provider.connection.getLatestBlockhash('confirmed');
     const tx = new web3.Transaction({

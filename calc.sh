@@ -109,6 +109,7 @@ out_vk="zkey/${circuit_basename}_verification_key.json"
 
 # Setup and contribute stay in memory. The final key is written once.
 ${zkey_setup} "build/${circuit_basename}.r1cs" "${HOME}/ptau/powersOfTau28_hez_final${suffix}.ptau" "${out_zkey}" "${out_vk}" "1st Contributor Name"
+"$(cd "$(dirname "$0")" && pwd)/scripts/pack-zkey.sh" "${out_zkey}"
 
 # Isolated mains are proved on their own. Their short names are not the
 # witness files the game tests load (poker_share_main must not replace

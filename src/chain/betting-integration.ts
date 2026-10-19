@@ -38,6 +38,8 @@ import {
   SPL_MINT_DATA,
   SPL_TOKEN_ACCOUNT_DATA,
   TABLE_DATA,
+  ROOM_SESSION_DATA,
+  ROOM_SESSION_LOCK_DATA,
   TABLE_ESCROW_DATA,
   WHITELIST_DATA,
   operatorTableLamports,
@@ -388,6 +390,8 @@ export async function setupEncryptedBettingTable(
   for (let i = 0; i < numPlayers; i++) {
     const kp = players[i]!;
     await drawTableAccount(provider, kp, provider.wallet.publicKey, TABLE_ESCROW_DATA, rate);
+    await drawTableAccount(provider, kp, provider.wallet.publicKey, ROOM_SESSION_DATA, rate);
+    await drawTableAccount(provider, kp, provider.wallet.publicKey, ROOM_SESSION_LOCK_DATA, rate);
     await room.sitAtTable(tableId, i, fundedOnChain ? buyIn : 0n, kp);
     if (fundedOnChain && buyIn > 0n) {
       await room.transferPersonalToSeat(tableId, buyIn, kp);
@@ -608,6 +612,8 @@ export async function setupCasinoEncryptedTable(
     const kp = players[i]!;
     const physical = housePhysical !== null && i === numPlayers - 1 ? housePhysical : i;
     await drawTableAccount(provider, kp, provider.wallet.publicKey, TABLE_ESCROW_DATA, rate);
+    await drawTableAccount(provider, kp, provider.wallet.publicKey, ROOM_SESSION_DATA, rate);
+    await drawTableAccount(provider, kp, provider.wallet.publicKey, ROOM_SESSION_LOCK_DATA, rate);
     await room.sitAtTable(tableId, physical, buyIn, kp);
     const wallet = await room.fetchRoomWallet(kp.publicKey);
     const personal = BigInt((wallet.balanceU64 ?? wallet.balance_u64 ?? 0).toString());

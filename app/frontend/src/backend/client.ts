@@ -19,7 +19,7 @@ import { hasSolanaOpBridge } from './solana-bridge';
 // Browser-safe constant — do NOT import localnet-config (touches process.env).
 const CHAIN_CASINO_PROGRAM_ID = '4nPbWQkPAnSWMnSCAsuNicCGA86zrQKjzkZX7JFWRREY';
 
-/** Ops that sign on-chain with the local seat keypair (no shared session). */
+/** Ops that sign on-chain with this window's room session key. */
 export const SEATING_OPS = new Set([
   'joinGame',
   'join',

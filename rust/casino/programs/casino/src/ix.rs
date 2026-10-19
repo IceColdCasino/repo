@@ -9,6 +9,7 @@ use crate::casino_factory::{
 use crate::room::{Room, TableState};
 use crate::wallet::*;
 use crate::whitelist::{self, WhitelistEntry};
+use crate::session::{RoomSessionKey, RoomSessionLock};
 use crate::{ErrorCode, GameState, PlayerState};
 
 #[derive(Accounts)]
@@ -223,7 +224,113 @@ pub struct SitAtTable<'info> {
         bump
     )]
     pub table_escrow: Account<'info, TableEscrow>,
+    #[account(
+        mut,
+        seeds = [b"room_session", &room.room_id[..], player.key().as_ref()],
+        bump,
+        constraint = room_session.session == player.key() @ ErrorCode::InvalidSessionKey,
+        constraint = room_session.room_id == room.room_id @ ErrorCode::InvalidSessionKey,
+    )]
+    pub room_session: Account<'info, RoomSessionKey>,
+    #[account(
+        mut,
+        seeds = [b"room_session_lock", &room.room_id[..], room_session.owner.as_ref()],
+        bump,
+        constraint = room_session_lock.owner == room_session.owner @ ErrorCode::InvalidSessionKey,
+        constraint = room_session_lock.room_id == room.room_id @ ErrorCode::InvalidSessionKey,
+    )]
+    pub room_session_lock: Account<'info, RoomSessionLock>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct OpenRoomSession<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub owner: Signer<'info>,
+    #[account(seeds = [b"room", &room.room_id[..]], bump)]
+    pub room: Account<'info, Room>,
+    #[account(
+        seeds = [whitelist::WHITELIST_SEED, &room.room_id[..], owner.key().as_ref()],
+        bump,
+        constraint = owner_whitelist.room_id == room.room_id @ ErrorCode::NotWhitelisted,
+        constraint = owner_whitelist.player == owner.key() @ ErrorCode::NotWhitelisted,
+    )]
+    pub owner_whitelist: Account<'info, WhitelistEntry>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + RoomSessionKey::INIT_SPACE,
+        seeds = [b"room_session", &room.room_id[..], owner.key().as_ref()],
+        bump,
+    )]
+    pub room_session: Account<'info, RoomSessionKey>,
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = 8 + RoomSessionLock::INIT_SPACE,
+        seeds = [b"room_session_lock", &room.room_id[..], owner.key().as_ref()],
+        bump,
+    )]
+    pub room_session_lock: Account<'info, RoomSessionLock>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct OpenDelegatedRoomSession<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub owner: Signer<'info>,
+    pub session: Signer<'info>,
+    #[account(seeds = [b"room", &room.room_id[..]], bump)]
+    pub room: Account<'info, Room>,
+    #[account(
+        seeds = [whitelist::WHITELIST_SEED, &room.room_id[..], owner.key().as_ref()],
+        bump,
+        constraint = owner_whitelist.room_id == room.room_id @ ErrorCode::NotWhitelisted,
+        constraint = owner_whitelist.player == owner.key() @ ErrorCode::NotWhitelisted,
+    )]
+    pub owner_whitelist: Account<'info, WhitelistEntry>,
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = 8 + WhitelistEntry::INIT_SPACE,
+        seeds = [whitelist::WHITELIST_SEED, &room.room_id[..], session.key().as_ref()],
+        bump,
+    )]
+    pub session_whitelist: Account<'info, WhitelistEntry>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + RoomSessionKey::INIT_SPACE,
+        seeds = [b"room_session", &room.room_id[..], session.key().as_ref()],
+        bump,
+    )]
+    pub room_session: Account<'info, RoomSessionKey>,
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = 8 + RoomSessionLock::INIT_SPACE,
+        seeds = [b"room_session_lock", &room.room_id[..], owner.key().as_ref()],
+        bump,
+    )]
+    pub room_session_lock: Account<'info, RoomSessionLock>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CloseRoomSession<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(
+        mut,
+        close = owner,
+        seeds = [b"room_session", &room_session.room_id[..], room_session.session.as_ref()],
+        bump,
+        constraint = room_session.owner == owner.key() @ ErrorCode::InvalidSessionKey,
+        constraint = room_session.active_tables == 0 @ ErrorCode::SessionAlreadyPlaying,
+    )]
+    pub room_session: Account<'info, RoomSessionKey>,
 }
 
 #[cfg(feature = "testing")]

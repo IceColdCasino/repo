@@ -607,6 +607,8 @@ export function sitOutInstruction(args: {
   tableState: web3.PublicKey;
   roomWallet: web3.PublicKey;
   tableEscrow: web3.PublicKey;
+  roomSession: web3.PublicKey;
+  roomSessionLock: web3.PublicKey;
 }): web3.TransactionInstruction {
   return new web3.TransactionInstruction({
     programId: args.casinoProgramId,
@@ -616,6 +618,8 @@ export function sitOutInstruction(args: {
       { pubkey: args.tableState, isSigner: false, isWritable: true },
       { pubkey: args.roomWallet, isSigner: false, isWritable: true },
       { pubkey: args.tableEscrow, isSigner: false, isWritable: true },
+      { pubkey: args.roomSession, isSigner: false, isWritable: true },
+      { pubkey: args.roomSessionLock, isSigner: false, isWritable: true },
       ...casinoVaultRemaining(args.player, args.casinoProgramId),
     ],
     data: SIT_OUT,

@@ -2,6 +2,7 @@ import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { readFileSync } from 'node:fs';
 import type { Groth16Proof } from 'snarkjs';
 import { proverLibPath } from './prover-lib';
+import { plainZkeyPath } from './zkey-file';
 
 // Error codes
 const PROVER_OK = 0x0;
@@ -274,10 +275,11 @@ export class FileProver {
   private publicSize: number;
 
   constructor(zkeyPath: string) {
+    const plain = plainZkeyPath(zkeyPath);
     const errorMsgSize = 256;
     const errorMsgBuffer = new Uint8Array(errorMsgSize);
     const proverObjectBuffer = new BigUint64Array(1);
-    const pathBuf = encoder(zkeyPath);
+    const pathBuf = encoder(plain);
 
     const result = lib.symbols.groth16_prover_create_zkey_file(
       ptr(proverObjectBuffer),
@@ -292,7 +294,7 @@ export class FileProver {
     }
 
     this.proverObject = proverObjectBuffer[0]!;
-    const sizes = getBufferSizesFromFile(zkeyPath);
+    const sizes = getBufferSizesFromFile(plain);
     this.proofSize = sizes.proofSize;
     this.publicSize = sizes.publicSize;
   }
@@ -533,8 +535,9 @@ export function proveFromFile(
   zkeyPath: string,
   witnessData: Uint8Array,
 ): { proof: Groth16Proof; publicSignals: string[] } {
-  const { proofSize, publicSize } = getBufferSizesFromFile(zkeyPath);
-  const pathBuf = encoder(zkeyPath);
+  const plain = plainZkeyPath(zkeyPath);
+  const { proofSize, publicSize } = getBufferSizesFromFile(plain);
+  const pathBuf = encoder(plain);
 
   const proofBuffer = new Uint8Array(proofSize);
   const publicBuffer = new Uint8Array(publicSize);

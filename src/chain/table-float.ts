@@ -12,6 +12,9 @@ export const TABLE_DATA = 495;
 export const WHITELIST_DATA = 72;
 export const ROOM_WALLET_DATA = 184;
 export const TABLE_ESCROW_DATA = 177;
+/** Room session key (8 + 104) and the owner's per-table lock (8 + 72). */
+export const ROOM_SESSION_DATA = 112;
+export const ROOM_SESSION_LOCK_DATA = 80;
 export const PENDING_DEPOSIT_DATA = 80;
 export const PLAYER_GAME_ESCROW_DATA = 178;
 export const DEALER_POOL_DATA = 190;
@@ -36,7 +39,13 @@ export function seatTableLamports(
   lamportsPerByte = RENT_LAMPORTS_PER_BYTE,
   opts: { tokenAccount?: boolean; pendingDeposit?: boolean } = {},
 ): number {
-  const lengths = [WHITELIST_DATA, ROOM_WALLET_DATA, TABLE_ESCROW_DATA];
+  const lengths = [
+    WHITELIST_DATA,
+    ROOM_WALLET_DATA,
+    TABLE_ESCROW_DATA,
+    ROOM_SESSION_DATA,
+    ROOM_SESSION_LOCK_DATA,
+  ];
   if (opts.tokenAccount !== false) lengths.push(SPL_TOKEN_ACCOUNT_DATA);
   if (opts.pendingDeposit !== false) lengths.push(PENDING_DEPOSIT_DATA);
   return sumRent(lengths, lamportsPerByte);

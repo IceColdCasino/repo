@@ -1,6 +1,7 @@
 import { closeSync, openSync, readSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Prover, proveFromFile } from './rapidsnark-ffi';
+import { plainZkeyPath } from './zkey-file';
 
 export interface SharedZkeyBytes {
   path: string;
@@ -66,7 +67,7 @@ export function getSharedZkeyBytes(zkeyPath: string): SharedZkeyBytes {
   const existing = sharedZkeys.get(key);
   if (existing) return existing;
 
-  const entry = { path: key, bytes: readFileIntoSharedArrayBuffer(key) };
+  const entry = { path: key, bytes: readFileIntoSharedArrayBuffer(plainZkeyPath(key)) };
   sharedZkeys.set(key, entry);
   return entry;
 }
@@ -80,7 +81,7 @@ export function getSharedProver(zkeyPath: string): SharedProver {
   const existing = sharedProvers.get(key);
   if (existing) return existing.prover;
 
-  const fileSize = Bun.file(key).size;
+  const fileSize = Bun.file(plainZkeyPath(key)).size;
 
   if (fileSize > MAX_IN_MEMORY_ZKEY_BYTES) {
     const prover = createStatelessFileProver(key);

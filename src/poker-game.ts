@@ -370,9 +370,9 @@ export class Game {
     return parsed;
   }
 
-  /** Chips that must be posted before this hand's share. Ten small blinds. */
+  /** SOL posted before this hand's share. Independent of the blinds. */
   requiredShareStake(): bigint {
-    return requiredShareStake(this.smallBlindAmount);
+    return requiredShareStake(this.#numPlayers);
   }
 
   /**

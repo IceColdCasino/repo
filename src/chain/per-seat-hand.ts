@@ -36,6 +36,7 @@ import { loadLightCasinoProgram, loadCasinoProgram } from './program-loader';
 import { loadWhitelistAdminProvider } from './admin-provider';
 import { KeypairWallet } from './keypair-wallet';
 import { getSharedMetaStore, readSharedMeta, writeSharedMeta } from './shared-meta-store';
+import { postPlayerShareStake, releasePlayerShareStake } from './share-stake';
 import {
   PROOF_PHASE_REGISTER,
   PROOF_PHASE_SHARE,
@@ -1589,6 +1590,13 @@ export async function shareHandKeyPerSeat(opts: {
   }
 
   const connection = new web3.Connection(rpcUrl, 'confirmed');
+  try {
+  await postPlayerShareStake({
+    connection,
+    player: keypair,
+    gameId,
+    playerCount: hand.numPlayers,
+  });
   await stagePokerSeatFloat(connection, keypair.publicKey);
   const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
     commitment: 'confirmed',
@@ -1796,6 +1804,10 @@ export async function shareHandKeyPerSeat(opts: {
     allShared,
     finalized,
   };
+  } catch (err) {
+    await releasePlayerShareStake(connection, keypair).catch(() => undefined);
+    throw err;
+  }
 }
 
 export type PerSeatShowdownResult = {
@@ -2491,11 +2503,15 @@ export async function showdownHandKeyPerSeat(opts: {
       );
     }
     if (!alreadyFinalized) {
-      return softCompleteShowdownPerSeat({
+      const completed = await softCompleteShowdownPerSeat({
         secretKey: opts.secretKey,
         winnerMasks: opts.winnerMasks,
         rpcUrl: opts.rpcUrl,
       });
+      await releasePlayerShareStake(new web3.Connection(rpcUrl, 'confirmed'), keypair).catch(
+        () => undefined,
+      );
+      return completed;
     }
     console.log(
       `[per-seat] resuming Complete after on-chain showdown finalize p${playerIndex} `
@@ -2552,6 +2568,9 @@ export async function showdownHandKeyPerSeat(opts: {
     pokerProgram: adminPokerProgram,
     admin,
   });
+  await releasePlayerShareStake(new web3.Connection(rpcUrl, 'confirmed'), keypair).catch(
+    () => undefined,
+  );
   return { ok: true, playerIndex, phase: 'Complete' };
 }
 

@@ -19,6 +19,7 @@
   import CardHoverPreview from './CardHoverPreview.svelte';
   import AvatarHoverPreview from './AvatarHoverPreview.svelte';
   import { displayHandLifecycleStatus, formatHandLifecycleStatus } from './poker/hand-status';
+  import { requiredShareStake } from '@poker-src/poker-share-penalty';
   import {
     appendHandEvents,
     createHandEvent,
@@ -96,6 +97,15 @@
   } catch {}
 
   let backendKind = $state<BackendKind>('local');
+
+  function shareBondSol(): string {
+    const seated = gameState?.seats.length ?? 0;
+    const players = Math.max(2, Math.min(10, seated));
+    const lamports = requiredShareStake(players);
+    const whole = lamports / 1_000_000_000n;
+    const frac = (lamports % 1_000_000_000n).toString().padStart(9, '0').slice(0, 5);
+    return `${whole}.${frac}`;
+  }
 
   function onChain(kind: BackendKind = backendKind): boolean {
     return kind === 'solana' || kind === 'devnet';
@@ -3106,6 +3116,11 @@
           Sit
         </button>
       {/if}
+      {#if onChain()}
+        <span class="share-bond" data-testid="share-bond">
+          Room session · share bond {shareBondSol()} SOL
+        </span>
+      {/if}
     </div>
     <label class="raise">
       {onChain() ? 'Fund seat (faucet)' : 'Add chips'}
@@ -3292,6 +3307,11 @@
     display: flex;
     gap: 8px;
     align-items: center;
+  }
+
+  .share-bond {
+    font-size: 12px;
+    opacity: 0.85;
   }
 
   .sit-control {

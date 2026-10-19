@@ -1302,7 +1302,7 @@ export class ContinuousZkArcisHand {
         if (penalty) {
           const street = this.game.unsealChallenge?.street;
           throw new Error(
-            `share unseal penalty: street ${street} kicked [${penalty.kicked.join(', ')}], house pot ${penalty.houseFromPot}, house stake ${penalty.houseFromStake}`,
+            `share unseal penalty: street ${street} kicked [${penalty.kicked.join(', ')}], house pot ${penalty.houseFromPot}, players ${penalty.paidToPlayers.join(', ')}, protocol ${penalty.protocolLamports}`,
           );
         }
         return;

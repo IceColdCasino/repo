@@ -2,6 +2,7 @@ const std = @import("std");
 const build_options = @import("build_options");
 const zero_native = @import("zero-native");
 const main_thread = @import("main_thread_dispatch");
+const zkey_store = @import("zkey_store");
 
 const PROVER_OK: c_int = 0;
 const PROVER_ERROR_SHORT_BUFFER: c_int = 2;
@@ -751,11 +752,13 @@ pub const State = struct {
             return existing;
         }
 
+        const plain = try zkey_store.plainPath(self.allocator(), zkey_path);
+        defer self.allocator().free(plain);
         var err_buf: [256]u8 = undefined;
         var public_size: u64 = 0;
         logZkStep("loading zkey {s}", .{zkey_path});
         const load_start = monotonicNowNs();
-        const pub_size_rc = groth16_public_size_for_zkey_file(zkey_path.ptr, &public_size, &err_buf, err_buf.len);
+        const pub_size_rc = groth16_public_size_for_zkey_file(plain.ptr, &public_size, &err_buf, err_buf.len);
         if (pub_size_rc != PROVER_OK) {
             self.setProverErrorMsg(&err_buf);
             logZkStep("public_size_for_zkey_file failed rc={d} zkey={s} msg={s}", .{
@@ -767,7 +770,7 @@ pub const State = struct {
         }
 
         var prover_object: ?*anyopaque = null;
-        const create_rc = groth16_prover_create_zkey_file(@ptrCast(&prover_object), zkey_path.ptr, &err_buf, err_buf.len);
+        const create_rc = groth16_prover_create_zkey_file(@ptrCast(&prover_object), plain.ptr, &err_buf, err_buf.len);
         if (create_rc != PROVER_OK) {
             self.setProverErrorMsg(&err_buf);
             logZkStep("groth16_prover_create_zkey_file failed rc={d} zkey={s} msg={s}", .{
@@ -867,11 +870,13 @@ pub const State = struct {
         zkey: [:0]u8,
         witness: []const u8,
     ) !ProveOutput {
+        const plain = try zkey_store.plainPath(self.allocator(), zkey);
+        defer self.allocator().free(plain);
         const rs = try self.getOrOpenRapidsnark();
 
         var err_buf: [256]u8 = undefined;
         var public_size: u64 = 0;
-        const pub_size_rc = rs.public_size_for_zkey_file(zkey.ptr, &public_size, &err_buf, err_buf.len);
+        const pub_size_rc = rs.public_size_for_zkey_file(plain.ptr, &public_size, &err_buf, err_buf.len);
         if (pub_size_rc != PROVER_OK) {
             self.setProverErrorMsg(&err_buf);
             std.debug.print("[zk] public_size_for_zkey_file failed rc={d} zkey={s} msg={s}\n", .{
@@ -897,7 +902,7 @@ pub const State = struct {
 
         const wtns_ptr: [*]u8 = @constCast(witness.ptr);
         const prove_rc = rs.prover_zkey_file(
-            zkey.ptr,
+            plain.ptr,
             wtns_ptr,
             witness.len,
             proof_buffer.ptr,
@@ -912,7 +917,7 @@ pub const State = struct {
             proof_buffer = try self.allocator().realloc(proof_buffer, @intCast(proof_len));
             public_buffer = try self.allocator().realloc(public_buffer, @intCast(public_len));
             const retry = rs.prover_zkey_file(
-                zkey.ptr,
+                plain.ptr,
                 wtns_ptr,
                 witness.len,
                 proof_buffer.ptr,
@@ -1299,9 +1304,14 @@ const WarmZkeyJob = struct {
             logZkStep("zkey warm path failed {s} {s}", .{ job.circuit, @errorName(err) });
             return;
         };
+        const plain = zkey_store.plainPath(warm_job_allocator, zkey) catch |err| {
+            logZkStep("zkey warm expand failed {s} {s}", .{ job.circuit, @errorName(err) });
+            return;
+        };
+        defer warm_job_allocator.free(plain);
 
-        const file = clib.fopen(zkey.ptr, "rb") orelse {
-            logZkStep("zkey warm open failed {s}", .{zkey});
+        const file = clib.fopen(plain.ptr, "rb") orelse {
+            logZkStep("zkey warm open failed {s}", .{plain});
             return;
         };
         defer _ = clib.fclose(file);

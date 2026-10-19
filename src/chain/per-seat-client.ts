@@ -23,6 +23,8 @@ import { KeypairWallet } from './keypair-wallet';
 import { PokerRoomLifecycle } from './room/game-room-lifecycle';
 import { getSharedMetaStore, readSharedMeta, writeSharedMeta } from './shared-meta-store';
 import { isLocalCluster } from './fund-sol';
+import { ensureSeatLamports, releasePlayerShareStake } from './share-stake';
+import { seatTableLamports } from './table-float';
 
 /**
  * Deterministic room for dual-native / multi-client localnet play.
@@ -422,6 +424,11 @@ export class PerSeatClient {
     }
     await this.ensureWhitelisted();
     await this.ensureRoomWallet();
+    await ensureSeatLamports(
+      this.provider.connection,
+      this.keypair,
+      seatTableLamports(undefined, { tokenAccount: false, pendingDeposit: false }) + 50_000,
+    );
 
     const table = await this.room.fetchTable(this.tableId);
     const seats = table.seats as web3.PublicKey[];
@@ -442,16 +449,8 @@ export class PerSeatClient {
   }
 
   async stand(): Promise<GameSnapshot> {
-    await (this.pokerProgram.methods as any)
-      .leaveTable()
-      .accounts({
-        player: this.keypair.publicKey,
-        whitelistEntry: this.room.whitelistPDA(this.keypair.publicKey),
-        tableState: this.room.tablePDA(this.tableId),
-        roomWallet: this.room.roomWalletPDA(this.keypair.publicKey),
-        tableEscrow: this.room.tableEscrowPDA(this.keypair.publicKey, this.tableId),
-      })
-      .rpc();
+    await this.room.leaveTable(this.tableId, this.keypair.publicKey);
+    await releasePlayerShareStake(this.provider.connection, this.keypair).catch(() => undefined);
     return this.snapshot();
   }
 

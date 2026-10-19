@@ -3866,6 +3866,14 @@
         {
           "name": "table_escrow",
           "writable": true
+        },
+        {
+          "name": "room_session",
+          "writable": true
+        },
+        {
+          "name": "room_session_lock",
+          "writable": true
         }
       ],
       "args": []
@@ -5767,6 +5775,14 @@
           "writable": true
         },
         {
+          "name": "room_session",
+          "writable": true
+        },
+        {
+          "name": "room_session_lock",
+          "writable": true
+        },
+        {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
@@ -5820,6 +5836,14 @@
         },
         {
           "name": "table_escrow",
+          "writable": true
+        },
+        {
+          "name": "room_session",
+          "writable": true
+        },
+        {
+          "name": "room_session_lock",
           "writable": true
         }
       ],

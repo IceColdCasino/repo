@@ -651,14 +651,15 @@ mod circuits {
         )
     }
 
-    /// Slash a bad share without revealing the chips.
+    /// Slash a bad share without revealing the pot.
     ///
-    /// `player_bets` and `share_stakes` are the encrypted contribution and the
-    /// encrypted share-integrity stake for each of the 10 seats. `cheater_mask`
-    /// is public because a street-hash mismatch is public. A set bit moves that
-    /// seat's bet and stake onto `house_balance`. A clear bit refunds both.
-    /// An empty mask, or a bit past `num_players`, changes nothing.
-    /// Only `accepted` is revealed.
+    /// `player_bets` is the encrypted contribution for each of the 10 seats.
+    /// `share_stakes` is passed through. The share stake is SOL and is settled
+    /// in public by `settle_share_penalty`, so this circuit does not add it to
+    /// the house. `cheater_mask` is public because a street-hash mismatch is
+    /// public. A set bit moves that seat's bet onto `house_balance`. A clear
+    /// bit refunds the bet. An empty mask, or a bit past `num_players`,
+    /// changes nothing. Only `accepted` is revealed.
     ///
     /// Plaintext mirror and tests: `share_penalty::apply_share_unseal_penalty`.
     #[instruction]
@@ -689,18 +690,16 @@ mod circuits {
         }
 
         let mut refunds = bets;
-        let mut stake_out = stakes;
+        let stake_out = stakes;
         if accepted {
             refunds = [0u64; 10];
-            stake_out = [0u64; 10];
             for seat in 0..10 {
                 if seat < n {
                     let cheated = (mask >> seat) % 2;
                     if cheated == 1 {
-                        house = house + bets[seat] + stakes[seat];
+                        house = house + bets[seat];
                     } else {
                         refunds[seat] = bets[seat];
-                        stake_out[seat] = stakes[seat];
                     }
                 }
             }

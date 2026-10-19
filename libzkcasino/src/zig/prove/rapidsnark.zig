@@ -1,5 +1,6 @@
 const std = @import("std");
 const paths_mod = @import("paths.zig");
+const zkey_store = @import("zkey_store.zig");
 const Fr = @import("../crypto/fr.zig").Fr;
 
 const PROVER_OK: c_int = 0;
@@ -108,7 +109,9 @@ pub const Prover = struct {
     public_cap: usize,
 
     pub fn open(lib: *Lib, zkey_path: [:0]const u8) !Prover {
-        const zkey = try readFileMalloc(zkey_path);
+        const plain = try zkey_store.plainPath(std.heap.c_allocator, zkey_path);
+        defer std.heap.c_allocator.free(plain);
+        const zkey = try readFileMalloc(plain);
         errdefer std.c.free(zkey.ptr);
         var err_buf: [512]u8 = undefined;
         @memset(&err_buf, 0);

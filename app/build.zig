@@ -95,6 +95,11 @@ pub fn build(b: *std.Build) void {
     const zk_bridge_mod = localModule(b, target, optimize, "src/zk_bridge.zig");
     zk_bridge_mod.addImport("zero-native", zero_native_mod);
     zk_bridge_mod.addImport("build_options", zk_options_mod);
+    zk_bridge_mod.addImport("zkey_store", b.createModule(.{
+        .root_source_file = b.path("../libzkcasino/src/zig/prove/zkey_store.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
     const main_thread_dispatch_mod = localModule(b, target, optimize, "src/main_thread_dispatch.zig");
     zk_bridge_mod.addImport("main_thread_dispatch", main_thread_dispatch_mod);
 

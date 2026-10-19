@@ -1,8 +1,8 @@
 //! Plaintext mirror of Arcis `apply_share_unseal_penalty`.
 //!
-//! The circuit reseals the same arrays. These tests are the check that a bad
-//! share pays the house and refunds everyone else without a fair hand moving
-//! chips.
+//! The circuit reseals the same arrays. A bad share pays the cheater's pot to
+//! the house and refunds everyone else. The share stake is SOL and stays out
+//! of this circuit; `settle_share_penalty` divides it. A fair hand moves no chips.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ShareUnsealPenalty {
@@ -33,18 +33,16 @@ pub fn apply_share_unseal_penalty(
     }
 
     let mut refunds = player_bets;
-    let mut stake_out = share_stakes;
+    let stake_out = share_stakes;
     if accepted {
         refunds = [0u64; 10];
-        stake_out = [0u64; 10];
         for seat in 0..10 {
             if seat < n {
                 let cheated = (mask >> seat) % 2;
                 if cheated == 1 {
-                    house = house + player_bets[seat] + share_stakes[seat];
+                    house = house + player_bets[seat];
                 } else {
                     refunds[seat] = player_bets[seat];
-                    stake_out[seat] = share_stakes[seat];
                 }
             }
         }
@@ -69,7 +67,7 @@ mod tests {
     }
 
     #[test]
-    fn one_cheater_loses_their_pot_and_stake() {
+    fn one_cheater_loses_their_pot() {
         let penalty = apply_share_unseal_penalty(
             row(&[20, 40, 60]),
             row(&[100, 100, 100]),
@@ -78,9 +76,9 @@ mod tests {
             3,
         );
         assert!(penalty.accepted);
-        assert_eq!(penalty.house_balance, 1_140);
+        assert_eq!(penalty.house_balance, 1_040);
         assert_eq!(&penalty.refunds[..3], &[20, 0, 60]);
-        assert_eq!(&penalty.stakes_out[..3], &[100, 0, 100]);
+        assert_eq!(&penalty.stakes_out[..3], &[100, 100, 100]);
         assert_eq!(penalty.refunds[3], 0);
         assert_eq!(penalty.stakes_out[3], 0);
     }
@@ -95,11 +93,9 @@ mod tests {
             3,
         );
         assert!(penalty.accepted);
-        assert_eq!(penalty.house_balance, 260);
+        assert_eq!(penalty.house_balance, 60);
         assert_eq!(&penalty.refunds[..3], &[0, 30, 0]);
-        assert_eq!(penalty.stakes_out[1], 100);
-        assert_eq!(penalty.stakes_out[0], 0);
-        assert_eq!(penalty.stakes_out[2], 0);
+        assert_eq!(&penalty.stakes_out[..3], &[100, 100, 100]);
     }
 
     #[test]
