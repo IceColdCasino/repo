@@ -32,7 +32,7 @@ export function readNativeE2eConfigFromUrl(): NativeE2eBootstrap | null {
     seat,
     newWallet: params.get('e2eWallet') === 'new' || params.get('wallet') === 'new',
     startHand: params.get('e2eStartHand') === '1',
-    autoPlay: params.get('e2eAutoPlay') !== '0',
+    autoPlay: params.get('e2eAutoPlay') === '1',
   };
 }
 
@@ -69,7 +69,7 @@ export function readNativeLaunchConfigFromWindow(): NativeE2eBootstrap | null {
     seat,
     newWallet: cfg.newWallet === true,
     startHand: cfg.startHand === true,
-    autoPlay: cfg.autoPlay !== false,
+    autoPlay: cfg.autoPlay === true,
   };
 }
 
@@ -108,7 +108,7 @@ export async function readNativeLaunchConfigFromBridge(): Promise<NativeE2eBoots
       seat,
       newWallet: cfg.newWallet === true,
       startHand: cfg.startHand === true,
-      autoPlay: cfg.autoPlay !== false,
+      autoPlay: cfg.autoPlay === true,
     };
   } catch {
     return null;
@@ -156,6 +156,8 @@ export async function runNativeE2eBootstrap(options: {
   /** Bypass UI guards — call join/addChips HTTP directly. */
   joinSeat?: (seat: number) => Promise<void>;
   depositChips?: (amount: number) => Promise<void>;
+  /** Credit the personal account before sit. Sit then posts those chips. */
+  fundPersonal?: (amount: number) => Promise<void>;
   isSeatedAtTarget?: () => boolean;
   config: NativeE2eBootstrap;
 }): Promise<void> {
@@ -166,6 +168,18 @@ export async function runNativeE2eBootstrap(options: {
       return;
     }
     sessionStorage.removeItem(doneKey);
+  }
+
+  if (!options.config.autoPlay) {
+    logTiming(`native-e2e bootstrap seat=${options.config.seat} manual`);
+    const hydrated = await hydrateE2eWalletFromMeta();
+    if (!hydrated) {
+      getOrCreateLocalPublicKey();
+    }
+    options.selectSeat(options.config.seat);
+    await timeAsync(`native-e2e waitForReady seat=${options.config.seat}`, options.waitForReady);
+    sessionStorage.setItem(doneKey, '1');
+    return;
   }
 
   logTiming(`native-e2e bootstrap seat=${options.config.seat} start`);
@@ -200,15 +214,20 @@ export async function runNativeE2eBootstrap(options: {
     getOrCreateLocalPublicKey();
   }
   options.selectSeat(options.config.seat);
+  if (options.fundPersonal) {
+    await timeAsync(`native-e2e fundPersonal seat=${options.config.seat}`, () => options.fundPersonal!(5000));
+  }
   if (options.joinSeat) {
     await timeAsync(`native-e2e joinSeat seat=${options.config.seat}`, () => options.joinSeat!(options.config.seat));
   } else {
     await timeAsync(`native-e2e sitDown seat=${options.config.seat}`, options.sitDown);
   }
-  if (options.depositChips) {
-    await timeAsync(`native-e2e depositChips seat=${options.config.seat}`, () => options.depositChips!(5000));
-  } else {
-    await timeAsync(`native-e2e addChips seat=${options.config.seat}`, options.addChips);
+  if (!options.fundPersonal) {
+    if (options.depositChips) {
+      await timeAsync(`native-e2e depositChips seat=${options.config.seat}`, () => options.depositChips!(5000));
+    } else {
+      await timeAsync(`native-e2e addChips seat=${options.config.seat}`, options.addChips);
+    }
   }
   if (options.config.seat === 0) {
     void waitForNativePlayerReady(120_000).then((ready) => {

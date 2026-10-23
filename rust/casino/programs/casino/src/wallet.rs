@@ -114,6 +114,41 @@ pub struct TableEscrow {
     pub encryption_pubkey: [u8; 32],
 }
 
+#[derive(Debug)]
+pub enum TableEscrowSitError {
+    AlreadySeated,
+    ChipsStillLocked,
+}
+
+/// Open a seat escrow for `sit_at_table`.
+///
+/// `leave_table` clears the table seat and leaves this account allocated, so a
+/// later sit must reuse it. A live seat or a non-zero stack is refused so a
+/// retry cannot wipe chips.
+pub fn open_table_escrow(
+    escrow: &mut TableEscrow,
+    player: Pubkey,
+    room_id: [u8; 32],
+    table_id: u64,
+) -> std::result::Result<(), TableEscrowSitError> {
+    if escrow.is_seated {
+        return Err(TableEscrowSitError::AlreadySeated);
+    }
+    if escrow.balance_u64 != 0 || escrow.pending_buy_in != 0 {
+        return Err(TableEscrowSitError::ChipsStillLocked);
+    }
+    escrow.player = player;
+    escrow.room_id = room_id;
+    escrow.table_id = table_id;
+    escrow.balance_ciphertext = [0u8; 32];
+    escrow.nonce = 0;
+    escrow.is_seated = true;
+    escrow.balance_u64 = 0;
+    escrow.pending_buy_in = 0;
+    escrow.encryption_pubkey = [0u8; 32];
+    Ok(())
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct PlayerGameEscrow {
@@ -264,5 +299,75 @@ mod dual_ledger_mirror_tests {
         // Lock mirror matches Enc no-mint policy.
         assert_eq!(apply_lock_table_buyin(50, 0, 40), (10, 40));
         assert_eq!(apply_lock_table_buyin(30, 0, 40), (30, 0));
+    }
+}
+
+#[cfg(test)]
+mod open_table_escrow_tests {
+    use anchor_lang::prelude::Pubkey;
+    use super::{open_table_escrow, TableEscrow, TableEscrowSitError};
+
+    fn escrow() -> TableEscrow {
+        TableEscrow {
+            player: Pubkey::default(),
+            room_id: [0u8; 32],
+            table_id: 0,
+            balance_ciphertext: [0u8; 32],
+            nonce: 0,
+            is_seated: false,
+            balance_u64: 0,
+            pending_buy_in: 0,
+            encryption_pubkey: [0u8; 32],
+        }
+    }
+
+    #[test]
+    fn fresh_escrow_opens() {
+        let mut row = escrow();
+        let player = Pubkey::new_unique();
+        open_table_escrow(&mut row, player, [3u8; 32], 0).unwrap();
+        assert!(row.is_seated);
+        assert_eq!(row.player, player);
+        assert_eq!(row.table_id, 0);
+        assert_eq!(row.balance_u64, 0);
+    }
+
+    #[test]
+    fn stood_up_escrow_can_sit_again() {
+        let mut row = escrow();
+        row.player = Pubkey::new_unique();
+        row.room_id = [9u8; 32];
+        row.table_id = 0;
+        row.balance_ciphertext = [4u8; 32];
+        row.nonce = 11;
+        row.encryption_pubkey = [5u8; 32];
+        let player = Pubkey::new_unique();
+        open_table_escrow(&mut row, player, [3u8; 32], 0).unwrap();
+        assert!(row.is_seated);
+        assert_eq!(row.player, player);
+        assert_eq!(row.room_id, [3u8; 32]);
+        assert_eq!(row.balance_ciphertext, [0u8; 32]);
+        assert_eq!(row.nonce, 0);
+        assert_eq!(row.encryption_pubkey, [0u8; 32]);
+    }
+
+    #[test]
+    fn seated_escrow_is_refused() {
+        let mut row = escrow();
+        row.is_seated = true;
+        row.balance_u64 = 1000;
+        let err = open_table_escrow(&mut row, Pubkey::new_unique(), [1u8; 32], 0).unwrap_err();
+        assert!(matches!(err, TableEscrowSitError::AlreadySeated));
+        assert_eq!(row.balance_u64, 1000);
+    }
+
+    #[test]
+    fn leftover_chips_are_refused() {
+        let mut row = escrow();
+        row.balance_u64 = 40;
+        let err = open_table_escrow(&mut row, Pubkey::new_unique(), [1u8; 32], 0).unwrap_err();
+        assert!(matches!(err, TableEscrowSitError::ChipsStillLocked));
+        assert_eq!(row.balance_u64, 40);
+        assert!(!row.is_seated);
     }
 }

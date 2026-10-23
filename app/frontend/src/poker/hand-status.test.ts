@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   displayHandLifecycleStatus,
   formatBettingPhaseStatus,
+  formatElapsed,
   formatHandLifecycleBusyStatus,
   formatHandLifecycleStatus,
   formatHandStatus,
+  formatTableStatus,
   isHandLifecycleComplete,
+  renderTableStatus,
 } from './hand-status';
 import type { GameSnapshot } from '../backend/client';
 
@@ -280,5 +283,159 @@ describe('formatHandStatus after share', () => {
     expect(formatBettingPhaseStatus(snapshot, 0, 5)).toBe(
       'PreFlop · betting closed · share complete · board revealed: 20, 21, 22 · 5 partials cached',
     );
+  });
+});
+
+describe('formatTableStatus', () => {
+  const idle = { zkBusy: false, busy: false, statusMessage: '' };
+
+  it('says it is your turn on the local betting seat', () => {
+    const status = formatTableStatus({
+      ...idle,
+      snapshot: baseSnapshot({ currentPlayerSeat: 0, bettingRoundOpen: true }),
+      localSeat: 0,
+    });
+    expect(status.text).toBe("It's your turn");
+    expect(status.timed).toBe(false);
+    expect(renderTableStatus(status, 4_000)).toBe("It's your turn");
+  });
+
+  it("names the other seat's turn", () => {
+    const status = formatTableStatus({
+      ...idle,
+      snapshot: baseSnapshot({ currentPlayerSeat: 1, bettingRoundOpen: true }),
+      localSeat: 0,
+    });
+    expect(renderTableStatus(status, 0)).toBe("Seat 1's turn");
+  });
+
+  it('times a shuffle this seat is running', () => {
+    const status = formatTableStatus({
+      ...idle,
+      zkBusy: true,
+      snapshot: baseSnapshot({
+        phase: 'Shuffle',
+        zk: {
+          elGamalPublicKeys: [['1', '2'], ['3', '4']],
+          registeredCount: 2,
+          shuffledCount: 0,
+          sharedCount: 0,
+          currentShufflerIndex: 0,
+          currentShufflerSeat: 0,
+          hasSharedPartial: [false, false],
+        },
+      }),
+      localSeat: 0,
+    });
+    expect(status.text).toBe('Running shuffle');
+    expect(renderTableStatus(status, 12_400)).toBe('Running shuffle · 12s');
+  });
+
+  it("times the wait on another seat's shuffle", () => {
+    const status = formatTableStatus({
+      ...idle,
+      snapshot: baseSnapshot({
+        phase: 'Shuffle',
+        zk: {
+          elGamalPublicKeys: [['1', '2'], ['3', '4']],
+          registeredCount: 2,
+          shuffledCount: 0,
+          sharedCount: 0,
+          currentShufflerIndex: 1,
+          currentShufflerSeat: 1,
+          hasSharedPartial: [false, false],
+        },
+      }),
+      localSeat: 0,
+    });
+    expect(renderTableStatus(status, 65_000)).toBe("Waiting on seat 1's shuffle · 1:05");
+  });
+
+  it('times this seat running share and the wait for the other seat', () => {
+    const zk = {
+      elGamalPublicKeys: [['1', '2'], ['3', '4']] as Array<[string, string] | [null, null]>,
+      registeredCount: 2,
+      shuffledCount: 2,
+      sharedCount: 0,
+      requiredShares: 2,
+      currentShufflerIndex: null,
+      currentShufflerSeat: null,
+      hasSharedPartial: [false, false],
+    };
+    const running = formatTableStatus({
+      ...idle,
+      zkBusy: true,
+      snapshot: baseSnapshot({ phase: 'Share', playerIndexBySeat: { 0: 0, 1: 1 }, zk }),
+      localSeat: 0,
+    });
+    expect(running.text).toBe('Running share');
+    const waiting = formatTableStatus({
+      ...idle,
+      snapshot: baseSnapshot({
+        phase: 'Share',
+        playerIndexBySeat: { 0: 0, 1: 1 },
+        zk: { ...zk, hasSharedPartial: [true, false] },
+      }),
+      localSeat: 0,
+    });
+    expect(renderTableStatus(waiting, 3_000)).toBe("Waiting on seat 1's share · 3s");
+  });
+
+  it('times showdown while this seat is proving', () => {
+    const status = formatTableStatus({
+      ...idle,
+      zkBusy: true,
+      snapshot: baseSnapshot({
+        phase: 'Showdown',
+        zkShowdown: {
+          requested: true,
+          submittedCount: 0,
+          requiredCount: 1,
+          submittedSeats: [],
+          eligibleSeats: [0],
+          submitterSeat: 0,
+        },
+      }),
+      localSeat: 0,
+    });
+    expect(renderTableStatus(status, 8_000)).toBe('Running showdown · 8s');
+    expect(formatElapsed(8_000)).toBe('8s');
+  });
+
+  it('times hole-card viewing before betting opens', () => {
+    const status = formatTableStatus({
+      ...idle,
+      snapshot: baseSnapshot({ bettingRoundOpen: false, holesViewPending: true }),
+      localSeat: 0,
+    });
+    expect(status.text).toBe('Viewing hole cards');
+    expect(status.timed).toBe(true);
+  });
+
+  it('prompts the seat that still has to post a blind', () => {
+    const status = formatTableStatus({
+      snapshot: baseSnapshot({ bettingRoundOpen: false, currentBet: '0' }),
+      localSeat: 0,
+      zkBusy: false,
+      busy: false,
+      statusMessage: '',
+      blindPrompt: 'Post the small blind (10)',
+      blindPromptTone: 'you',
+    });
+    expect(status.text).toBe('Post the small blind (10)');
+    expect(status.tone).toBe('you');
+    expect(status.timed).toBe(false);
+  });
+
+  it('times a street advance', () => {
+    const status = formatTableStatus({
+      snapshot: baseSnapshot({ bettingRoundOpen: false }),
+      localSeat: 0,
+      zkBusy: false,
+      busy: true,
+      statusMessage: 'Advancing street…',
+    });
+    expect(status.text).toBe('Advancing street');
+    expect(status.timed).toBe(true);
   });
 });

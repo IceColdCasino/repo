@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
+import { setHandProgressListener } from '@poker-src/hand-progress';
 import type { GameSnapshot } from '../backend/client';
 import {
   isMyShowdownTurn,
@@ -9,10 +10,24 @@ import {
   needsRegistration,
   resolveShowdownSubmitterSeat,
   shouldWarmShowdownZkey,
+  shareDealDeck,
+  submitSharePartials,
+  submitShowdownProof,
   syncShareSubmittedFromSnapshot,
   type ZkHandClient,
   type ZkHandFlowState,
 } from './zk-hand-flow';
+
+describe('next-hand share deck', () => {
+  it('proves the 25-card deal from a 52-card shuffle shoe', () => {
+    const shoe = Array.from({ length: 52 }, (_, index) => [BigInt(index), 1n, 2n, 3n]);
+    const deal = shareDealDeck(shoe);
+    expect(deal).toHaveLength(25);
+    expect(deal[0]?.[0]).toBe(0n);
+    expect(deal[24]?.[0]).toBe(24n);
+    expect(deal[24]).toHaveLength(4);
+  });
+});
 
 describe('shouldWarmShowdownZkey', () => {
   it('does not warm on PreFlop / Flop / Turn after share', () => {
@@ -259,6 +274,25 @@ describe('resolveShowdownSubmitterSeat', () => {
     });
     expect(resolveShowdownSubmitterSeat(snapshot, provisionalResult)).toBe(1);
   });
+
+  it('names the best hand when the chain pot amount is still zero', () => {
+    const snapshot = showdownSnapshot({
+      pendingHandResult: {
+        handNumber: 1,
+        reason: 'showdown',
+        potResults: [{ potIndex: 0, amount: '0', winnerSeats: [1] }],
+        boardCards: [],
+        seatHands: [],
+        actionOrder: [0, 1],
+      },
+      zkShowdown: undefined,
+    });
+    expect(resolveShowdownSubmitterSeat(snapshot)).toBe(1);
+    const state = flowState();
+    state.showdownPreferenceUntil = Date.now() + 60_000;
+    expect(isMyShowdownTurn(snapshot, 1, state)).toBe(true);
+    expect(isMyShowdownTurn(snapshot, 0, state)).toBe(false);
+  });
 });
 
 describe('isMyShowdownTurn', () => {
@@ -298,7 +332,7 @@ describe('isMyShowdownTurn', () => {
     expect(isMyShowdownTurn(snapshot, 0, state)).toBe(true);
   });
 
-  it('uses the designated seat when no winner is determinable (avoids dual prove)', () => {
+  it('waits for a ranked winner before the designated seat proves', () => {
     const snapshot = showdownSnapshot({
       zkShowdown: {
         requested: true,
@@ -310,10 +344,14 @@ describe('isMyShowdownTurn', () => {
         outputHash: null,
       },
     });
-    const state = flowState();
-    state.showdownPreferenceUntil = Date.now() + 60_000;
-    expect(isMyShowdownTurn(snapshot, 0, state)).toBe(true);
-    expect(isMyShowdownTurn(snapshot, 1, state)).toBe(false);
+    const waiting = flowState();
+    waiting.showdownPreferenceUntil = Date.now() + 60_000;
+    expect(isMyShowdownTurn(snapshot, 0, waiting)).toBe(false);
+    expect(isMyShowdownTurn(snapshot, 1, waiting)).toBe(false);
+    const expired = flowState();
+    expired.showdownPreferenceUntil = Date.now() - 1;
+    expect(isMyShowdownTurn(snapshot, 0, expired)).toBe(true);
+    expect(isMyShowdownTurn(snapshot, 1, expired)).toBe(false);
   });
 
   it('never lets the non-designated seat prove, even after the preference window', () => {
@@ -395,6 +433,7 @@ describe('maybeAdvanceZkHand during Showdown', () => {
     } satisfies ZkHandClient;
 
     const state = flowState();
+    state.showdownPreferenceUntil = Date.now() - 1;
     state.player = {
       setSealedCoefficients: vi.fn(),
       preloadShowdown: vi.fn(),
@@ -666,7 +705,7 @@ describe('maybeAdvanceZkHand during Showdown', () => {
     } satisfies ZkHandClient;
 
     const state = flowState();
-    state.showdownPreferenceUntil = Date.now() + 60_000;
+    state.showdownPreferenceUntil = Date.now() - 1;
     state.player = {
       setSealedCoefficients: vi.fn(),
       preloadShowdown: vi.fn(),
@@ -720,6 +759,7 @@ describe('maybeAdvanceZkHand during Showdown', () => {
     } satisfies ZkHandClient;
 
     const state = flowState();
+    state.showdownPreferenceUntil = Date.now() - 1;
     state.player = {
       setSealedCoefficients: vi.fn(),
       preloadShowdown: vi.fn(),
@@ -844,6 +884,7 @@ describe('maybeAdvanceZkHand during Showdown', () => {
       pi_c: ['33', '44', '1'],
     };
     const state = flowState();
+    state.showdownPreferenceUntil = Date.now() - 1;
     state.player = {
       ensureNativeCircuitsForPhase: vi.fn(async () => undefined),
       setSealedCoefficients: vi.fn(),
@@ -906,6 +947,7 @@ describe('maybeAdvanceZkHand during Showdown', () => {
       submitShowdown: vi.fn(),
     } satisfies ZkHandClient;
     const state = flowState();
+    state.showdownPreferenceUntil = Date.now() - 1;
     state.player = {
       ensureNativeCircuitsForPhase: vi.fn(async () => undefined),
       setSealedCoefficients: vi.fn(),
@@ -918,7 +960,7 @@ describe('maybeAdvanceZkHand during Showdown', () => {
     expect(state.player.showdownProve).not.toHaveBeenCalled();
   });
 
-  it('waits for on-chain showdown material before proving', async () => {
+  it('proves while on-chain showdown material is still publishing', async () => {
     const snapshot = showdownSnapshot({
       backend: 'solana',
       zkShowdown: {
@@ -945,9 +987,15 @@ describe('maybeAdvanceZkHand during Showdown', () => {
       materialComplete: false,
     };
     const ready = { ...pending, materialComplete: true };
-    const getShowdownMaterials = vi.fn()
-      .mockResolvedValueOnce(pending)
-      .mockResolvedValueOnce(ready);
+    let proveStarted = false;
+    let materialsPolledAfterProve = false;
+    let materialCalls = 0;
+    const getShowdownMaterials = vi.fn(async () => {
+      materialCalls += 1;
+      if (materialCalls === 1) return pending;
+      materialsPolledAfterProve = proveStarted;
+      return ready;
+    });
     const submitShowdown = vi.fn(async () => nextSnapshot);
     const client = {
       getGame: vi.fn(async () => snapshot),
@@ -957,11 +1005,361 @@ describe('maybeAdvanceZkHand during Showdown', () => {
       getShowdownMaterials,
       submitShowdown,
     } satisfies ZkHandClient;
-    const showdownProve = vi.fn(async () => ({
+    const showdownProve = vi.fn(async () => {
+      proveStarted = true;
+      return {
+        proof: {},
+        publicSignals: ['1'],
+        winnerMasks: [1n],
+      };
+    });
+    const state = flowState();
+    state.showdownPreferenceUntil = Date.now() - 1;
+    state.player = {
+      ensureNativeCircuitsForPhase: vi.fn(async () => undefined),
+      setSealedCoefficients: vi.fn(),
+      preloadShowdown: vi.fn(),
+      showdownProve,
+    } as unknown as ZkHandFlowState['player'];
+
+    const progress: string[] = [];
+    setHandProgressListener((message) => {
+      progress.push(message);
+    });
+    const result = await maybeAdvanceZkHand(client, 'solana-table', snapshot, 0, state);
+    setHandProgressListener(null);
+    expect(result).toBe(nextSnapshot);
+    expect(getShowdownMaterials).toHaveBeenCalledTimes(2);
+    expect(materialsPolledAfterProve).toBe(true);
+    expect(showdownProve).toHaveBeenCalledOnce();
+    expect(submitShowdown).toHaveBeenCalledOnce();
+    expect(progress[0]).toBe('Showdown witness generation starting (seat 0)');
+    expect(progress.some((line) => line.startsWith('Showdown proof finished (seat 0,'))).toBe(true);
+    const witnessAt = progress.findIndex((line) => line.includes('witness generation starting'));
+    const finishedAt = progress.findIndex((line) => line.startsWith('Showdown proof finished'));
+    expect(witnessAt).toBeGreaterThanOrEqual(0);
+    expect(finishedAt).toBeGreaterThan(witnessAt);
+  });
+});
+
+afterEach(() => {
+  setHandProgressListener(null);
+});
+
+describe('prove once per statement', () => {
+  it('resubmits a share proof without proving again', async () => {
+    const card = ['1', '2', '3', '4'];
+    const snapshot = shareSnapshot({
+      zk: {
+        phase: 'Share',
+        shuffleOrder: [1, 0],
+        shuffleStep: 2,
+        shuffleInputHash: null,
+        currentShufflerIndex: null,
+        currentShufflerSeat: null,
+        registeredCount: 2,
+        shuffledCount: 2,
+        sharedCount: 0,
+        requiredShares: 2,
+        hasSharedPartial: [false, false],
+        elGamalPublicKeys: [['1', '2'], ['3', '4']],
+        cardsDealtFaceDown: true,
+        currentDeck: null,
+        shareDeck: [card],
+      },
+    });
+    const shareProve = vi.fn(async () => ({
+      proof: { pi_a: ['1'] },
+      publicSignals: ['9'],
+      ciphertexts: [[[1n, 2n, 3n, 4n]]],
+    }));
+    const submitShare = vi.fn()
+      .mockRejectedValueOnce(new Error('Transaction simulation failed: custom program error: 0x1777'))
+      .mockResolvedValueOnce(snapshot);
+    const client = {
+      getGame: vi.fn(async () => snapshot),
+      registerHandKey: vi.fn(),
+      submitShuffle: vi.fn(),
+      submitShare,
+      getShowdownMaterials: vi.fn(),
+      submitShowdown: vi.fn(),
+    } satisfies ZkHandClient;
+    const state = flowState();
+    state.game = null;
+    state.player = {
+      publicKey: [1n, 2n],
+      padding: [0n, 0n, 0n, 0n],
+      ensureNativeCircuitsForPhase: vi.fn(async () => undefined),
+      preloadShare: vi.fn(),
+      shareProve,
+    } as unknown as ZkHandFlowState['player'];
+
+    await expect(submitSharePartials(client, 'game-1', 0, state, snapshot)).rejects.toThrow(/0x1777/);
+    await submitSharePartials(client, 'game-1', 0, state, snapshot);
+
+    expect(shareProve).toHaveBeenCalledOnce();
+    expect(submitShare).toHaveBeenCalledTimes(2);
+    expect(submitShare.mock.calls[1]?.[2]).toEqual({ pi_a: ['1'] });
+    expect(submitShare.mock.calls[1]?.[3]).toEqual(['9']);
+  });
+
+  it('proves share again after the verifier rejects the cached proof', async () => {
+    const card = ['1', '2', '3', '4'];
+    const snapshot = shareSnapshot({
+      zk: {
+        phase: 'Share',
+        shuffleOrder: [1, 0],
+        shuffleStep: 2,
+        shuffleInputHash: null,
+        currentShufflerIndex: null,
+        currentShufflerSeat: null,
+        registeredCount: 2,
+        shuffledCount: 2,
+        sharedCount: 0,
+        requiredShares: 2,
+        hasSharedPartial: [false, false],
+        elGamalPublicKeys: [['1', '2'], ['3', '4']],
+        cardsDealtFaceDown: true,
+        currentDeck: null,
+        shareDeck: [card],
+      },
+    });
+    let n = 0;
+    const shareProve = vi.fn(async () => {
+      n += 1;
+      return {
+        proof: { pi_a: [String(n)] },
+        publicSignals: [String(n)],
+        ciphertexts: [[[1n, 2n, 3n, 4n]]],
+      };
+    });
+    const submitShare = vi.fn(async () => {
+      throw new Error('Transaction simulation failed: Error processing Instruction 2: invalid program argument.');
+    });
+    const client = {
+      getGame: vi.fn(async () => snapshot),
+      registerHandKey: vi.fn(),
+      submitShuffle: vi.fn(),
+      submitShare,
+      getShowdownMaterials: vi.fn(),
+      submitShowdown: vi.fn(),
+    } satisfies ZkHandClient;
+    const state = flowState();
+    state.game = null;
+    state.player = {
+      publicKey: [1n, 2n],
+      padding: [0n, 0n, 0n, 0n],
+      ensureNativeCircuitsForPhase: vi.fn(async () => undefined),
+      preloadShare: vi.fn(),
+      shareProve,
+    } as unknown as ZkHandFlowState['player'];
+
+    await expect(submitSharePartials(client, 'game-1', 0, state, snapshot)).rejects.toThrow(/invalid program argument/);
+    await expect(submitSharePartials(client, 'game-1', 0, state, snapshot)).rejects.toThrow(/invalid program argument/);
+    await expect(submitSharePartials(client, 'game-1', 0, state, snapshot)).rejects.toThrow(/invalid program argument/);
+
+    expect(shareProve).toHaveBeenCalledTimes(3);
+    expect(submitShare.mock.calls[2]?.[2]).toEqual({ pi_a: ['3'] });
+  });
+
+  it('proves share again when the deck changes', async () => {
+    const card = ['1', '2', '3', '4'];
+    const other = ['9', '8', '7', '6'];
+    const baseZk = {
+      phase: 'Share' as const,
+      shuffleOrder: [1, 0],
+      shuffleStep: 2,
+      shuffleInputHash: null,
+      currentShufflerIndex: null,
+      currentShufflerSeat: null,
+      registeredCount: 2,
+      shuffledCount: 2,
+      sharedCount: 0,
+      requiredShares: 2,
+      hasSharedPartial: [false, false] as boolean[],
+      elGamalPublicKeys: [['1', '2'], ['3', '4']] as Array<[string, string]>,
+      cardsDealtFaceDown: true,
+      currentDeck: null,
+      shareDeck: [card],
+    };
+    let deck = [card];
+    const shareProve = vi.fn(async () => ({
       proof: {},
       publicSignals: ['1'],
+      ciphertexts: [[[1n, 2n, 3n, 4n]]],
+    }));
+    const client = {
+      getGame: vi.fn(async () => shareSnapshot({ zk: { ...baseZk, shareDeck: deck } })),
+      registerHandKey: vi.fn(),
+      submitShuffle: vi.fn(),
+      submitShare: vi.fn(async () => {
+        throw new Error('Transaction simulation failed');
+      }),
+      getShowdownMaterials: vi.fn(),
+      submitShowdown: vi.fn(),
+    } satisfies ZkHandClient;
+    const state = flowState();
+    state.game = null;
+    state.player = {
+      publicKey: [1n, 2n],
+      padding: [0n, 0n, 0n, 0n],
+      ensureNativeCircuitsForPhase: vi.fn(async () => undefined),
+      preloadShare: vi.fn(),
+      shareProve,
+    } as unknown as ZkHandFlowState['player'];
+
+    await expect(submitSharePartials(client, 'game-1', 0, state, shareSnapshot())).rejects.toThrow();
+    deck = [other];
+    await expect(submitSharePartials(client, 'game-1', 0, state, shareSnapshot())).rejects.toThrow();
+    expect(shareProve).toHaveBeenCalledTimes(2);
+  });
+
+  it('proves the last shuffler against the deck shuffle published', async () => {
+    const stale = ['1', '2', '3', '4'];
+    const snapshot = shareSnapshot({
+      playerIndexBySeat: { 0: 1, 1: 0 },
+      zk: {
+        phase: 'Share',
+        shuffleOrder: [0, 1],
+        shuffleStep: 2,
+        shuffleInputHash: null,
+        currentShufflerIndex: null,
+        currentShufflerSeat: null,
+        registeredCount: 2,
+        shuffledCount: 2,
+        sharedCount: 0,
+        requiredShares: 2,
+        hasSharedPartial: [false, false],
+        elGamalPublicKeys: [['1', '2'], ['3', '4']],
+        cardsDealtFaceDown: true,
+        currentDeck: [stale],
+        shareDeck: [stale],
+      },
+    });
+    const shareProve = vi.fn(async () => ({
+      proof: { pi_a: ['1'] },
+      publicSignals: ['9'],
+      ciphertexts: [[[1n, 2n, 3n, 4n]]],
+    }));
+    const client = {
+      getGame: vi.fn(async () => snapshot),
+      registerHandKey: vi.fn(),
+      submitShuffle: vi.fn(),
+      submitShare: vi.fn(async () => snapshot),
+      getShowdownMaterials: vi.fn(),
+      submitShowdown: vi.fn(),
+    } satisfies ZkHandClient;
+    const state = flowState();
+    state.game = null;
+    state.preShareDeck = [[1n, 2n, 3n, 4n]];
+    state.finalShuffleDeck = [[9n, 8n, 7n, 6n]];
+    state.player = {
+      publicKey: [3n, 4n],
+      padding: [0n, 0n, 0n, 0n],
+      ensureNativeCircuitsForPhase: vi.fn(async () => undefined),
+      preloadShare: vi.fn(),
+      shareProve,
+    } as unknown as ZkHandFlowState['player'];
+
+    await submitSharePartials(client, 'game-1', 0, state, snapshot);
+
+    expect(shareProve).toHaveBeenCalledOnce();
+    expect(shareProve.mock.calls[0]?.[0]).toEqual([[9n, 8n, 7n, 6n]]);
+  });
+
+  it('proves share against the on-chain shoe when the remembered deck is from an earlier hand', async () => {
+    const chain = ['5', '6', '7', '8'];
+    const snapshot = shareSnapshot({
+      playerIndexBySeat: { 0: 0, 1: 1 },
+      zk: {
+        phase: 'Share',
+        shuffleOrder: [0, 1],
+        shuffleStep: 2,
+        shuffleInputHash: null,
+        currentShufflerIndex: null,
+        currentShufflerSeat: null,
+        registeredCount: 2,
+        shuffledCount: 2,
+        sharedCount: 0,
+        requiredShares: 2,
+        hasSharedPartial: [false, false],
+        elGamalPublicKeys: [['1', '2'], ['3', '4']],
+        cardsDealtFaceDown: true,
+        currentDeck: [chain],
+        shareDeck: [chain],
+      },
+    });
+    const shareProve = vi.fn(async () => ({
+      proof: { pi_a: ['1'] },
+      publicSignals: ['9'],
+      ciphertexts: [[[1n, 2n, 3n, 4n]]],
+    }));
+    const client = {
+      getGame: vi.fn(async () => snapshot),
+      registerHandKey: vi.fn(),
+      submitShuffle: vi.fn(),
+      submitShare: vi.fn(async () => snapshot),
+      getShowdownMaterials: vi.fn(),
+      submitShowdown: vi.fn(),
+    } satisfies ZkHandClient;
+    const state = flowState();
+    state.game = null;
+    state.finalShuffleDeck = [[9n, 8n, 7n, 6n]];
+    state.player = {
+      publicKey: [1n, 2n],
+      padding: [0n, 0n, 0n, 0n],
+      ensureNativeCircuitsForPhase: vi.fn(async () => undefined),
+      preloadShare: vi.fn(),
+      shareProve,
+    } as unknown as ZkHandFlowState['player'];
+
+    await submitSharePartials(client, 'game-1', 0, state, snapshot);
+
+    expect(shareProve).toHaveBeenCalledOnce();
+    expect(shareProve.mock.calls[0]?.[0]).toEqual([[5n, 6n, 7n, 8n]]);
+  });
+
+  it('resubmits a showdown proof without proving again', async () => {
+    const snapshot = showdownSnapshot({
+      backend: 'solana',
+      zkShowdown: {
+        requested: true,
+        requiredCount: 1,
+        eligibleSeats: [0],
+        submitterSeat: 0,
+        submittedCount: 0,
+        submittedSeats: [],
+        outputHash: null,
+      },
+    });
+    const ciphertext = ['1', '2', '3', '4'];
+    const materials = {
+      playerIndex: 0,
+      potMasks: ['1'],
+      finalDeck: Array.from({ length: 25 }, () => ciphertext),
+      ciphertextPartials: Array.from({ length: 25 }, () =>
+        Array.from({ length: 10 }, () => ciphertext),
+      ),
+      elGamalPublicKeys: [['1', '2'], ['3', '4']] as Array<[string, string]>,
+      sealedCoefficients: ['11', '22'],
+      materialComplete: true,
+    };
+    const showdownProve = vi.fn(async () => ({
+      proof: { pi_a: ['7'] },
+      publicSignals: ['8'],
       winnerMasks: [1n],
     }));
+    const submitShowdown = vi.fn()
+      .mockRejectedValueOnce(new Error('Transaction simulation failed'))
+      .mockResolvedValueOnce(snapshot);
+    const client = {
+      getGame: vi.fn(async () => snapshot),
+      registerHandKey: vi.fn(),
+      submitShuffle: vi.fn(),
+      submitShare: vi.fn(),
+      getShowdownMaterials: vi.fn(async () => materials),
+      submitShowdown,
+    } satisfies ZkHandClient;
     const state = flowState();
     state.player = {
       ensureNativeCircuitsForPhase: vi.fn(async () => undefined),
@@ -970,11 +1368,11 @@ describe('maybeAdvanceZkHand during Showdown', () => {
       showdownProve,
     } as unknown as ZkHandFlowState['player'];
 
-    const result = await maybeAdvanceZkHand(client, 'solana-table', snapshot, 0, state);
-    expect(result).toBe(nextSnapshot);
-    expect(getShowdownMaterials).toHaveBeenCalledTimes(2);
+    await expect(submitShowdownProof(client, 'game-1', 0, state, snapshot)).rejects.toThrow(/simulation failed/);
+    await submitShowdownProof(client, 'game-1', 0, state, snapshot);
     expect(showdownProve).toHaveBeenCalledOnce();
-    expect(submitShowdown).toHaveBeenCalledOnce();
+    expect(submitShowdown).toHaveBeenCalledTimes(2);
+    expect(submitShowdown.mock.calls[1]?.[2]).toEqual({ pi_a: ['7'] });
   });
 });
 

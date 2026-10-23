@@ -31,7 +31,7 @@ pub fn launchConfigHandler(context: *anyopaque, invocation: zero_native.bridge.I
     const auto_play_flag = if (auto_play) |value|
         std.mem.eql(u8, value, "1") or std.ascii.eqlIgnoreCase(value, "true")
     else
-        manual_setup;
+        false;
 
     var rpc_json_buf: [640]u8 = undefined;
     const rpc_json: []const u8 = if (solana_rpc) |value| blk: {

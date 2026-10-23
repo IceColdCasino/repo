@@ -89,9 +89,8 @@ export async function advanceStreetViaUI(
   if (before.bettingRoundOpen) {
     return;
   }
-  await expect(page.getByTestId('next-street')).toBeEnabled({ timeout: 15_000 });
-  await page.getByTestId('next-street').click();
-  await expect.poll(async () => (await fetchState(request)).phase, { timeout: 15_000 }).not.toBe(before.phase);
+  await expect(page.getByTestId('next-street')).toHaveCount(0);
+  await expect.poll(async () => (await fetchState(request)).phase, { timeout: 20_000 }).not.toBe(before.phase);
 }
 
 export async function waitForUiPhase(page: Page, phase: string, timeout = 20_000): Promise<void> {

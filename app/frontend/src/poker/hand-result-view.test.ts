@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { uncontestedWinnerIndex } from '@poker-src/backend/hand-result';
 import { buildHandResultView } from './hand-result-view';
 import type { HandResultSnapshot } from '../backend/client';
 
@@ -31,6 +32,16 @@ const sampleResult: HandResultSnapshot = {
   ],
   actionOrder: [0, 1],
 };
+
+describe('uncontested fold', () => {
+  it('names the last player and leaves an all-in runout contested', () => {
+    expect(uncontestedWinnerIndex(0b01, 2)).toBe(1);
+    expect(uncontestedWinnerIndex(0b10, 2)).toBe(0);
+    expect(uncontestedWinnerIndex(0, 2)).toBeNull();
+    expect(uncontestedWinnerIndex(0b11, 2)).toBeNull();
+    expect(uncontestedWinnerIndex(0b010, 3)).toBeNull();
+  });
+});
 
 describe('buildHandResultView', () => {
   it('shows pot winners and hand descriptions', () => {

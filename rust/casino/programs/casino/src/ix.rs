@@ -216,8 +216,10 @@ pub struct SitAtTable<'info> {
         bump
     )]
     pub room_wallet: Account<'info, RoomWallet>,
+    /// Reused after `leave_table`. That instruction clears the seat and keeps
+    /// this PDA, so a second sit must not `init` it again.
     #[account(
-        init,
+        init_if_needed,
         payer = payer,
         space = 8 + TableEscrow::INIT_SPACE,
         seeds = [b"table_escrow", player.key().as_ref(), &room.room_id[..], &table_state.table_id.to_le_bytes()],

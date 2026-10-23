@@ -1,6 +1,6 @@
 const std = @import("std");
 const paths_mod = @import("paths.zig");
-const zkey_store = @import("zkey_store.zig");
+const zkey_store = @import("zkey_store");
 const Fr = @import("../crypto/fr.zig").Fr;
 
 const PROVER_OK: c_int = 0;

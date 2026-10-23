@@ -122,6 +122,32 @@ export function dealerPlayerIndex(handNumPlayers: number): number {
   return handNumPlayers === 2 ? 0 : handNumPlayers - 1;
 }
 
+/** Physical seat of the button for this hand's seat order. */
+export function buttonSeatForHand(physicalSeats: readonly number[]): number | null {
+  if (physicalSeats.length === 0) {
+    return null;
+  }
+  const seat = physicalSeats[dealerPlayerIndex(physicalSeats.length)];
+  return seat === undefined ? null : seat;
+}
+
+/**
+ * Chips still behind a player. Seat escrow keeps the buy-in until settlement;
+ * `committed` is this hand's player_total_bets.
+ */
+export function stackBehind(escrow: bigint, committed: bigint): bigint {
+  if (committed <= 0n || escrow < committed) {
+    return escrow < 0n ? 0n : escrow;
+  }
+  return escrow - committed;
+}
+
+/** Seat stack after the pot is paid: buy-in minus chips committed, plus winnings. */
+export function stackAfterPayout(escrow: bigint, committed: bigint, winnings: bigint): bigint {
+  const won = winnings > 0n ? winnings : 0n;
+  return stackBehind(escrow, committed) + won;
+}
+
 /** Seat that closes action on a street (acts last). Preflop: BB. Postflop HU: SB/dealer. Postflop 3+: dealer. */
 export function actionClosingSeat(
   phase: 'PreFlop' | 'Flop' | 'Turn' | 'River',

@@ -1,19 +1,37 @@
 <script lang="ts">
-  import type { HandResultView } from './hand-result-view';
+  import type { HandResultView } from './poker/hand-result-view';
 
-  let { result }: { result: HandResultView | null } = $props();
+  let {
+    result,
+    canStartNewHand = false,
+    onStartNewHand,
+  }: {
+    result: HandResultView | null;
+    canStartNewHand?: boolean;
+    onStartNewHand?: () => void;
+  } = $props();
 </script>
 
-{#if result}
+{#if result || canStartNewHand}
   <div class="hand-result" data-testid="hand-result-panel">
-    <h3>Hand #{result.handNumber} complete</h3>
-    {#if result.reason === 'fold'}
+    <h3>{result ? `Hand #${result.handNumber} complete` : 'Hand complete'}</h3>
+    {#if canStartNewHand}
+      <button
+        type="button"
+        class="start-new-hand"
+        data-testid="start-new-hand"
+        onclick={() => onStartNewHand?.()}
+      >
+        Start new hand
+      </button>
+    {/if}
+    {#if result?.reason === 'fold'}
       <p class="summary">Hand ended by fold</p>
-    {:else}
+    {:else if result}
       <p class="summary">Showdown</p>
     {/if}
 
-    {#if result.pots.length > 0}
+    {#if result && result.pots.length > 0}
       <section>
         <h4>Pots</h4>
         <ul>
@@ -45,6 +63,7 @@
       </section>
     {/if}
 
+    {#if result}
     <section>
       <h4>Players</h4>
       <ul>
@@ -67,6 +86,7 @@
         {/each}
       </ul>
     </section>
+    {/if}
   </div>
 {/if}
 
@@ -96,6 +116,21 @@
   .summary {
     margin: 0 0 0.5rem;
     color: #cbd5e1;
+  }
+
+  .start-new-hand {
+    margin: 0.25rem 0 0.75rem;
+    padding: 0.45rem 0.9rem;
+    border: 0;
+    border-radius: 6px;
+    background: #15803d;
+    color: #f0fdf4;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .start-new-hand:hover {
+    background: #166534;
   }
 
   ul {

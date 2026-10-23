@@ -450,12 +450,17 @@ export function eventsFromSnapshotDiff(
   const baseline = clear ? null : prev;
   const events: HandEventLogEntry[] = [];
   const handNumber = next.handNumber ?? null;
+  // Opening a window onto a hand that is already over is not a new deal.
+  const alreadyFinished = baseline == null && next.phase === 'Complete';
 
-  if (clear || (baseline == null && next.handNumber != null && next.phase !== 'lobby')) {
+  if (
+    !alreadyFinished
+    && (clear || (baseline == null && next.handNumber != null && next.phase !== 'lobby'))
+  ) {
     events.push(createHandEvent('info', `Hand ${next.handNumber} started`, handNumber, at));
   }
 
-  if (baseline?.phase !== next.phase && next.phase !== 'lobby') {
+  if (!alreadyFinished && baseline?.phase !== next.phase && next.phase !== 'lobby') {
     if (!isForwardOrResetPhase(baseline?.phase, next.phase, clear)) {
       // Drop illegal mid-hand rollbacks (e.g. Shuffle → Register) from the UI log.
     } else if (baseline?.phase && baseline.phase !== 'lobby' && !clear) {
@@ -477,10 +482,12 @@ export function eventsFromSnapshotDiff(
 
   // Per-seat share events first (including Share→PreFlop where the completing
   // seat's hasSharedPartial flip used to be dropped when zkHand was nulled).
-  events.push(...zkMilestoneEvents(baseline, next, at));
-  events.push(...shareFinalizedEvents(baseline, next, at));
-  events.push(...bettingActionEvents(baseline, next, at));
-  events.push(...revealEvents(baseline, next, at));
+  if (!alreadyFinished) {
+    events.push(...zkMilestoneEvents(baseline, next, at));
+    events.push(...shareFinalizedEvents(baseline, next, at));
+    events.push(...bettingActionEvents(baseline, next, at));
+    events.push(...revealEvents(baseline, next, at));
+  }
   events.push(...resultEvents(baseline, next, at));
 
   return { clear, events };

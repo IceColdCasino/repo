@@ -38,9 +38,12 @@ export const SEATING_OPS = new Set([
   'submitShare',
   'share',
   'placeBet',
+  'expireBetTurn',
   'action',
   'submitShowdown',
   'showdown',
+  'settleFold',
+  'settleUncontestedFold',
   'getShowdownMaterials',
   'startHand',
   'start',
@@ -53,6 +56,7 @@ export const SEATING_OPS = new Set([
   'revealedPartials',
   'acknowledgeHoleCards',
   'ackHoles',
+  'sitOut',
 ]);
 
 /** Lifecycle ranks — chain phase must not be overwritten by a lagging worker. */
@@ -103,7 +107,14 @@ export function mergeWorkerIntoChainSnapshot(
 ): GameSnapshot {
   const workerPhase = worker.phase;
   const chainPhase = chainBase.phase;
-  const workerOk = isChainPhaseForward(chainPhase, workerPhase);
+  // An event can stamp PreFlop from betting_phase while the account is still
+  // Register or Shuffle. The account read is the proof-phase authority.
+  const workerStillShuffling =
+    workerPhase === 'Register' || workerPhase === 'Shuffle';
+  const chainJumpedToStreet =
+    chainPhase === 'PreFlop' || chainPhase === 'Flop' || chainPhase === 'Turn' || chainPhase === 'River';
+  const workerOk = isChainPhaseForward(chainPhase, workerPhase)
+    || (workerStillShuffling && chainJumpedToStreet);
   // Prefer worker when equal/ahead (materials + phase). Keep chain cursor when worker lags.
   const phase = workerOk ? workerPhase : chainPhase;
   const keepChainTurn = !workerOk || workerPhase === chainPhase;
@@ -138,6 +149,8 @@ export function mergeWorkerIntoChainSnapshot(
       zk: chainBase.zk ?? worker.zk,
       playerIndexBySeat: chainBase.playerIndexBySeat ?? worker.playerIndexBySeat,
       actionOrder: chainBase.actionOrder ?? worker.actionOrder,
+      callerPersonalEscrow: worker.callerPersonalEscrow ?? chainBase.callerPersonalEscrow,
+      actDeadlineUnix: chainBase.actDeadlineUnix ?? worker.actDeadlineUnix,
     };
   }
 
@@ -157,6 +170,7 @@ export function mergeWorkerIntoChainSnapshot(
     zk: worker.zk ?? chainBase.zk,
     playerIndexBySeat: worker.playerIndexBySeat ?? chainBase.playerIndexBySeat,
     actionOrder: worker.actionOrder ?? chainBase.actionOrder,
+    actDeadlineUnix: worker.actDeadlineUnix ?? chainBase.actDeadlineUnix,
   };
 }
 
@@ -171,6 +185,23 @@ export function mergeWorkerIntoChainSnapshot(
  * UI Showdown is phase=5 or betting_phase=5 (start_betting_round(5)).
  */
 export function phaseFromChainAdvanced(ev: PhaseAdvancedEvent): BettingPhase {
+  // Proof phase still owns the table through share. A betting_phase of
+  // PreFlop posted during Register must not paint a dealt hand.
+  switch (ev.phase) {
+    case 0:
+      return 'Register';
+    case 1:
+      return 'Shuffle';
+    case 2:
+      return 'Share';
+    default:
+      break;
+  }
+  // An uncontested finish leaves betting_phase on the last street dealt.
+  // That number must not keep the table on Flop, Turn, or River.
+  if (ev.phase === 4 || ev.phase === 6) {
+    return 'Complete';
+  }
   if (ev.bettingPhase >= 1 && ev.bettingPhase <= 4) {
     const labels = ['PreFlop', 'Flop', 'Turn', 'River'] as const;
     return labels[ev.bettingPhase - 1]!;
@@ -179,12 +210,6 @@ export function phaseFromChainAdvanced(ev: PhaseAdvancedEvent): BettingPhase {
     return 'Showdown';
   }
   switch (ev.phase) {
-    case 0:
-      return 'Register';
-    case 1:
-      return 'Shuffle';
-    case 2:
-      return 'Share';
     case 3:
       // Evaluation: share complete, await hole-ack + PreFlop MPC.
       return 'PreFlop';
@@ -232,7 +257,9 @@ function applyPhaseAdvancedToSnapshot(
     : (ev.bettingPhase ?? 0) >= 1
       ? false
       : snapshot.holesViewPending;
-  const streetBoardIndices = boardIndicesRevealedForUiPhase(nextPhase);
+  const streetBoardIndices = nextPhase === 'Complete' && (ev.bettingPhase ?? 0) < 5
+    ? []
+    : boardIndicesRevealedForUiPhase(nextPhase);
   const revealedCardIndices = [
     ...new Set([
       ...(snapshot.zkReveal?.revealedCardIndices ?? []),
@@ -245,7 +272,8 @@ function applyPhaseAdvancedToSnapshot(
       newlyRevealed: streetBoardIndices.filter(
         (idx) => !(snapshot.zkReveal?.revealedCardIndices ?? []).includes(idx),
       ),
-      allPartialsPublic: nextPhase === 'Showdown' || nextPhase === 'Complete'
+      allPartialsPublic: nextPhase === 'Showdown'
+        || (nextPhase === 'Complete' && (ev.bettingPhase ?? 0) >= 5)
         ? true
         : (snapshot.zkReveal?.allPartialsPublic ?? false),
       shareComplete: true,
@@ -271,11 +299,13 @@ function applyPhaseAdvancedToSnapshot(
     currentPlayerSeat,
     holesViewPending,
     zkReveal,
-    bettingRoundOpen: (ev.bettingPhase ?? 0) >= 1 && (ev.bettingPhase ?? 0) <= 4
-      ? true
-      : enteringHoleAck
-        ? false
-        : snapshot.bettingRoundOpen,
+    bettingRoundOpen: ev.phase === 4 || ev.phase === 6
+      ? false
+      : (ev.bettingPhase ?? 0) >= 1 && (ev.bettingPhase ?? 0) <= 4
+        ? true
+        : enteringHoleAck
+          ? false
+          : snapshot.bettingRoundOpen,
     seats: snapshot.seats.map((seat) => ({
       ...seat,
       active: seat.seat === currentPlayerSeat,
@@ -412,10 +442,9 @@ export function resolveSolanaRpcUrl(fallback = DEFAULT_SOLANA_RPC_URL): string {
     }
     const launch = (window as LaunchConfigWindow).__ZK_LAUNCH_CONFIG;
     if (typeof launch?.solanaRpc === 'string' && launch.solanaRpc.trim()) {
-      const url = launch.solanaRpc.trim().replace(/\/$/, '');
-      if (kind !== 'devnet' || !isLoopbackRpc(url)) {
-        return url;
-      }
+      // An explicit launch RPC is the one this window should use, including a
+      // local forwarder when the public devnet endpoints are rate-limiting.
+      return launch.solanaRpc.trim().replace(/\/$/, '');
     }
     const envRpc = import.meta.env.VITE_SOLANA_RPC;
     if (typeof envRpc === 'string' && envRpc.trim()) {
@@ -520,6 +549,9 @@ function applyPlayerActionToSnapshot(
     currentPlayerIndex: action.playerIndex,
     currentPlayerSeat,
     bettingRoundOpen,
+    actDeadlineUnix: action.actionKind === ActionKind.Bet && action.actDeadlineUnix > 0
+      ? action.actDeadlineUnix
+      : undefined,
     seats: snapshot.seats.map((seat) => ({
       ...seat,
       active: seat.seat === currentPlayerSeat,
@@ -558,6 +590,7 @@ export function applyBetEventToSnapshot(
       return seat;
     }
     let nextBet = seat.bet;
+    let nextChips = seat.chips;
     if (shouldApplyStreetBet && bet.amount > 0n) {
       let prev = 0n;
       try {
@@ -567,6 +600,12 @@ export function applyBetEventToSnapshot(
       }
       const updated = prev + bet.amount;
       nextBet = updated.toString();
+      try {
+        const stack = BigInt(seat.chips || '0');
+        nextChips = (stack > bet.amount ? stack - bet.amount : 0n).toString();
+      } catch {
+        nextChips = seat.chips;
+      }
       // Bet/raise (3/4) or all-in that grows the street bet raises the table bet.
       if (bet.action === 3 || bet.action === 4 || bet.action === 5) {
         try {
@@ -580,6 +619,7 @@ export function applyBetEventToSnapshot(
     }
     return {
       ...seat,
+      chips: nextChips,
       bet: nextBet,
       folded: bet.isFold ? true : seat.folded,
     };
@@ -788,6 +828,8 @@ export interface GameSnapshot {
   currentBet: string;
   currentPlayerSeat: number | null;
   currentPlayerIndex: number | null;
+  /** Unix seconds by which the current player must check, fold, or raise. */
+  actDeadlineUnix?: number;
   bettingRoundOpen: boolean;
   actionOrder?: number[];
   playerIndexBySeat?: Record<number, number>;
@@ -821,6 +863,10 @@ export interface PokerClient {
   healthCheck?(): Promise<ChainWorkerHealth>;
   createGame(smallBlind?: string, options?: { gameKind?: string }): Promise<GameSnapshot>;
   getDefaultGame(): Promise<GameSnapshot>;
+  /** Solana: rooms and tables currently on the cluster. */
+  listTableCatalog?(): Promise<import('@poker-src/chain/table-catalog').TableCatalog>;
+  /** Solana: point this window at an existing room and table. */
+  selectTable?(roomIdHex: string, tableId: string): Promise<GameSnapshot>;
   subscribeGame(gameId: string, onSnapshot: (snapshot: GameSnapshot) => void): () => void;
   joinGame(gameId: string, seat: number, publicKey: string, chips?: string): Promise<GameSnapshot>;
   standUp(gameId: string, publicKey: string): Promise<GameSnapshot>;
@@ -831,6 +877,8 @@ export interface PokerClient {
   transferPersonalToSeat?(gameId: string, publicKey: string, amount: string): Promise<GameSnapshot>;
   /** Solana: seat → personal (blocked mid-hand). */
   transferSeatToPersonal?(gameId: string, publicKey: string, amount: string): Promise<GameSnapshot>;
+  /** Solana: drop the in-hand flag between hands. The seat and chips stay. */
+  sitOut?(gameId: string): Promise<GameSnapshot>;
   startHand(gameId: string, options?: { gameKind?: string }): Promise<GameSnapshot>;
   registerHandKey(
     gameId: string,
@@ -861,9 +909,19 @@ export interface PokerClient {
     publicSignals: string[],
     winnerMasks?: Array<string | bigint>,
   ): Promise<GameSnapshot>;
+  /**
+   * Fold left one player. Close the hand and pay the pot.
+   * Returns null when the hand is still contested.
+   */
+  settleUncontestedFold?(
+    gameId: string,
+    seat: number,
+  ): Promise<GameSnapshot | 'wait' | null>;
   getGame(gameId: string): Promise<GameSnapshot>;
   acknowledgeHoleCards(gameId: string, seat: number): Promise<GameSnapshot>;
   placeBet(gameId: string, seat: number, action: BetAction, amount?: string): Promise<GameSnapshot>;
+  /** Fold the player who missed the one-minute on-chain decision window. */
+  expireBetTurn?(gameId: string): Promise<GameSnapshot | null>;
   advanceStreet(gameId: string, fromPhase?: BettingPhase): Promise<GameSnapshot>;
   /** Clears the local table (testing only — requires server admin reset). */
   resetTable?(): Promise<GameSnapshot>;
@@ -1370,6 +1428,14 @@ export class SolanaPokerClient implements PokerClient {
     });
   }
 
+  async listTableCatalog(): Promise<import('@poker-src/chain/table-catalog').TableCatalog> {
+    return this.tableOp('listTableCatalog');
+  }
+
+  async selectTable(roomIdHex: string, tableId: string): Promise<GameSnapshot> {
+    return this.tableOp('selectTable', { roomIdHex, tableId });
+  }
+
   async getDefaultGame(): Promise<GameSnapshot> {
     if (this.useBridge) {
       return this.tableOp('getDefaultGame', {}, { method: 'GET', path: '/api/games/default' });
@@ -1581,6 +1647,14 @@ export class SolanaPokerClient implements PokerClient {
     });
   }
 
+  async sitOut(gameId: string): Promise<GameSnapshot> {
+    void gameId;
+    return this.tableOp('sitOut', {}, {
+      path: '/api/game/sit-out',
+      jsonBody: {},
+    });
+  }
+
   async transferPersonalToSeat(
     gameId: string,
     publicKey: string,
@@ -1684,6 +1758,14 @@ export class SolanaPokerClient implements PokerClient {
     });
   }
 
+  async settleUncontestedFold(gameId: string, seat: number): Promise<GameSnapshot | 'wait' | null> {
+    void gameId;
+    const result = await this.tableOp<{ settled?: boolean; contested?: boolean }>('settleFold', { seat });
+    if (result?.settled) return this.getDefaultGame();
+    if (result?.contested === false) return 'wait';
+    return null;
+  }
+
   async submitShowdown(
     gameId: string,
     seat: number,
@@ -1737,6 +1819,13 @@ export class SolanaPokerClient implements PokerClient {
       path: '/api/game/ack-holes',
       jsonBody: { seat },
     });
+    return this.getDefaultGame();
+  }
+
+  async expireBetTurn(gameId: string): Promise<GameSnapshot | null> {
+    void gameId;
+    const result = await this.tableOp<{ expired?: boolean }>('expireBetTurn', {});
+    if (!result?.expired) return null;
     return this.getDefaultGame();
   }
 

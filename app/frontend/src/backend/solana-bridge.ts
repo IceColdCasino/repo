@@ -31,6 +31,8 @@ export type SolanaOpName =
   | 'transferToPersonal'
   | 'transferSeatToPersonal'
   | 'ensureRoom'
+  | 'listTableCatalog'
+  | 'selectTable'
   | 'start'
   | 'startHand'
   | 'register'
@@ -41,6 +43,7 @@ export type SolanaOpName =
   | 'submitShare'
   | 'action'
   | 'placeBet'
+  | 'expireBetTurn'
   | 'advance'
   | 'advanceStreet'
   | 'ackHoles'
@@ -74,6 +77,8 @@ export type SolanaOpRequest = {
   contents?: string;
   /** When true with ensureRoom — create a new table (E2E seat-occupied recovery). */
   forceFresh?: boolean;
+  roomIdHex?: string;
+  tableId?: string;
   rpcUrl?: string;
 };
 
@@ -148,17 +153,23 @@ async function ensureMetaStore(): Promise<void> {
     metaInstalled = true;
   }
   const diskRaw = readSharedMeta('shared-table');
-  let diskOk = false;
+  let disk: { roomSeed?: string; tableId?: string } | null = null;
   if (diskRaw) {
     try {
-      const disk = JSON.parse(diskRaw) as { roomSeed?: string; tableId?: string };
-      diskOk = Boolean(disk.roomSeed && disk.tableId !== undefined && `${disk.tableId}` !== '');
+      disk = JSON.parse(diskRaw) as { roomSeed?: string; tableId?: string };
     } catch {
-      diskOk = false;
+      disk = null;
     }
   }
+  const diskOk = Boolean(
+    disk?.roomSeed && disk.tableId !== undefined && `${disk.tableId}` !== '',
+  );
   const launch = resolveLaunchTableMeta();
-  if (!diskOk && launch) {
+  const sameRoom = Boolean(diskOk && launch && disk?.roomSeed === launch.roomSeed);
+  // A stored table from another room (an old localnet generation, or devnet
+  // meta while this window is on localnet) must not hide the launched table.
+  // The same room keeps disk so a host that advanced tableId stays in sync.
+  if (launch && (!diskOk || !sameRoom)) {
     writeSharedMeta(
       'shared-table',
       JSON.stringify(
@@ -171,18 +182,11 @@ async function ensureMetaStore(): Promise<void> {
         2,
       ),
     );
-  } else if (diskOk && launch) {
-    try {
-      const disk = JSON.parse(diskRaw!) as { tableId?: string };
-      if (String(disk.tableId) !== String(launch.tableId)) {
-        console.info(
-          `[solana-bridge] using disk shared-table tableId=${disk.tableId} `
-          + `(launch-config had ${launch.tableId})`,
-        );
-      }
-    } catch {
-      // ignore
-    }
+  } else if (sameRoom && String(disk?.tableId) !== String(launch?.tableId)) {
+    console.info(
+      `[solana-bridge] using disk shared-table tableId=${disk?.tableId} `
+      + `(launch-config had ${launch?.tableId})`,
+    );
   }
   // Keep store installed even if only launch seeded.
   void getSharedMetaStore();
@@ -246,7 +250,8 @@ export async function invokeSolanaOp<T = unknown>(req: SolanaOpRequest): Promise
     const opReq = { ...req, rpcUrl: req.rpcUrl ?? rpcUrl };
     const opTimeoutMs =
       req.op === 'health' ? 8_000
-      : req.op === 'getGame' || req.op === 'getDefaultGame' || req.op === 'snapshot' ? 20_000
+      : req.op === 'getGame' || req.op === 'getDefaultGame' || req.op === 'snapshot'
+        || req.op === 'listTableCatalog' || req.op === 'selectTable' ? 20_000
       : req.op === 'join' || req.op === 'joinGame' || req.op === 'faucet'
         || req.op === 'faucetCreditPersonal' || req.op === 'transferToSeat'
         || req.op === 'transferPersonalToSeat' ? 45_000

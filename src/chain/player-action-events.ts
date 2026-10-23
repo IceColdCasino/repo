@@ -38,6 +38,8 @@ export interface PlayerActionRequired {
   actionKind: ActionKindId;
   phase: number;
   bettingPhase: number;
+  /** Unix seconds. `0` when the event is not a betting decision. */
+  actDeadlineUnix: number;
 }
 
 export interface HandStartedEvent {
@@ -154,6 +156,7 @@ export function decodeAnchorEventPayload(raw: Uint8Array): {
     if (body.length < 36) {
       return null;
     }
+    const deadlineView = new DataView(body.buffer, body.byteOffset, body.byteLength);
     return {
       playerAction: {
         gameId: body.subarray(0, 32),
@@ -161,6 +164,7 @@ export function decodeAnchorEventPayload(raw: Uint8Array): {
         actionKind: body[33]! as ActionKindId,
         phase: body[34]!,
         bettingPhase: body[35]!,
+        actDeadlineUnix: body.length >= 44 ? Number(deadlineView.getBigInt64(36, true)) : 0,
       },
     };
   }

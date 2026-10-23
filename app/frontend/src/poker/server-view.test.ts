@@ -130,6 +130,46 @@ describe('snapshotFromServer board and hole visibility', () => {
     expect(view.playerCards).toEqual({});
   });
 
+  it('hides the board while shuffle has not finished, even if phase says PreFlop', () => {
+    const view = snapshotFromServer({
+      ...emptyGame([]),
+      phase: 'PreFlop',
+      dealerSeat: 0,
+      smallBlindSeat: 0,
+      bigBlindSeat: 1,
+      currentBet: '20',
+      currentPlayerSeat: 0,
+      currentPlayerIndex: 0,
+      bettingRoundOpen: true,
+      handNumber: 1,
+      actionOrder: [0, 1],
+      boardCards: [20, 21, 22, 23, 24],
+      holeCards: { 0: [0, 1], 1: [2, 3] },
+      seats: [
+        { seat: 0, name: 'A', publicKey: 'a', chips: '100', bet: '20', folded: false, active: true },
+        { seat: 1, name: 'B', publicKey: 'b', chips: '100', bet: '10', folded: false, active: false },
+      ],
+      zk: {
+        phase: 'Shuffle',
+        shuffleOrder: [0, 1],
+        shuffleStep: 0,
+        shuffleInputHash: null,
+        currentShufflerIndex: 0,
+        currentShufflerSeat: 0,
+        registeredCount: 2,
+        shuffledCount: 0,
+        sharedCount: 0,
+        requiredShares: 2,
+        elGamalPublicKeys: [['1', '2'], ['3', '4']],
+        cardsDealtFaceDown: false,
+        currentDeck: null,
+        shareDeck: null,
+      },
+    }, 0);
+    expect(view.sharedCards).toEqual([]);
+    expect(view.playerCards).toEqual({});
+  });
+
   it('shows five face-down board slots pre-flop during a ZK hand', () => {
     const view = snapshotFromServer({
       ...emptyGame([]),
@@ -419,10 +459,9 @@ describe('snapshotFromServer board and hole visibility', () => {
       ],
     });
 
-    expect(view.sharedCards.every((card) => card.unicode === '1F0A0')).toBe(true);
-    expect(view.sharedCards.every((card) => !card.flipped)).toBe(true);
-    // Must not look like deal-order faces (card id 20, 21, …).
-    expect(view.sharedCards[0]?.unicode).not.toBe(new Card(20).unicode);
+    expect(view.sharedCards).toHaveLength(0);
+    expect(view.playerCards[0]).toBeUndefined();
+    expect(view.playerCards[1]).toBeUndefined();
   });
 
   it('shows own holes face up during PreFlop once partials are unlocked', () => {
@@ -971,7 +1010,7 @@ describe('snapshotFromServer board and hole visibility', () => {
         handNumber: 1,
         reason: 'fold',
         potResults: [{ potIndex: 0, amount: '3', winnerSeats: [0] }],
-        boardCards: [20, 21, 22, 23, 24],
+        boardCards: [20, 21, 22],
         seatHands: [
           { seat: 0, playerIndex: 0, name: 'A', folded: false, holeCards: [0, 1], handDescription: 'Won uncontested' },
           { seat: 1, playerIndex: 1, name: 'B', folded: true, holeCards: [2, 3] },
@@ -999,7 +1038,8 @@ describe('snapshotFromServer board and hole visibility', () => {
     });
 
     expect(view.handComplete).toBe(true);
-    expect(view.sharedCards.every((card) => card.flipped)).toBe(true);
+    expect(view.sharedCards.slice(0, 3).every((card) => card.flipped)).toBe(true);
+    expect(view.sharedCards.slice(3).every((card) => !card.flipped)).toBe(true);
     expect(view.playerCards[0]?.every((card) => card.flipped)).toBe(true);
     expect(view.playerCards[1]?.every((card) => !card.flipped)).toBe(true);
     expect(view.pots[0]?.winnerPayouts?.[0]?.amount).toBe(3);
@@ -1073,10 +1113,9 @@ describe('snapshotFromServer board and hole visibility', () => {
         { seat: 1, name: 'Seat 1', folded: false, wonAmount: 0 },
       ],
     });
-    expect(withoutDecrypt.sharedCards).toHaveLength(5);
-    expect(withoutDecrypt.sharedCards.every((card) => !card.flipped && card.unicode === '1F0A0')).toBe(true);
-    expect(withoutDecrypt.playerCards[0]?.every((card) => !card.flipped && card.unicode === '1F0A0')).toBe(true);
-    expect(withoutDecrypt.playerCards[1]?.every((card) => !card.flipped && card.unicode === '1F0A0')).toBe(true);
+    expect(withoutDecrypt.sharedCards).toHaveLength(0);
+    expect(withoutDecrypt.playerCards[0]).toBeUndefined();
+    expect(withoutDecrypt.playerCards[1]).toBeUndefined();
 
     const decrypted = decryptedMap({
       0: 10, 1: 11, 2: 12, 3: 13, 20: 51, 21: 50, 22: 49, 23: 48, 24: 47,

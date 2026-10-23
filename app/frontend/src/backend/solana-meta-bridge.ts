@@ -12,6 +12,8 @@ import {
   type SharedMetaKey,
   type SharedMetaStore,
 } from '@poker-src/chain/shared-meta-store';
+import { mergeBlindPostsJson } from '../poker/blind-post';
+import { mergeSitOutJson, mergeStagedDeckJson, NEXT_HAND_DECK_KEY, NEXT_HAND_SITOUT_KEY } from '../poker/next-hand';
 
 type MetaResponse = {
   ok?: boolean;
@@ -118,6 +120,14 @@ export function mergeSharedHandMetaJson(local: string | null, incoming: string):
   return `${JSON.stringify(merged, null, 2)}\n`;
 }
 
+function mergeMetaValue(key: string, local: string | null, incoming: string): string {
+  if (key === 'shared-hand') return mergeSharedHandMetaJson(local, incoming);
+  if (key === 'blind-posts') return mergeBlindPostsJson(local, incoming);
+  if (key === NEXT_HAND_SITOUT_KEY) return mergeSitOutJson(local, incoming);
+  if (key === NEXT_HAND_DECK_KEY) return mergeStagedDeckJson(local, incoming);
+  return incoming;
+}
+
 /**
  * Install the active SharedMetaStore for WebView Solana ops.
  * Call `refreshWebViewMetaCache()` before ops that need dual-client hand/table meta.
@@ -150,12 +160,7 @@ export function installWebViewMetaStore(): SharedMetaStore {
         const raw = await metaInvoke({ action: 'get', key });
         if (typeof raw.value !== 'string') continue;
         const text = raw.encoding === 'base64' ? base64ToText(raw.value) : raw.value;
-        if (key === 'shared-hand') {
-          const merged = mergeSharedHandMetaJson(cache.get(key) ?? null, text);
-          cache.set(key, merged);
-        } else {
-          cache.set(key, text);
-        }
+        cache.set(key, mergeMetaValue(key, cache.get(key) ?? null, text));
       } catch {
         // missing key
       }
@@ -171,9 +176,7 @@ export function installWebViewMetaStore(): SharedMetaStore {
       return cache.has(key) ? cache.get(key)! : null;
     },
     write(key, data) {
-      const next = key === 'shared-hand'
-        ? mergeSharedHandMetaJson(cache.get(key) ?? null, data)
-        : data;
+      const next = mergeMetaValue(key, cache.get(key) ?? null, data);
       cache.set(key, next);
       const writePromise = metaInvoke({
         action: 'set',
@@ -239,12 +242,18 @@ export async function refreshWebViewMetaCache(
       const raw = await metaInvoke({ action: 'get', key });
       if (typeof raw.value === 'string' && store.__cacheSet) {
         const text = raw.encoding === 'base64' ? base64ToText(raw.value) : raw.value;
-        store.__cacheSet(key, text);
+        store.__cacheSet(key, mergeMetaValue(key, store.read(key), text));
       }
     } catch {
       // missing key
     }
   }
+}
+
+/** Write one `.local/<key>.json` file through the native bridge. */
+export async function writeNativeMetaFile(key: string, text: string): Promise<void> {
+  if (!hasMetaBridge()) return;
+  await metaInvoke({ action: 'set', key, value: bytesToBase64(text) });
 }
 
 /** Wait for in-flight `solana.meta` set/remove ops (no-op without bridge). */

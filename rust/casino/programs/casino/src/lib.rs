@@ -131,6 +131,435 @@ pub const ACTION_KIND_SHARE: u8 = 2;
 pub const ACTION_KIND_BET: u8 = 3;
 pub const ACTION_KIND_SHOWDOWN: u8 = 4;
 pub const ACTION_KIND_REVEAL: u8 = 5;
+pub const ACTION_KIND_NEXT_REGISTER: u8 = 6;
+pub const ACTION_KIND_NEXT_SHUFFLE: u8 = 7;
+pub const ACTION_KIND_NEXT_SHARE: u8 = 8;
+
+/// Next-hand pipeline. It opens when a poker street enters showdown.
+/// 0 closed, 1 register, 2 shuffle, 3 share, 4 ready for `start_hand`.
+pub const NEXT_HAND_CLOSED: u8 = 0;
+pub const NEXT_HAND_REGISTER: u8 = 1;
+pub const NEXT_HAND_SHUFFLE: u8 = 2;
+pub const NEXT_HAND_SHARE: u8 = 3;
+pub const NEXT_HAND_READY: u8 = 4;
+
+const HAND_PLAYER_CAP: usize = 10;
+
+/// Public keys and padding for the ten player indexes. Kept off `GameState`
+/// so deserializing a hand still fits in a 4KB stack frame.
+#[derive(Clone, Default)]
+struct RegistrationMaterial {
+    public_key: [[[u8; 32]; 2]; HAND_PLAYER_CAP],
+    padding: [[[u8; 32]; 4]; HAND_PLAYER_CAP],
+}
+
+/// One player: two 32-byte key limbs and four 32-byte padding limbs.
+const REG_SLOT_BYTES: usize = 192;
+const REG_TAIL_BYTES: usize = REG_SLOT_BYTES * HAND_PLAYER_CAP;
+
+fn heap_registration() -> Box<RegistrationMaterial> {
+    let layout = std::alloc::Layout::new::<RegistrationMaterial>();
+    unsafe {
+        let ptr = std::alloc::alloc_zeroed(layout) as *mut RegistrationMaterial;
+        assert!(!ptr.is_null(), "registration heap");
+        Box::from_raw(ptr)
+    }
+}
+
+fn read_registration_tail(src: &[u8], dst: &mut RegistrationMaterial) {
+    let mut offset = 0;
+    for player in 0..HAND_PLAYER_CAP {
+        for limb in 0..2 {
+            dst.public_key[player][limb].copy_from_slice(&src[offset..offset + 32]);
+            offset += 32;
+        }
+        for limb in 0..4 {
+            dst.padding[player][limb].copy_from_slice(&src[offset..offset + 32]);
+            offset += 32;
+        }
+    }
+}
+
+fn write_registration_tail(dst: &mut [u8], src: &RegistrationMaterial) {
+    let mut offset = 0;
+    for player in 0..HAND_PLAYER_CAP {
+        for limb in 0..2 {
+            dst[offset..offset + 32].copy_from_slice(&src.public_key[player][limb]);
+            offset += 32;
+        }
+        for limb in 0..4 {
+            dst[offset..offset + 32].copy_from_slice(&src.padding[player][limb]);
+            offset += 32;
+        }
+    }
+}
+
+/// Keys sit after the Borsh `GameState` payload so account load stays small.
+#[inline(never)]
+fn load_registration(info: &AccountInfo) -> Result<Box<RegistrationMaterial>> {
+    let mut material = heap_registration();
+    let data = info.try_borrow_data()?;
+    let start = 8 + GameState::INIT_SPACE;
+    let end = start + REG_TAIL_BYTES;
+    if data.len() >= end {
+        read_registration_tail(&data[start..end], &mut material);
+    }
+    Ok(material)
+}
+
+#[inline(never)]
+fn store_registration(info: &AccountInfo, material: &RegistrationMaterial) -> Result<()> {
+    let mut data = info.try_borrow_mut_data()?;
+    let start = 8 + GameState::INIT_SPACE;
+    let end = start + REG_TAIL_BYTES;
+    require!(data.len() >= end, ErrorCode::InvalidGamePhase);
+    write_registration_tail(&mut data[start..end], material);
+    Ok(())
+}
+
+fn joined_player_mask(n: u8) -> u16 {
+    if n == 0 || n >= 16 {
+        0
+    } else {
+        (1u16 << n) - 1
+    }
+}
+
+fn registration_material_ready(public_key: &[[u8; 32]; 2], padding: &[[u8; 32]; 4]) -> bool {
+    *public_key != [[0u8; 32]; 2] && *padding != [[0u8; 32]; 4]
+}
+
+fn remember_player_registration(
+    game_state: &mut GameState,
+    material: &mut RegistrationMaterial,
+    player_index: u8,
+    public_key: [[u8; 32]; 2],
+    padding: [[u8; 32]; 4],
+) -> Result<()> {
+    require!(
+        (player_index as usize) < HAND_PLAYER_CAP,
+        ErrorCode::InvalidGamePhase
+    );
+    require!(
+        registration_material_ready(&public_key, &padding),
+        ErrorCode::InvalidProof
+    );
+    let index = player_index as usize;
+    let bit = 1u16 << player_index;
+    if game_state.registered_mask & bit != 0 {
+        require!(
+            material.public_key[index] == public_key && material.padding[index] == padding,
+            ErrorCode::InvalidProof
+        );
+    } else {
+        material.public_key[index] = public_key;
+        material.padding[index] = padding;
+        game_state.registered_mask |= bit;
+    }
+    Ok(())
+}
+
+/// Open the next hand when poker betting enters showdown.
+///
+/// Every player in this hand must register and shuffle. When each of them
+/// already has a public key and padding, registration is reused and shuffle
+/// is open immediately.
+fn open_next_hand_on_showdown(game_state: &mut GameState) {
+    if game_state.betting_phase != 5 || game_state.next_hand_phase != NEXT_HAND_CLOSED {
+        return;
+    }
+    let n = game_state.num_players;
+    if n == 0 || n as usize > HAND_PLAYER_CAP {
+        return;
+    }
+    let joined = joined_player_mask(n);
+    let already = game_state.registered_mask & joined;
+    game_state.next_num_players = n;
+    game_state.next_shuffler = 0;
+    game_state.next_shuffled_mask = 0;
+    game_state.next_shared_mask = 0;
+    game_state.next_registered_mask = already;
+    game_state.next_hand_phase = if already == joined {
+        NEXT_HAND_SHUFFLE
+    } else {
+        NEXT_HAND_REGISTER
+    };
+}
+
+fn note_next_hand_registration(game_state: &mut GameState, player_index: u8) -> Result<()> {
+    require!(
+        game_state.next_hand_phase == NEXT_HAND_REGISTER,
+        ErrorCode::InvalidGamePhase
+    );
+    require!(
+        player_index < game_state.next_num_players,
+        ErrorCode::InvalidGamePhase
+    );
+    let bit = 1u16 << player_index;
+    require!(
+        game_state.next_registered_mask & bit == 0,
+        ErrorCode::PlayerAlreadyRegistered
+    );
+    require!(
+        game_state.registered_mask & bit != 0,
+        ErrorCode::InvalidProof
+    );
+    game_state.next_registered_mask |= bit;
+    if game_state.next_registered_mask == joined_player_mask(game_state.next_num_players) {
+        game_state.next_hand_phase = NEXT_HAND_SHUFFLE;
+        game_state.next_shuffler = 0;
+    }
+    Ok(())
+}
+
+pub(crate) fn register_next_hand_player(
+    game_state: &mut GameState,
+    material: &mut RegistrationMaterial,
+    player_state: &mut PlayerState,
+    public_key: [[u8; 32]; 2],
+    padding: [[u8; 32]; 4],
+) -> Result<()> {
+    let player_index = player_state.player_index;
+    remember_player_registration(game_state, material, player_index, public_key, padding)?;
+    player_state.public_key = public_key;
+    player_state.padding = padding;
+    if player_state.game_id == [0u8; 32] {
+        player_state.game_id = game_state.game_id;
+    }
+    note_next_hand_registration(game_state, player_index)
+}
+
+pub(crate) fn join_next_hand_shuffle(game_state: &mut GameState, player_index: u8) -> Result<()> {
+    require!(
+        game_state.next_hand_phase == NEXT_HAND_SHUFFLE,
+        ErrorCode::InvalidGamePhase
+    );
+    require!(
+        player_index < game_state.next_num_players,
+        ErrorCode::InvalidGamePhase
+    );
+    require!(player_index == game_state.next_shuffler, ErrorCode::NotYourTurn);
+    let bit = 1u16 << player_index;
+    require!(
+        game_state.next_registered_mask & bit != 0,
+        ErrorCode::InvalidGamePhase
+    );
+    require!(
+        game_state.next_shuffled_mask & bit == 0,
+        ErrorCode::InvalidGamePhase
+    );
+    game_state.next_shuffled_mask |= bit;
+    game_state.next_shuffler = game_state.next_shuffler.saturating_add(1);
+    if game_state.next_shuffled_mask == joined_player_mask(game_state.next_num_players) {
+        game_state.next_hand_phase = NEXT_HAND_SHARE;
+    }
+    Ok(())
+}
+
+pub(crate) fn join_next_hand_share(game_state: &mut GameState, player_index: u8) -> Result<()> {
+    require!(
+        game_state.next_hand_phase == NEXT_HAND_SHARE,
+        ErrorCode::InvalidGamePhase
+    );
+    require!(
+        player_index < game_state.next_num_players,
+        ErrorCode::InvalidGamePhase
+    );
+    let bit = 1u16 << player_index;
+    require!(
+        game_state.next_shuffled_mask & bit != 0,
+        ErrorCode::InvalidGamePhase
+    );
+    require!(
+        game_state.next_shared_mask & bit == 0,
+        ErrorCode::AlreadyShared
+    );
+    game_state.next_shared_mask |= bit;
+    if game_state.next_shared_mask == joined_player_mask(game_state.next_num_players) {
+        game_state.next_hand_phase = NEXT_HAND_READY;
+    }
+    Ok(())
+}
+
+fn snapshot_next_hand_seats(game_state: &mut GameState, table: &TableState) {
+    if game_state.next_seat_saved || game_state.next_num_players == 0 {
+        return;
+    }
+    let n = game_state.next_num_players as usize;
+    if n > game_state.next_seat_order.len() || n > table.hand_seat_order.len() {
+        return;
+    }
+    game_state.next_seat_order[..n].copy_from_slice(&table.hand_seat_order[..n]);
+    game_state.next_seat_saved = true;
+}
+
+/// The pot callback accepted this hand. Save the next-hand seats, mark the
+/// pot settled, and clear the table so the next hand can start.
+fn close_hand_after_pot_settlement(
+    game_state: &mut GameState,
+    table: &mut TableState,
+) -> Result<()> {
+    require!(
+        table.hand_in_progress && table.current_game_id == game_state.game_id,
+        ErrorCode::InvalidGamePhase
+    );
+    game_state.phase = 6;
+    game_state.settlement_status = SETTLEMENT_SETTLED;
+    snapshot_next_hand_seats(game_state, table);
+    table.end_hand();
+    Ok(())
+}
+
+fn require_next_hand_seat(
+    game_state: &GameState,
+    table: &TableState,
+    player_index: u8,
+    signer: &Pubkey,
+) -> Result<()> {
+    require!(
+        player_index < game_state.next_num_players,
+        ErrorCode::InvalidGamePhase
+    );
+    let seat = if game_state.next_seat_saved {
+        game_state.next_seat_order[player_index as usize]
+    } else if table.hand_in_progress && table.current_game_id == game_state.game_id {
+        table.hand_seat_order[player_index as usize]
+    } else {
+        return err!(ErrorCode::InvalidGamePhase);
+    };
+    require!(
+        (seat as usize) < table.seats.len(),
+        ErrorCode::InvalidSeat
+    );
+    require!(table.seats[seat as usize] == *signer, ErrorCode::NotSeated);
+    Ok(())
+}
+
+fn require_next_hand_table(ctx: &Context<NextHandPlayer>) -> Result<()> {
+    verify_whitelisted(
+        &ctx.accounts.whitelist_entry,
+        &ctx.accounts.table_state.room_id,
+        &ctx.accounts.player.key(),
+    )?;
+    require!(
+        ctx.accounts.game_state.table_room_id == ctx.accounts.table_state.room_id
+            && ctx.accounts.game_state.table_id == ctx.accounts.table_state.table_id,
+        ErrorCode::InvalidAuthority
+    );
+    Ok(())
+}
+
+fn prepare_next_hand_seat(
+    game_state: &mut GameState,
+    table: &TableState,
+    player_index: u8,
+    signer: &Pubkey,
+) -> Result<()> {
+    if !game_state.next_seat_saved
+        && table.hand_in_progress
+        && table.current_game_id == game_state.game_id
+    {
+        snapshot_next_hand_seats(game_state, table);
+    }
+    require_next_hand_seat(game_state, table, player_index, signer)
+}
+
+#[inline(never)]
+fn reindex_registrations_to_seat_order(
+    game_state: &mut GameState,
+    material: &mut RegistrationMaterial,
+    new_order: &[u8],
+    num_players: u8,
+) {
+    if !game_state.next_seat_saved {
+        return;
+    }
+    let n = (num_players as usize).min(HAND_PLAYER_CAP).min(new_order.len());
+    let old_n = (game_state.next_num_players as usize).min(game_state.next_seat_order.len());
+    let mut old = heap_registration();
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            material as *const RegistrationMaterial,
+            &mut *old as *mut RegistrationMaterial,
+            1,
+        );
+        std::ptr::write_bytes(material as *mut RegistrationMaterial, 0, 1);
+    }
+    let old_mask = game_state.registered_mask;
+    game_state.registered_mask = 0;
+    for new_index in 0..n {
+        let seat = new_order[new_index];
+        let Some(old_index) = game_state.next_seat_order[..old_n]
+            .iter()
+            .position(|old_seat| *old_seat == seat)
+        else {
+            continue;
+        };
+        material.public_key[new_index] = old.public_key[old_index];
+        material.padding[new_index] = old.padding[old_index];
+        if old_mask & (1u16 << old_index) != 0 {
+            game_state.registered_mask |= 1u16 << new_index;
+        }
+    }
+}
+
+fn accept_next_hand_for_start(game_state: &GameState, num_players: u8) -> Result<()> {
+    match game_state.next_hand_phase {
+        NEXT_HAND_CLOSED => Ok(()),
+        NEXT_HAND_READY => {
+            require!(
+                game_state.next_num_players == num_players,
+                ErrorCode::InvalidGamePhase
+            );
+            Ok(())
+        }
+        _ => err!(ErrorCode::InvalidGamePhase),
+    }
+}
+
+fn finish_next_hand_for_start(game_state: &mut GameState, num_players: u8, next_phase: u8) {
+    if next_phase == NEXT_HAND_READY {
+        game_state.phase = 3;
+        game_state.shared_mask = joined_player_mask(num_players);
+    }
+    game_state.next_hand_phase = NEXT_HAND_CLOSED;
+    game_state.next_num_players = 0;
+    game_state.next_shuffler = 0;
+    game_state.next_registered_mask = 0;
+    game_state.next_shuffled_mask = 0;
+    game_state.next_shared_mask = 0;
+    game_state.next_seat_saved = false;
+    game_state.next_seat_order = [0u8; HAND_PLAYER_CAP];
+}
+
+fn emit_next_hand_required(game_state: &GameState) {
+    let (kind, mask, sequential) = match game_state.next_hand_phase {
+        NEXT_HAND_REGISTER => (
+            ACTION_KIND_NEXT_REGISTER,
+            game_state.next_registered_mask,
+            false,
+        ),
+        NEXT_HAND_SHUFFLE => (ACTION_KIND_NEXT_SHUFFLE, game_state.next_shuffled_mask, true),
+        NEXT_HAND_SHARE => (ACTION_KIND_NEXT_SHARE, game_state.next_shared_mask, false),
+        _ => return,
+    };
+    for i in 0..game_state.next_num_players {
+        if sequential && i != game_state.next_shuffler {
+            continue;
+        }
+        if mask & (1u16 << i) != 0 {
+            continue;
+        }
+        emit!(PlayerActionRequired {
+            game_id: game_state.game_id,
+            player_index: i,
+            action_kind: kind,
+            phase: game_state.phase,
+            betting_phase: game_state.betting_phase,
+            act_deadline_unix: game_state.act_deadline_unix,
+        });
+    }
+}
 
 /// Escrow transfer kinds for [`EscrowFundedEvent`].
 #[cfg(feature = "testing")]
@@ -150,6 +579,7 @@ fn emit_player_action_required(game_state: &GameState) {
                     action_kind: ACTION_KIND_REGISTER,
                     phase: game_state.phase,
                     betting_phase: game_state.betting_phase,
+                    act_deadline_unix: game_state.act_deadline_unix,
                 });
             }
         }
@@ -165,6 +595,7 @@ fn emit_player_action_required(game_state: &GameState) {
                     action_kind: ACTION_KIND_SHARE,
                     phase: game_state.phase,
                     betting_phase: game_state.betting_phase,
+                    act_deadline_unix: game_state.act_deadline_unix,
                 });
             }
         }
@@ -180,9 +611,11 @@ fn emit_player_action_required(game_state: &GameState) {
                     action_kind: ACTION_KIND_SHOWDOWN,
                     phase: game_state.phase,
                     betting_phase: game_state.betting_phase,
+                    act_deadline_unix: game_state.act_deadline_unix,
                 });
             }
         }
+        emit_next_hand_required(game_state);
         return;
     }
 
@@ -202,6 +635,7 @@ fn emit_player_action_required(game_state: &GameState) {
         action_kind,
         phase: game_state.phase,
         betting_phase: game_state.betting_phase,
+        act_deadline_unix: game_state.act_deadline_unix,
     });
 }
 
@@ -288,6 +722,36 @@ fn is_legal_betting_phase_transition(from: u8, to: u8) -> bool {
     (from == 0 && to == 1) || (from == to && (1..=5).contains(&to))
 }
 
+/// Seconds a player has to check, fold, or raise once the turn is theirs.
+pub const BET_DECISION_SECONDS: i64 = 60;
+
+fn assign_action_deadline(game_state: &mut GameState, now: i64) {
+    if (1..=4).contains(&game_state.betting_phase) {
+        game_state.act_deadline_unix = now.saturating_add(BET_DECISION_SECONDS);
+    } else {
+        game_state.act_deadline_unix = 0;
+    }
+}
+
+fn action_is_in_time(deadline: i64, now: i64) -> bool {
+    deadline != 0 && now <= deadline
+}
+
+/// Arm or clear the turn clock. Host tests have no Clock sysvar, so they
+/// call [`assign_action_deadline`] with an explicit timestamp.
+fn note_betting_turn(game_state: &mut GameState) {
+    #[cfg(any(target_os = "solana", target_arch = "sbf"))]
+    {
+        if let Ok(clock) = Clock::get() {
+            assign_action_deadline(game_state, clock.unix_timestamp);
+        }
+    }
+    #[cfg(not(any(target_os = "solana", target_arch = "sbf")))]
+    {
+        let _ = game_state;
+    }
+}
+
 /// Open preflop only — streets advance exclusively via bet-callback
 /// [`advance_betting_street_on_chain`]. Callers never supply a phase.
 fn apply_open_preflop(game_state: &mut GameState) -> Result<()> {
@@ -301,6 +765,7 @@ fn apply_open_preflop(game_state: &mut GameState) -> Result<()> {
         game_state.all_in_mask,
     )
     .unwrap_or(0);
+    note_betting_turn(game_state);
     emit_phase_advanced(game_state);
     emit_player_action_required(game_state);
     Ok(())
@@ -323,11 +788,16 @@ fn is_betting_round_authority(authority: &Pubkey) -> bool {
 fn advance_betting_street_on_chain(game_state: &mut GameState) -> Result<()> {
     let from = game_state.betting_phase;
     let already_on_flop = game_state.reached_flop;
-    // Folded to one player, or river complete → showdown.
+    // One player left: no showdown. The pot (and any uncalled refund) is theirs.
     // A preflop fold never sets `reached_flop`, so the pot is not raked.
-    if active_player_count(game_state) <= 1 || from >= 4 {
+    if active_player_count(game_state) == 1 {
+        return close_uncontested_hand(game_state, from);
+    }
+    // River complete with players still contesting → showdown.
+    if from >= 4 {
         game_state.betting_phase = 5;
         game_state.phase = 5;
+        open_next_hand_on_showdown(game_state);
         game_state.current_bet = 0;
         game_state.last_aggressor = 0;
         game_state.last_aggressor_amount = 0;
@@ -335,6 +805,7 @@ fn advance_betting_street_on_chain(game_state: &mut GameState) -> Result<()> {
         // hand_commits tracks per-street bets during v2 betting.
         game_state.hand_commits = [0u64; 10];
         game_state.current_player = 0;
+        note_betting_turn(game_state);
         emit_street_advanced(game_state, from);
         emit_phase_advanced(game_state);
         emit_player_action_required(game_state);
@@ -357,7 +828,9 @@ fn advance_betting_street_on_chain(game_state: &mut GameState) -> Result<()> {
         if next >= 5 {
             game_state.betting_phase = 5;
             game_state.phase = 5;
+            open_next_hand_on_showdown(game_state);
             game_state.current_player = 0;
+            note_betting_turn(game_state);
             emit_street_advanced(game_state, from);
             emit_phase_advanced(game_state);
             emit_player_action_required(game_state);
@@ -370,6 +843,7 @@ fn advance_betting_street_on_chain(game_state: &mut GameState) -> Result<()> {
             game_state.all_in_mask,
         ) {
             game_state.current_player = first;
+            note_betting_turn(game_state);
             emit_street_advanced(game_state, from);
             emit_phase_advanced(game_state);
             emit_player_action_required(game_state);
@@ -381,6 +855,92 @@ fn advance_betting_street_on_chain(game_state: &mut GameState) -> Result<()> {
         take_flop_rake(game_state)?;
     }
     Ok(())
+}
+
+/// Fold left a single player. Credit that player and finish the hand.
+/// Showdown is not opened, and no showdown action is requested.
+fn close_uncontested_hand(game_state: &mut GameState, from: u8) -> Result<()> {
+    let mut winner: Option<u8> = None;
+    for i in 0..game_state.num_players {
+        if game_state.folded_mask & (1u16 << i) == 0 {
+            winner = Some(i);
+            break;
+        }
+    }
+    let winner = winner.unwrap_or(0);
+    let mut payouts = [0u64; 10];
+    let n = (game_state.num_players as usize).min(payouts.len());
+    for i in 0..n {
+        payouts[i] = game_state.refunds[i];
+    }
+    let mut pot_total = 0u64;
+    for amount in game_state.pots {
+        pot_total = pot_total.saturating_add(amount);
+    }
+    if (winner as usize) < payouts.len() {
+        payouts[winner as usize] = payouts[winner as usize].saturating_add(pot_total);
+    }
+    game_state.payouts = payouts;
+    game_state.phase = 6;
+    // Stay on the street that was open. Flop, turn, and river reveals key off
+    // `betting_phase`, so jumping to 6 would publish streets that were never dealt.
+    game_state.current_bet = 0;
+    game_state.last_aggressor = 0;
+    game_state.last_aggressor_amount = 0;
+    game_state.acted_mask = 0;
+    game_state.hand_commits = [0u64; 10];
+    game_state.current_player = winner;
+    game_state.act_deadline_unix = 0;
+    emit_street_advanced(game_state, from);
+    emit_phase_advanced(game_state);
+    Ok(())
+}
+
+/// Apply the street-close flag revealed by Arcis `validate_bet`.
+fn apply_arcis_street_decision(
+    game_state: &mut GameState,
+    player_index: u8,
+    action: u8,
+    raised: bool,
+    street_closed: bool,
+) -> Result<()> {
+    if game_state.betting_phase < 1 || game_state.betting_phase > 4 {
+        return Ok(());
+    }
+    if street_closed {
+        return advance_betting_street_on_chain(game_state);
+    }
+    record_street_acted(game_state, player_index, action, raised);
+    if let Some(next) = next_active_player(
+        player_index,
+        game_state.num_players,
+        game_state.folded_mask,
+        game_state.all_in_mask,
+    ) {
+        game_state.current_player = next;
+        note_betting_turn(game_state);
+        emit_player_action_required(game_state);
+    }
+    Ok(())
+}
+
+/// A missed decision window folds. A free check is sent by the client before
+/// the deadline, so the chain does not turn a timeout into a check.
+fn apply_timeout_action(game_state: &mut GameState) -> Result<u8> {
+    let player_index = game_state.current_player;
+    require!(player_index < game_state.num_players, ErrorCode::NotYourTurn);
+    require!(
+        (player_index as usize) < game_state.hand_commits.len(),
+        ErrorCode::InvalidSeat
+    );
+    require!(
+        game_state.folded_mask & (1u16 << player_index) == 0
+            && game_state.all_in_mask & (1u16 << player_index) == 0,
+        ErrorCode::InvalidBet
+    );
+    game_state.folded_mask |= 1u16 << player_index;
+    after_bet_update_turn(game_state, player_index, 0, false)?;
+    Ok(0)
 }
 
 /// After a validated bet: close street when matched+acted (or nobody can act), else next player.
@@ -425,12 +985,11 @@ fn after_bet_update_turn(game_state: &mut GameState, player_index: u8, action: u
         game_state.all_in_mask,
     )
     .is_none();
-    let matched_call_closes_heads_up = game_state.num_players == 2
-        && action == 2
-        && street_bets_matched(game_state);
+    // A heads-up limp matches the blind but is not the end of preflop. The big
+    // blind still checks or raises. Close only once everyone who can act has
+    // acted and the street bets match (or nobody is left to act).
     let street_done = active_player_count(game_state) <= 1
         || nobody_can_act
-        || matched_call_closes_heads_up
         || (all_can_act_have_acted(game_state) && street_bets_matched(game_state));
 
     if street_done {
@@ -444,6 +1003,7 @@ fn after_bet_update_turn(game_state: &mut GameState, player_index: u8, action: u
         game_state.all_in_mask,
     ) {
         game_state.current_player = next;
+        note_betting_turn(game_state);
         emit_player_action_required(game_state);
     }
     Ok(())
@@ -1439,6 +1999,21 @@ mod reveal_policy_tests {
     }
 
     #[test]
+    fn streets_past_the_open_one_cannot_be_revealed() {
+        // Preflop is still the open street: no board.
+        assert!(require_card_reveal_allowed(20, 2, 1, true, 0, 0, 0).is_err());
+        assert!(require_card_reveal_allowed(23, 2, 1, true, 0, 0, 0).is_err());
+        assert!(require_card_reveal_allowed(24, 2, 1, true, 0, 0, 0).is_err());
+        // Flop was dealt. Turn and river were not.
+        assert!(require_card_reveal_allowed(22, 2, 2, true, 0, 0, 0).is_ok());
+        assert!(require_card_reveal_allowed(23, 2, 2, true, 0, 0, 0).is_err());
+        assert!(require_card_reveal_allowed(24, 2, 3, true, 0, 0, 0).is_err());
+        // River betting and showdown have already dealt the river.
+        assert!(require_card_reveal_allowed(24, 2, 4, true, 0, 0, 0).is_ok());
+        assert!(require_card_reveal_allowed(24, 2, 5, true, 0, 0, 0).is_ok());
+    }
+
+    #[test]
     fn reveal_deck_account_must_be_game_staging_pda() {
         let program_id = crate::ID;
         let game_id = [9u8; 32];
@@ -1833,6 +2408,7 @@ fn mark_showdown_receipt(
     // `SealedShowdownCoefficients` PDA seeded by this index.
     game_state.showdown_hash_player = player_index;
     game_state.phase = 5; // Showdown
+    open_next_hand_on_showdown(game_state);
     // A verified showdown receipt is the sole transition into settlement.
     game_state.settlement_status = SETTLEMENT_PROOF_ACCEPTED;
     Ok(())
@@ -1945,6 +2521,253 @@ mod cpi_authority_tests {
 }
 
 #[cfg(test)]
+mod next_hand_tests {
+    use super::*;
+
+    fn material(byte: u8) -> ([[u8; 32]; 2], [[u8; 32]; 4]) {
+        let mut public_key = [[0u8; 32]; 2];
+        public_key[0][0] = byte;
+        public_key[1][0] = byte.wrapping_add(1);
+        let mut padding = [[0u8; 32]; 4];
+        padding[0][0] = byte.wrapping_add(7);
+        (public_key, padding)
+    }
+
+    fn store(
+        game: &mut GameState,
+        keys: &mut RegistrationMaterial,
+        player_index: u8,
+        byte: u8,
+    ) {
+        let (public_key, padding) = material(byte);
+        remember_player_registration(game, keys, player_index, public_key, padding).unwrap();
+    }
+
+    fn showdown_game(players: u8) -> GameState {
+        GameState {
+            num_players: players,
+            betting_phase: 4,
+            phase: 3,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn showdown_opens_register_until_every_joined_player_has_a_key() {
+        let mut game = showdown_game(2);
+        let mut keys = RegistrationMaterial::default();
+        store(&mut game, &mut keys, 0, 1);
+        advance_betting_street_on_chain(&mut game).unwrap();
+        assert_eq!(game.phase, 5);
+        assert_eq!(game.betting_phase, 5);
+        assert_eq!(game.next_hand_phase, NEXT_HAND_REGISTER);
+        assert_eq!(game.next_num_players, 2);
+        assert_eq!(game.next_registered_mask, 0b01);
+    }
+
+    #[test]
+    fn showdown_reuses_keys_when_every_joined_player_registered() {
+        let mut game = showdown_game(2);
+        let mut keys = RegistrationMaterial::default();
+        store(&mut game, &mut keys, 0, 1);
+        store(&mut game, &mut keys, 1, 2);
+        let kept = keys.public_key;
+        advance_betting_street_on_chain(&mut game).unwrap();
+        assert_eq!(game.phase, 5);
+        assert_eq!(game.next_hand_phase, NEXT_HAND_SHUFFLE);
+        assert_eq!(game.next_registered_mask, 0b11);
+        assert_eq!(keys.public_key, kept);
+    }
+
+    #[test]
+    fn pot_settlement_closes_the_table() {
+        let mut table = TableState::init([1u8; 32], 0, GameKind::Poker as u8, 1, 0);
+        table.assign_seat(0, Pubkey::new_unique()).unwrap();
+        table.assign_seat(1, Pubkey::new_unique()).unwrap();
+        table.refresh_pending_order();
+        let game_id = [9u8; 32];
+        table.snapshot_hand(game_id).unwrap();
+        let hand_order = table.hand_seat_order;
+
+        let mut game = showdown_game(2);
+        game.game_id = game_id;
+        game.phase = 5;
+        game.settlement_status = SETTLEMENT_PROOF_ACCEPTED;
+        game.next_num_players = 2;
+        game.next_hand_phase = NEXT_HAND_SHUFFLE;
+
+        close_hand_after_pot_settlement(&mut game, &mut table).unwrap();
+
+        assert!(!table.hand_in_progress);
+        assert_eq!(table.current_game_id, [0u8; 32]);
+        assert_eq!(table.hand_num_players, 0);
+        assert_eq!(game.phase, 6);
+        assert_eq!(game.settlement_status, SETTLEMENT_SETTLED);
+        assert!(game.next_seat_saved);
+        assert_eq!(game.next_seat_order[0], hand_order[0]);
+        assert_eq!(game.next_seat_order[1], hand_order[1]);
+    }
+
+    #[test]
+    fn pot_settlement_rejects_a_different_game() {
+        let mut table = TableState::init([1u8; 32], 0, GameKind::Poker as u8, 1, 0);
+        table.assign_seat(0, Pubkey::new_unique()).unwrap();
+        table.assign_seat(1, Pubkey::new_unique()).unwrap();
+        table.refresh_pending_order();
+        table.snapshot_hand([9u8; 32]).unwrap();
+
+        let mut game = showdown_game(2);
+        game.game_id = [8u8; 32];
+        assert!(close_hand_after_pot_settlement(&mut game, &mut table).is_err());
+        assert!(table.hand_in_progress);
+        assert_eq!(table.current_game_id, [9u8; 32]);
+    }
+
+    #[test]
+    fn missing_player_registers_then_everyone_must_shuffle_and_share() {
+        let mut game = showdown_game(2);
+        let mut keys = RegistrationMaterial::default();
+        store(&mut game, &mut keys, 0, 1);
+        advance_betting_street_on_chain(&mut game).unwrap();
+        let (public_key, padding) = material(2);
+        let mut player = PlayerState {
+            player_index: 1,
+            ..Default::default()
+        };
+        register_next_hand_player(&mut game, &mut keys, &mut player, public_key, padding).unwrap();
+        assert_eq!(player.public_key, public_key);
+        assert_eq!(player.padding, padding);
+        assert_eq!(game.next_hand_phase, NEXT_HAND_SHUFFLE);
+        assert_eq!(game.phase, 5);
+
+        assert!(join_next_hand_shuffle(&mut game, 1).is_err());
+        join_next_hand_shuffle(&mut game, 0).unwrap();
+        assert_eq!(game.next_hand_phase, NEXT_HAND_SHUFFLE);
+        join_next_hand_shuffle(&mut game, 1).unwrap();
+        assert_eq!(game.next_hand_phase, NEXT_HAND_SHARE);
+        assert_eq!(game.phase, 5);
+
+        join_next_hand_share(&mut game, 0).unwrap();
+        assert!(join_next_hand_share(&mut game, 0).is_err());
+        join_next_hand_share(&mut game, 1).unwrap();
+        assert_eq!(game.next_hand_phase, NEXT_HAND_READY);
+        assert_eq!(game.phase, 5);
+        assert_eq!(game.registered_mask, 0b11);
+    }
+
+    #[test]
+    fn reused_key_must_match_the_stored_padding() {
+        let mut game = showdown_game(2);
+        let mut keys = RegistrationMaterial::default();
+        store(&mut game, &mut keys, 0, 1);
+        store(&mut game, &mut keys, 1, 2);
+        advance_betting_street_on_chain(&mut game).unwrap();
+        let (public_key, mut padding) = material(1);
+        padding[0][0] = 99;
+        let mut player = PlayerState {
+            player_index: 0,
+            ..Default::default()
+        };
+        assert!(
+            register_next_hand_player(&mut game, &mut keys, &mut player, public_key, padding)
+                .is_err()
+        );
+        assert_eq!(game.next_hand_phase, NEXT_HAND_SHUFFLE);
+    }
+
+    #[test]
+    fn opening_showdown_again_does_not_reset_the_pipeline() {
+        let mut game = showdown_game(2);
+        let mut keys = RegistrationMaterial::default();
+        store(&mut game, &mut keys, 0, 1);
+        store(&mut game, &mut keys, 1, 2);
+        advance_betting_street_on_chain(&mut game).unwrap();
+        join_next_hand_shuffle(&mut game, 0).unwrap();
+        mark_showdown_receipt(&mut game, 0, [7u8; 32]).unwrap();
+        assert_eq!(game.phase, 5);
+        assert_eq!(game.next_hand_phase, NEXT_HAND_SHUFFLE);
+        assert_eq!(game.next_shuffler, 1);
+        assert_eq!(game.next_shuffled_mask, 0b01);
+    }
+
+    #[test]
+    fn folded_player_still_joins_the_next_shuffle() {
+        let mut game = showdown_game(3);
+        let mut keys = RegistrationMaterial::default();
+        game.folded_mask = 0b100;
+        store(&mut game, &mut keys, 0, 1);
+        store(&mut game, &mut keys, 1, 2);
+        store(&mut game, &mut keys, 2, 3);
+        advance_betting_street_on_chain(&mut game).unwrap();
+        assert_eq!(game.phase, 5);
+        assert_eq!(game.next_num_players, 3);
+        assert_eq!(game.next_hand_phase, NEXT_HAND_SHUFFLE);
+    }
+
+    #[test]
+    fn start_waits_until_the_next_hand_has_shared() {
+        let mut game = showdown_game(2);
+        let mut keys = RegistrationMaterial::default();
+        store(&mut game, &mut keys, 0, 1);
+        store(&mut game, &mut keys, 1, 2);
+        advance_betting_street_on_chain(&mut game).unwrap();
+        assert!(accept_next_hand_for_start(&game, 2).is_err());
+        join_next_hand_shuffle(&mut game, 0).unwrap();
+        join_next_hand_shuffle(&mut game, 1).unwrap();
+        join_next_hand_share(&mut game, 0).unwrap();
+        join_next_hand_share(&mut game, 1).unwrap();
+        accept_next_hand_for_start(&game, 2).unwrap();
+        assert!(accept_next_hand_for_start(&game, 3).is_err());
+        let kept = keys.public_key[0];
+        finish_next_hand_for_start(&mut game, 2, NEXT_HAND_READY);
+        assert_eq!(game.phase, 3);
+        assert_eq!(game.shared_mask, 0b11);
+        assert_eq!(game.next_hand_phase, NEXT_HAND_CLOSED);
+        assert_eq!(keys.public_key[0], kept);
+    }
+
+    #[test]
+    fn reused_keys_follow_the_seat_when_the_button_moves() {
+        let mut game = showdown_game(2);
+        let mut keys = RegistrationMaterial::default();
+        store(&mut game, &mut keys, 0, 1);
+        store(&mut game, &mut keys, 1, 2);
+        advance_betting_street_on_chain(&mut game).unwrap();
+        game.next_seat_saved = true;
+        game.next_seat_order = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let seat0_key = keys.public_key[1];
+        reindex_registrations_to_seat_order(&mut game, &mut keys, &[0, 1], 2);
+        assert_eq!(keys.public_key[0], seat0_key);
+        assert_eq!(game.registered_mask, 0b11);
+    }
+
+    #[test]
+    fn first_hand_can_start_with_the_pipeline_closed() {
+        let game = GameState::default();
+        accept_next_hand_for_start(&game, 2).unwrap();
+    }
+
+    #[test]
+    fn registration_tail_sits_after_the_game_record() {
+        let game = GameState::default();
+        let mut encoded = Vec::new();
+        game.try_serialize(&mut encoded).unwrap();
+        assert_eq!(encoded.len(), 8 + GameState::INIT_SPACE);
+
+        let mut keys = RegistrationMaterial::default();
+        keys.public_key[3][1][7] = 9;
+        keys.padding[3][2][4] = 8;
+        let mut tail = vec![0u8; REG_TAIL_BYTES];
+        write_registration_tail(&mut tail, &keys);
+        let mut loaded = RegistrationMaterial::default();
+        read_registration_tail(&tail, &mut loaded);
+        assert_eq!(loaded.public_key[3][1][7], 9);
+        assert_eq!(loaded.padding[3][2][4], 8);
+        assert_eq!(REG_TAIL_BYTES, 1920);
+    }
+}
+
+#[cfg(test)]
 mod showdown_receipt_tests {
     use super::*;
 
@@ -2018,9 +2841,9 @@ mod showdown_receipt_tests {
 mod street_closure_tests {
     use super::*;
 
-    /// Heads-up: SB calls the BB → both street commits match → street closes.
+    /// Heads-up: SB completes the blind. Bets match, but the BB has not acted.
     #[test]
-    fn heads_up_call_closes_preflop() {
+    fn heads_up_limp_leaves_big_blind_option() {
         let mut state = GameState {
             num_players: 2,
             betting_phase: 1,
@@ -2045,7 +2868,65 @@ mod street_closure_tests {
         state.hand_commits[0] = 20;
         state.player_total_bets[0] = 20;
         after_bet_update_turn(&mut state, 0, 2, false).unwrap();
+        assert_eq!(state.betting_phase, 1);
+        assert_eq!(state.current_player, 1);
+        assert_eq!(state.acted_mask, 1);
+
+        // BB checks. Both players have acted and the street bets match.
+        after_bet_update_turn(&mut state, 1, 1, false).unwrap();
         assert_eq!(state.betting_phase, 2);
+    }
+
+    /// The callback must follow Arcis: a matched limp stays on preflop when the
+    /// circuit says the street is still open, and advances when it says closed.
+    #[test]
+    fn arcis_street_flag_gates_the_big_blind_option() {
+        let mut state = GameState {
+            num_players: 2,
+            betting_phase: 1,
+            current_bet: 20,
+            current_player: 0,
+            hand_commits: {
+                let mut c = [0u64; 10];
+                c[0] = 20;
+                c[1] = 20;
+                c
+            },
+            acted_mask: 0,
+            ..Default::default()
+        };
+        apply_arcis_street_decision(&mut state, 0, 2, false, false).unwrap();
+        assert_eq!(state.betting_phase, 1);
+        assert_eq!(state.current_player, 1);
+
+        apply_arcis_street_decision(&mut state, 1, 4, true, false).unwrap();
+        assert_eq!(state.betting_phase, 1);
+        assert_eq!(state.current_player, 0);
+        assert_eq!(state.acted_mask, 0b10);
+
+        apply_arcis_street_decision(&mut state, 0, 2, false, true).unwrap();
+        assert_eq!(state.betting_phase, 2);
+    }
+
+    /// Heads-up flop: the bettor has acted, so the call closes the street.
+    #[test]
+    fn heads_up_flop_call_closes_street() {
+        let mut state = GameState {
+            num_players: 2,
+            betting_phase: 2,
+            current_bet: 20,
+            current_player: 0,
+            hand_commits: {
+                let mut c = [0u64; 10];
+                c[0] = 20;
+                c[1] = 20;
+                c
+            },
+            acted_mask: 0b10,
+            ..Default::default()
+        };
+        after_bet_update_turn(&mut state, 0, 2, false).unwrap();
+        assert_eq!(state.betting_phase, 3);
     }
 
     #[test]
@@ -2070,6 +2951,9 @@ mod street_closure_tests {
             ..Default::default()
         };
         after_bet_update_turn(&mut state, 0, 2, false).unwrap();
+        assert_eq!(state.betting_phase, 1);
+        assert!(!state.reached_flop);
+        after_bet_update_turn(&mut state, 1, 1, false).unwrap();
         assert!(state.reached_flop);
         assert_eq!(state.rake_amount, 10);
         assert_eq!(state.pots[0], 190);
@@ -2087,10 +2971,87 @@ mod street_closure_tests {
             ..Default::default()
         };
         after_bet_update_turn(&mut folded, 1, 0, false).unwrap();
-        assert_eq!(folded.betting_phase, 5);
+        assert_eq!(folded.phase, 6);
+        assert_ne!(folded.betting_phase, 5);
+        assert_eq!(folded.payouts[0], 200);
         assert!(!folded.reached_flop);
         assert_eq!(folded.rake_amount, 0);
         assert_eq!(folded.pots[0], 200);
+    }
+
+    /// The last fold pays the remaining player. Showdown does not open.
+    #[test]
+    fn fold_awards_the_pot_and_skips_showdown() {
+        let mut state = GameState {
+            num_players: 2,
+            phase: 3,
+            betting_phase: 1,
+            folded_mask: 1 << 0,
+            act_deadline_unix: 50,
+            pots: {
+                let mut pots = [0u64; 9];
+                pots[0] = 20;
+                pots
+            },
+            refunds: {
+                let mut refunds = [0u64; 10];
+                refunds[1] = 10;
+                refunds
+            },
+            ..Default::default()
+        };
+        after_bet_update_turn(&mut state, 0, 0, false).unwrap();
+        assert_eq!(state.phase, 6);
+        assert_eq!(state.betting_phase, 1);
+        assert_eq!(state.act_deadline_unix, 0);
+        assert!(require_card_reveal_allowed(20, 2, state.betting_phase, true, 1, state.folded_mask, 0).is_err());
+        assert!(require_card_reveal_allowed(24, 2, state.betting_phase, true, 1, state.folded_mask, 0).is_err());
+        assert_eq!(state.payouts[0], 0);
+        assert_eq!(state.payouts[1], 30);
+        assert_eq!(state.next_hand_phase, 0);
+    }
+
+    /// Folding on the flop keeps that street and seals the turn and river.
+    #[test]
+    fn fold_on_the_flop_does_not_open_later_streets() {
+        let mut state = GameState {
+            num_players: 2,
+            phase: 3,
+            betting_phase: 2,
+            reached_flop: true,
+            folded_mask: 1 << 1,
+            act_deadline_unix: 80,
+            ..Default::default()
+        };
+        after_bet_update_turn(&mut state, 1, 0, false).unwrap();
+        assert_eq!(state.phase, 6);
+        assert_eq!(state.betting_phase, 2);
+        assert_eq!(state.act_deadline_unix, 0);
+        assert!(require_card_reveal_allowed(22, 2, state.betting_phase, true, 0, state.folded_mask, 0).is_ok());
+        assert!(require_card_reveal_allowed(23, 2, state.betting_phase, true, 0, state.folded_mask, 0).is_err());
+        assert!(require_card_reveal_allowed(24, 2, state.betting_phase, true, 0, state.folded_mask, 0).is_err());
+    }
+
+    /// Two players still in on the river. The closing call is a real showdown.
+    #[test]
+    fn river_with_both_players_in_reaches_showdown() {
+        let mut state = GameState {
+            num_players: 2,
+            phase: 3,
+            betting_phase: 4,
+            current_bet: 20,
+            acted_mask: 0b10,
+            hand_commits: {
+                let mut commits = [0u64; 10];
+                commits[0] = 20;
+                commits[1] = 20;
+                commits
+            },
+            ..Default::default()
+        };
+        after_bet_update_turn(&mut state, 0, 2, false).unwrap();
+        assert_eq!(state.phase, 5);
+        assert_eq!(state.betting_phase, 5);
     }
 
     /// Cumulative totals that differ from the street level must not block
@@ -2157,6 +3118,114 @@ mod street_closure_tests {
         };
         assert!(street_bets_matched(&state));
     }
+
+    #[test]
+    fn decision_window_is_sixty_seconds_and_inclusive() {
+        let mut state = GameState {
+            betting_phase: 1,
+            ..Default::default()
+        };
+        assign_action_deadline(&mut state, 1_700_000_000);
+        assert_eq!(state.act_deadline_unix, 1_700_000_060);
+        assert!(action_is_in_time(state.act_deadline_unix, 1_700_000_060));
+        assert!(!action_is_in_time(state.act_deadline_unix, 1_700_000_061));
+        assert!(!action_is_in_time(0, 1_700_000_060));
+        state.betting_phase = 5;
+        assign_action_deadline(&mut state, 1_700_000_060);
+        assert_eq!(state.act_deadline_unix, 0);
+    }
+
+    #[test]
+    fn act_deadline_is_the_last_game_state_field() {
+        let mut game = GameState::default();
+        game.act_deadline_unix = 0x0102_0304_0506_0708;
+        let mut encoded = Vec::new();
+        game.try_serialize(&mut encoded).unwrap();
+        assert_eq!(encoded.len(), 8 + GameState::INIT_SPACE);
+        let offset = encoded.len() - 8;
+        assert_eq!(offset, GameState::INIT_SPACE);
+        let raw = i64::from_le_bytes(encoded[offset..offset + 8].try_into().unwrap());
+        assert_eq!(raw, game.act_deadline_unix);
+    }
+
+    /// SB still owes the big blind. Time runs out and the hand ends.
+    #[test]
+    fn timeout_folds_when_chips_are_owed() {
+        let mut state = GameState {
+            num_players: 2,
+            phase: 3,
+            betting_phase: 1,
+            current_player: 0,
+            current_bet: 20,
+            hand_commits: {
+                let mut c = [0u64; 10];
+                c[0] = 10;
+                c[1] = 20;
+                c
+            },
+            pots: {
+                let mut pots = [0u64; 9];
+                pots[0] = 30;
+                pots
+            },
+            ..Default::default()
+        };
+        let action = apply_timeout_action(&mut state).unwrap();
+        assert_eq!(action, 0);
+        assert_eq!(state.folded_mask & 1, 1);
+        assert_eq!(state.phase, 6);
+        assert_ne!(state.betting_phase, 5);
+    }
+
+    /// Big blind already matches the blind. Missing the window still folds.
+    #[test]
+    fn timeout_folds_even_when_a_check_was_legal() {
+        let mut state = GameState {
+            num_players: 2,
+            phase: 3,
+            betting_phase: 1,
+            current_player: 1,
+            current_bet: 20,
+            acted_mask: 0b01,
+            hand_commits: {
+                let mut c = [0u64; 10];
+                c[0] = 20;
+                c[1] = 20;
+                c
+            },
+            pots: {
+                let mut pots = [0u64; 9];
+                pots[0] = 40;
+                pots
+            },
+            ..Default::default()
+        };
+        let action = apply_timeout_action(&mut state).unwrap();
+        assert_eq!(action, 0);
+        assert_eq!(state.folded_mask, 0b10);
+        assert_eq!(state.phase, 6);
+        assert_ne!(state.betting_phase, 5);
+        assert_eq!(state.payouts[0], 40);
+    }
+
+    /// Three players remain. Folding the actor passes the turn and stays on the street.
+    #[test]
+    fn timeout_fold_passes_the_turn_when_others_remain() {
+        let mut state = GameState {
+            num_players: 3,
+            phase: 3,
+            betting_phase: 2,
+            current_player: 0,
+            current_bet: 0,
+            ..Default::default()
+        };
+        let action = apply_timeout_action(&mut state).unwrap();
+        assert_eq!(action, 0);
+        assert_eq!(state.folded_mask, 0b001);
+        assert_eq!(state.phase, 3);
+        assert_eq!(state.betting_phase, 2);
+        assert_eq!(state.current_player, 1);
+    }
 }
 
 fn consume_receipt_and_advance(
@@ -2190,8 +3259,12 @@ fn consume_receipt_and_advance(
     }
 
     // Share phase is parallel: track who has shared via shared_mask, not turn order.
+    // A showdown-opened next hand records the same receipt on its own mask.
     if expected_phase == PROOF_PHASE_SHARE {
-        require!(game_state.phase == PROOF_PHASE_SHARE, ErrorCode::InvalidGamePhase);
+        let next_hand_share = game_state.next_hand_phase == NEXT_HAND_SHARE;
+        if !next_hand_share {
+            require!(game_state.phase == PROOF_PHASE_SHARE, ErrorCode::InvalidGamePhase);
+        }
         let share_verify = share_verify_acc.ok_or(error!(ErrorCode::InvalidVerifyProgress))?;
         require!(share_verify.owner == &crate::ID, ErrorCode::InvalidAccountOwner);
         let mut data = &share_verify.try_borrow_data()?[..];
@@ -2206,7 +3279,11 @@ fn consume_receipt_and_advance(
                 && acc.generation == expected_generation,
             ErrorCode::InvalidVerifyProgress
         );
-        mark_share_receipt(game_state, expected_player_index)?;
+        if next_hand_share {
+            join_next_hand_share(game_state, expected_player_index)?;
+        } else {
+            mark_share_receipt(game_state, expected_player_index)?;
+        }
         return Ok(());
     }
 
@@ -2214,6 +3291,11 @@ fn consume_receipt_and_advance(
     // + RevealedCards. CPI from light-casino `cpi_authority` latches settlement.
     if expected_phase == PROOF_PHASE_SHOWDOWN {
         mark_showdown_receipt(game_state, expected_player_index, receipt.output_hash)?;
+        return Ok(());
+    }
+
+    if expected_phase == PROOF_PHASE_SHUFFLE && game_state.next_hand_phase == NEXT_HAND_SHUFFLE {
+        join_next_hand_shuffle(game_state, expected_player_index)?;
         return Ok(());
     }
 
@@ -2289,6 +3371,8 @@ pub mod casino {
         expected_player_index: u8,
         expected_circuit_version: u16,
         expected_output_hash: [u8; 32],
+        public_key: [[u8; 32]; 2],
+        padding: [[u8; 32]; 4],
     ) -> Result<()> {
         assert_cpi_authority(&ctx.accounts.authority.to_account_info())?;
         validate_light_casino_receipt(
@@ -2313,12 +3397,32 @@ pub mod casino {
             ErrorCode::InvalidProofReceipt
         );
         require!(receipt.output_hash == expected_output_hash, ErrorCode::InvalidProofReceipt);
+        require!(public_key[0] == expected_output_hash, ErrorCode::InvalidProof);
 
         player_state.game_id = game_state.game_id;
         player_state.player_index = expected_player_index;
-        player_state.public_key[0] = expected_output_hash;
+        if (expected_player_index as usize) < HAND_PLAYER_CAP {
+            let info = game_state.to_account_info();
+            let mut material = load_registration(&info)?;
+            remember_player_registration(
+                game_state,
+                &mut material,
+                expected_player_index,
+                public_key,
+                padding,
+            )?;
+            store_registration(&info, &material)?;
+            player_state.public_key = public_key;
+            player_state.padding = padding;
+        } else {
+            player_state.public_key[0] = expected_output_hash;
+        }
 
-        mark_register_receipt(game_state, expected_player_index)?;
+        if game_state.next_hand_phase == NEXT_HAND_REGISTER {
+            note_next_hand_registration(game_state, expected_player_index)?;
+        } else {
+            mark_register_receipt(game_state, expected_player_index)?;
+        }
         emit_phase_advanced(game_state);
         emit_player_action_required(game_state);
         Ok(())
@@ -3241,7 +4345,7 @@ pub mod casino {
             ctx.accounts,
             computation_offset,
             args,
-            vec![RevealCardV2Callback::callback_ix(
+            vec![RevealCardCallback::callback_ix(
                 computation_offset,
                 &ctx.accounts.mxe_account,
                 &[
@@ -3262,13 +4366,13 @@ pub mod casino {
         Ok(())
     }
 
-    #[arcium_callback(encrypted_ix = "reveal_card_v2")]
-    pub fn reveal_card_v2_callback(
-        ctx: Context<RevealCardV2Callback>,
-        output: SignedComputationOutputs<RevealCardV2Output>,
+    #[arcium_callback(encrypted_ix = "reveal_card")]
+    pub fn reveal_card_callback(
+        ctx: Context<RevealCardCallback>,
+        output: SignedComputationOutputs<RevealCardOutput>,
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
-            Ok(RevealCardV2Output { field_0 }) => field_0,
+            Ok(RevealCardOutput { field_0 }) => field_0,
             Err(_) => return Err(error!(ArciumError::AbortedComputation)),
         };
 
@@ -4370,16 +5474,16 @@ pub mod casino {
         require!(room_wallet.active_tables & bit == 0, ErrorCode::AlreadySeated);
         room_wallet.active_tables |= bit;
 
-        let escrow = &mut ctx.accounts.table_escrow;
-        escrow.player = player_key;
-        escrow.room_id = table.room_id;
-        escrow.table_id = table.table_id;
-        escrow.balance_ciphertext = [0u8; 32];
-        escrow.nonce = 0;
-        escrow.is_seated = true;
-        escrow.balance_u64 = 0;
-        escrow.pending_buy_in = 0;
-        escrow.encryption_pubkey = [0u8; 32];
+        open_table_escrow(
+            &mut ctx.accounts.table_escrow,
+            player_key,
+            table.room_id,
+            table.table_id,
+        )
+        .map_err(|err| match err {
+            TableEscrowSitError::AlreadySeated => error!(ErrorCode::AlreadySeated),
+            TableEscrowSitError::ChipsStillLocked => error!(ErrorCode::InvalidAmount),
+        })?;
 
         table.refresh_pending_order();
         let _ = buy_in;
@@ -5252,7 +6356,7 @@ pub mod casino {
             ctx.accounts,
             computation_offset,
             args,
-            vec![ApplyCasinoPlayerNetV2Callback::callback_ix(
+            vec![ApplyCasinoPlayerNetCallback::callback_ix(
                 computation_offset,
                 &ctx.accounts.mxe_account,
                 &[CallbackAccount {
@@ -5268,13 +6372,13 @@ pub mod casino {
     }
 
     #[cfg(feature = "testing")]
-    #[arcium_callback(encrypted_ix = "apply_casino_player_net_v2")]
-    pub fn apply_casino_player_net_v2_callback(
-        ctx: Context<ApplyCasinoPlayerNetV2Callback>,
-        output: SignedComputationOutputs<ApplyCasinoPlayerNetV2Output>,
+    #[arcium_callback(encrypted_ix = "apply_casino_player_net")]
+    pub fn apply_casino_player_net_callback(
+        ctx: Context<ApplyCasinoPlayerNetCallback>,
+        output: SignedComputationOutputs<ApplyCasinoPlayerNetOutput>,
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
-            Ok(ApplyCasinoPlayerNetV2Output { field_0 }) => field_0,
+            Ok(ApplyCasinoPlayerNetOutput { field_0 }) => field_0,
             Err(_) => return Err(error!(ArciumError::AbortedComputation)),
         };
         require!(o.field_1, ErrorCode::InvalidProof);
@@ -5532,7 +6636,7 @@ pub mod casino {
             ctx.accounts,
             computation_offset,
             args,
-            vec![SettleCasinoHandV2Callback::callback_ix(
+            vec![SettleCasinoHandCallback::callback_ix(
                 computation_offset,
                 &ctx.accounts.mxe_account,
                 &[
@@ -5562,13 +6666,13 @@ pub mod casino {
     }
 
     #[cfg(feature = "testing")]
-    #[arcium_callback(encrypted_ix = "settle_casino_hand_v2")]
-    pub fn settle_casino_hand_v2_callback(
-        ctx: Context<SettleCasinoHandV2Callback>,
-        output: SignedComputationOutputs<SettleCasinoHandV2Output>,
+    #[arcium_callback(encrypted_ix = "settle_casino_hand")]
+    pub fn settle_casino_hand_callback(
+        ctx: Context<SettleCasinoHandCallback>,
+        output: SignedComputationOutputs<SettleCasinoHandOutput>,
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
-            Ok(SettleCasinoHandV2Output { field_0 }) => field_0,
+            Ok(SettleCasinoHandOutput { field_0 }) => field_0,
             Err(_) => return Err(error!(ArciumError::AbortedComputation)),
         };
         require!(o.field_2, ErrorCode::InvalidProof);
@@ -5586,6 +6690,7 @@ pub mod casino {
 
         // Mark casino settle complete without advancing poker phase to 6.
         ctx.accounts.game_state.settlement_status = SETTLEMENT_SETTLED;
+        snapshot_next_hand_seats(&mut ctx.accounts.game_state, &ctx.accounts.table_state);
 
         let table = &mut ctx.accounts.table_state;
         let room_id = pool.room_id;
@@ -5629,7 +6734,9 @@ pub mod casino {
             ErrorCode::NotSeated
         );
         let table = &mut ctx.accounts.table_state;
-        table.refresh_pending_order();
+        // Sit/leave already refresh the pending order. end_hand advances the
+        // button once for the next hand. Refreshing again here moves it a
+        // second time, so the button lands on the same seat every hand.
         // Dealer-pool max-payout coverage. Poker and bingo pay from player
         // commitments (poker streets, bingo card buy-ins), so an empty pool
         // account is allowed. Keno stays on this check.
@@ -5665,6 +6772,8 @@ pub mod casino {
 
         let game_state = &mut ctx.accounts.game_state;
         let num_players = table.hand_num_players;
+        accept_next_hand_for_start(game_state, num_players)?;
+        let next_phase = game_state.next_hand_phase;
         let preserving_zk = game_state.num_cards > 0;
 
         game_state.game_id = game_id;
@@ -5725,6 +6834,18 @@ pub mod casino {
         game_state.showdown_finalized = false;
         game_state.showdown_hash_player = 0;
         game_state.bet_pending = false;
+        if next_phase == NEXT_HAND_READY {
+            let info = game_state.to_account_info();
+            let mut material = load_registration(&info)?;
+            reindex_registrations_to_seat_order(
+                game_state,
+                &mut material,
+                &table.hand_seat_order,
+                num_players,
+            );
+            store_registration(&info, &material)?;
+        }
+        finish_next_hand_for_start(game_state, num_players, next_phase);
 
         let bit = table_bit(table.table_id)?;
         for seat in table.hand_seat_order.iter().take(table.hand_num_players as usize) {
@@ -5798,7 +6919,70 @@ pub mod casino {
         );
         let table = &mut ctx.accounts.table_state;
         require!(table.hand_in_progress, ErrorCode::HandInProgress);
+        snapshot_next_hand_seats(&mut ctx.accounts.game_state, table);
         table.end_hand();
+        Ok(())
+    }
+
+    /// Store a key for a player who joined this hand and still needs one.
+    /// Players who already registered are marked when showdown opens.
+    pub fn register_next_hand(
+        ctx: Context<NextHandPlayer>,
+        public_key: [[u8; 32]; 2],
+        padding: [[u8; 32]; 4],
+    ) -> Result<()> {
+        require_next_hand_table(&ctx)?;
+        prepare_next_hand_seat(
+            &mut ctx.accounts.game_state,
+            &ctx.accounts.table_state,
+            ctx.accounts.player_state.player_index,
+            &ctx.accounts.player.key(),
+        )?;
+        let info = ctx.accounts.game_state.to_account_info();
+        let mut material = load_registration(&info)?;
+        register_next_hand_player(
+            &mut ctx.accounts.game_state,
+            &mut material,
+            &mut ctx.accounts.player_state,
+            public_key,
+            padding,
+        )?;
+        store_registration(&info, &material)?;
+        emit_player_action_required(&ctx.accounts.game_state);
+        Ok(())
+    }
+
+    /// Shuffle seat in the next hand. Order is the joined-player index.
+    pub fn submit_next_hand_shuffle(ctx: Context<NextHandPlayer>) -> Result<()> {
+        require_next_hand_table(&ctx)?;
+        prepare_next_hand_seat(
+            &mut ctx.accounts.game_state,
+            &ctx.accounts.table_state,
+            ctx.accounts.player_state.player_index,
+            &ctx.accounts.player.key(),
+        )?;
+        join_next_hand_shuffle(
+            &mut ctx.accounts.game_state,
+            ctx.accounts.player_state.player_index,
+        )?;
+        emit_player_action_required(&ctx.accounts.game_state);
+        Ok(())
+    }
+
+    /// Share seat in the next hand. Every joined player shares after the shuffle.
+    pub fn submit_next_hand_share(ctx: Context<NextHandPlayer>) -> Result<()> {
+        require_next_hand_table(&ctx)?;
+        prepare_next_hand_seat(
+            &mut ctx.accounts.game_state,
+            &ctx.accounts.table_state,
+            ctx.accounts.player_state.player_index,
+            &ctx.accounts.player.key(),
+        )?;
+        join_next_hand_share(
+            &mut ctx.accounts.game_state,
+            ctx.accounts.player_state.player_index,
+        )?;
+        emit_player_action_required(&ctx.accounts.game_state);
         Ok(())
     }
 
@@ -5978,6 +7162,7 @@ pub mod casino {
             game_state.betting_phase >= 1 && game_state.betting_phase <= 4,
             ErrorCode::InvalidGamePhase
         );
+        require!(game_state.phase != 6, ErrorCode::InvalidGamePhase);
         require!(table.hand_in_progress, ErrorCode::HandInProgress);
         require!(
             table.current_game_id == game_state.game_id
@@ -6006,6 +7191,11 @@ pub mod casino {
             player_index == game_state.current_player,
             ErrorCode::NotYourTurn
         );
+        let now = Clock::get()?.unix_timestamp;
+        require!(
+            action_is_in_time(game_state.act_deadline_unix, now),
+            ErrorCode::ActionExpired
+        );
         // Show-on-fold only meaningful for fold (action 0); ignore otherwise.
         require!(
             !show_on_fold || action == 0,
@@ -6029,6 +7219,11 @@ pub mod casino {
         let expected_player_current_bet = game_state.hand_commits[player_index as usize];
         let expected_current_bet = game_state.current_bet;
         let expected_last_aggressor_amount = game_state.last_aggressor_amount;
+        let street_num_players = game_state.num_players;
+        let street_folded_mask = game_state.folded_mask;
+        let street_all_in_mask = game_state.all_in_mask;
+        let street_acted_mask = game_state.acted_mask;
+        let street_commits = game_state.hand_commits;
         let game_id = game_state.game_id;
         let game_state_key = ctx.accounts.game_state.key();
         let player_state_key = ctx.accounts.player_state.key();
@@ -6087,6 +7282,21 @@ pub mod casino {
             .plaintext_u8(action)
             .plaintext_u64(expected_current_bet)
             .plaintext_u64(expected_last_aggressor_amount)
+            .plaintext_u8(player_index)
+            .plaintext_u8(street_num_players)
+            .plaintext_u16(street_folded_mask)
+            .plaintext_u16(street_all_in_mask)
+            .plaintext_u16(street_acted_mask)
+            .plaintext_u64(street_commits[0])
+            .plaintext_u64(street_commits[1])
+            .plaintext_u64(street_commits[2])
+            .plaintext_u64(street_commits[3])
+            .plaintext_u64(street_commits[4])
+            .plaintext_u64(street_commits[5])
+            .plaintext_u64(street_commits[6])
+            .plaintext_u64(street_commits[7])
+            .plaintext_u64(street_commits[8])
+            .plaintext_u64(street_commits[9])
             .build();
 
         queue_computation(
@@ -6224,8 +7434,15 @@ pub mod casino {
             last_aggressor_amount,
         );
 
-        // Street close is decided on-chain after each bet (matched + acted).
-        after_bet_update_turn(game_state, player_index as u8, action, raised)?;
+        // Arcis `validate_bet` decides whether the street closes. A heads-up limp
+        // reveals false so the big blind still checks or raises.
+        apply_arcis_street_decision(
+            game_state,
+            player_index as u8,
+            action,
+            raised,
+            o.field_7,
+        )?;
 
         let log_entry = BetLogEntry {
             nonce: o.field_2.nonce,
@@ -6246,6 +7463,56 @@ pub mod casino {
             show_on_fold: (game_state.show_on_fold_mask & (1u16 << player_index)) != 0,
         });
 
+        Ok(())
+    }
+
+    /// Fold the player who missed the one-minute decision window.
+    ///
+    /// Anyone may crank this once the deadline has passed and no bet callback
+    /// is in flight. A free check is a normal bet the client sends earlier.
+    pub fn expire_bet_turn(ctx: Context<ExpireBetTurn>) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let game_state = &mut ctx.accounts.game_state;
+        require!(
+            game_state.betting_phase >= 1 && game_state.betting_phase <= 4,
+            ErrorCode::InvalidGamePhase
+        );
+        require!(game_state.phase != 6, ErrorCode::InvalidGamePhase);
+        require!(!game_state.bet_pending, ErrorCode::PendingOperationActive);
+        require!(
+            !action_is_in_time(game_state.act_deadline_unix, now),
+            ErrorCode::ActionNotExpired
+        );
+        require!(game_state.act_deadline_unix != 0, ErrorCode::ActionNotExpired);
+        let player_index = game_state.current_player;
+        let action = apply_timeout_action(game_state)?;
+        let player_total_bets = game_state.player_total_bets;
+        let pots_snapshot = game_state.pots;
+        let current_bet = game_state.current_bet;
+        let last_aggressor_amount = game_state.last_aggressor_amount;
+        ctx.accounts.encrypted_game_betting.sync_from_plaintext(
+            &player_total_bets,
+            &pots_snapshot,
+            current_bet,
+            last_aggressor_amount,
+        );
+        let log_entry = BetLogEntry {
+            nonce: 0,
+            amount_ciphertext: betting::encode_u64_le_field(0),
+            balance_ciphertext: betting::encode_u64_le_field(0),
+            player_index,
+            action,
+            _padding: [0u8; 14],
+        };
+        ctx.accounts.bet_action_log.load_mut()?.append(log_entry)?;
+        emit!(BetEvent {
+            player_index,
+            action,
+            amount: 0,
+            is_fold: action == 0,
+            is_all_in: false,
+            show_on_fold: false,
+        });
         Ok(())
     }
 
@@ -6539,7 +7806,7 @@ pub mod casino {
             ctx.accounts,
             computation_offset,
             args,
-            vec![DistributeAndSettleV3Callback::callback_ix(
+            vec![DistributeAndSettleCallback::callback_ix(
                 computation_offset,
                 &ctx.accounts.mxe_account,
                 &[
@@ -6564,13 +7831,13 @@ pub mod casino {
         Ok(())
     }
 
-    #[arcium_callback(encrypted_ix = "distribute_and_settle_v3")]
-    pub fn distribute_and_settle_v3_callback(
-        ctx: Context<DistributeAndSettleV3Callback>,
-        output: SignedComputationOutputs<DistributeAndSettleV3Output>,
+    #[arcium_callback(encrypted_ix = "distribute_and_settle")]
+    pub fn distribute_and_settle_callback(
+        ctx: Context<DistributeAndSettleCallback>,
+        output: SignedComputationOutputs<DistributeAndSettleOutput>,
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
-            Ok(DistributeAndSettleV3Output { field_0 }) => field_0,
+            Ok(DistributeAndSettleOutput { field_0 }) => field_0,
             Err(_) => return Err(error!(ArciumError::AbortedComputation)),
         };
         // field_1 = hash_matches from fused verify+settle; reject before any credit.
@@ -6582,6 +7849,7 @@ pub mod casino {
 
         let game_state = &mut ctx.accounts.game_state;
         game_state.phase = 6;
+        snapshot_next_hand_seats(game_state, &ctx.accounts.table_state);
 
         let table = &mut ctx.accounts.table_state;
         table.end_hand();
@@ -6673,18 +7941,25 @@ pub mod casino {
         let args = args.build();
 
         let game_state_key = ctx.accounts.game_state.key();
+        let table_state_key = ctx.accounts.table_state.key();
 
         queue_computation(
             ctx.accounts,
             computation_offset,
             args,
-            vec![ComputePotsV4Callback::callback_ix(
+            vec![ComputePotsCallback::callback_ix(
                 computation_offset,
                 &ctx.accounts.mxe_account,
-                &[CallbackAccount {
-                    pubkey: game_state_key,
-                    is_writable: true,
-                }],
+                &[
+                    CallbackAccount {
+                        pubkey: game_state_key,
+                        is_writable: true,
+                    },
+                    CallbackAccount {
+                        pubkey: table_state_key,
+                        is_writable: true,
+                    },
+                ],
             )?],
             1,
             0,
@@ -6694,13 +7969,13 @@ pub mod casino {
         Ok(())
     }
 
-    #[arcium_callback(encrypted_ix = "compute_pots_v4")]
-    pub fn compute_pots_v4_callback(
-        ctx: Context<ComputePotsV4Callback>,
-        output: SignedComputationOutputs<ComputePotsV4Output>,
+    #[arcium_callback(encrypted_ix = "compute_pots")]
+    pub fn compute_pots_callback(
+        ctx: Context<ComputePotsCallback>,
+        output: SignedComputationOutputs<ComputePotsOutput>,
     ) -> Result<()> {
         let result = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
-            Ok(ComputePotsV4Output { field_0 }) => field_0,
+            Ok(ComputePotsOutput { field_0 }) => field_0,
             Err(_) => return Err(error!(ArciumError::AbortedComputation)),
         };
         // field_1 = hash_matches from fused verify+distribute; reject before writing payouts.
@@ -6712,13 +7987,15 @@ pub mod casino {
         for (slot, payout) in game_state.payouts.iter_mut().zip(result.field_0.iter()) {
             *slot = *payout;
         }
+        let total_payout = result.field_0.iter().sum();
+        let game_id = game_state.game_id;
 
-        // Mark pots as distributed
-        game_state.phase = 6; // PotsDistributed
+        // Accepted payouts close the table. A rejected proof never reaches here.
+        close_hand_after_pot_settlement(game_state, &mut ctx.accounts.table_state)?;
 
         emit!(PotDistributionEvent {
-            game_id: game_state.game_id,
-            total_payout: result.field_0.iter().sum(),
+            game_id,
+            total_payout,
         });
 
         Ok(())
@@ -7167,7 +8444,7 @@ pub struct StartHand<'info> {
     #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + GameState::INIT_SPACE,
+        space = 8 + GameState::INIT_SPACE + 1920,
         seeds = [b"game_state", &game_id[..]],
         bump
     )]
@@ -7182,7 +8459,7 @@ pub struct InitPlayerState<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(mut, seeds = [b"game_state", &game_state.game_id[..]], bump)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     #[account(
         init,
         payer = payer,
@@ -7212,6 +8489,46 @@ pub struct EndHand<'info> {
         constraint = table_state.room_id == room.room_id @ ErrorCode::InvalidAuthority,
     )]
     pub table_state: Account<'info, TableState>,
+    #[account(
+        mut,
+        seeds = [b"game_state", &game_state.game_id],
+        bump,
+        constraint = game_state.table_room_id == table_state.room_id @ ErrorCode::InvalidAuthority,
+        constraint = game_state.table_id == table_state.table_id @ ErrorCode::InvalidAuthority,
+    )]
+    pub game_state: Box<Account<'info, GameState>>,
+}
+
+#[derive(Accounts)]
+pub struct NextHandPlayer<'info> {
+    pub player: Signer<'info>,
+    #[account(
+        seeds = [whitelist::WHITELIST_SEED, &table_state.room_id[..], player.key().as_ref()],
+        bump,
+        constraint = whitelist_entry.room_id == table_state.room_id @ ErrorCode::NotWhitelisted,
+        constraint = whitelist_entry.player == player.key() @ ErrorCode::NotWhitelisted,
+    )]
+    pub whitelist_entry: Account<'info, WhitelistEntry>,
+    #[account(
+        seeds = [b"table", &table_state.room_id[..], &table_state.table_id.to_le_bytes()],
+        bump
+    )]
+    pub table_state: Account<'info, TableState>,
+    #[account(
+        mut,
+        seeds = [b"game_state", &game_state.game_id],
+        bump,
+        constraint = game_state.table_room_id == table_state.room_id @ ErrorCode::InvalidAuthority,
+        constraint = game_state.table_id == table_state.table_id @ ErrorCode::InvalidAuthority,
+    )]
+    pub game_state: Box<Account<'info, GameState>>,
+    #[account(
+        mut,
+        seeds = [b"player", &game_state.game_id[..], &[player_state.player_index]],
+        bump,
+        constraint = player_state.game_id == game_state.game_id @ ErrorCode::InvalidGamePhase,
+    )]
+    pub player_state: Account<'info, PlayerState>,
 }
 
 #[cfg(feature = "testing")]
@@ -7294,7 +8611,7 @@ pub struct InitGameTableKey<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(seeds = [b"game_state", &game_state.game_id[..]], bump)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     #[account(
         init,
         payer = payer,
@@ -7346,7 +8663,7 @@ pub struct InitPlayerGameEscrow<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(seeds = [b"game_state", &game_state.game_id[..]], bump)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     #[account(
         init,
         payer = payer,
@@ -7363,7 +8680,7 @@ pub struct InitEncryptedGameBetting<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(seeds = [b"game_state", &game_state.game_id[..]], bump)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     #[account(
         init,
         payer = payer,
@@ -7380,7 +8697,7 @@ pub struct InitBetActionLog<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(seeds = [b"game_state", &game_state.game_id[..]], bump)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     #[account(
         init,
         payer = payer,
@@ -7503,7 +8820,7 @@ pub struct CreditPokerRake<'info> {
         constraint = game_state.table_room_id == room.room_id @ ErrorCode::InvalidGamePhase,
         constraint = game_state.table_id == table_state.table_id @ ErrorCode::InvalidGamePhase,
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     #[account(
         mut,
         seeds = [b"room_wallet", room.house.as_ref(), &room.room_id[..]],
@@ -7758,6 +9075,25 @@ pub struct ValidateBetCallback<'info> {
     pub bet_action_log: AccountLoader<'info, BetActionLog>,
 }
 
+#[derive(Accounts)]
+pub struct ExpireBetTurn<'info> {
+    #[account(mut)]
+    pub crank: Signer<'info>,
+    #[account(mut, seeds = [b"game_state", &game_state.game_id], bump)]
+    pub game_state: Box<Account<'info, GameState>>,
+    #[account(
+        seeds = [b"table", &game_state.table_room_id[..], &game_state.table_id.to_le_bytes()],
+        bump,
+        constraint = table_state.hand_in_progress @ ErrorCode::HandInProgress,
+        constraint = table_state.current_game_id == game_state.game_id @ ErrorCode::InvalidGamePhase,
+    )]
+    pub table_state: Box<Account<'info, TableState>>,
+    #[account(mut, seeds = [b"encrypted_betting", &game_state.game_id[..]], bump)]
+    pub encrypted_game_betting: Box<Account<'info, EncryptedGameBetting>>,
+    #[account(mut, seeds = [b"bet_action_log", &game_state.game_id[..]], bump)]
+    pub bet_action_log: AccountLoader<'info, BetActionLog>,
+}
+
 #[init_computation_definition_accounts("seal_showdown_pair", payer)]
 #[derive(Accounts)]
 pub struct InitSealShowdownPairCompDef<'info> {
@@ -7858,7 +9194,7 @@ pub struct SealShowdownPairCallback<'info> {
     pub sealed_showdown_coefficients: Box<Account<'info, SealedShowdownCoefficients>>,
 }
 
-#[init_computation_definition_accounts("distribute_and_settle_v3", payer)]
+#[init_computation_definition_accounts("distribute_and_settle", payer)]
 #[derive(Accounts)]
 pub struct InitDistributeAndSettleCompDef<'info> {
     #[account(mut)]
@@ -7877,7 +9213,7 @@ pub struct InitDistributeAndSettleCompDef<'info> {
     pub arcium_program: Program<'info, Arcium>,
 }
 
-#[queue_computation_accounts("distribute_and_settle_v3", payer)]
+#[queue_computation_accounts("distribute_and_settle", payer)]
 #[derive(Accounts)]
 #[instruction(
     computation_offset: u64,
@@ -7905,7 +9241,7 @@ pub struct DistributeAndSettle<'info> {
     pub executing_pool: UncheckedAccount<'info>,
     #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account))]
     pub computation_account: UncheckedAccount<'info>,
-    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("distribute_and_settle_v3")))]
+    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("distribute_and_settle")))]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(mut, address = derive_cluster_pda!(mxe_account))]
     pub cluster_account: Box<Account<'info, Cluster>>,
@@ -7944,11 +9280,11 @@ pub struct DistributeAndSettle<'info> {
     pub arcium_program: Program<'info, Arcium>,
 }
 
-#[callback_accounts("distribute_and_settle_v3")]
+#[callback_accounts("distribute_and_settle")]
 #[derive(Accounts)]
-pub struct DistributeAndSettleV3Callback<'info> {
+pub struct DistributeAndSettleCallback<'info> {
     pub arcium_program: Program<'info, Arcium>,
-    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("distribute_and_settle_v3")))]
+    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("distribute_and_settle")))]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Box<Account<'info, MXEAccount>>,
@@ -7980,7 +9316,7 @@ pub struct DistributeAndSettleV3Callback<'info> {
 }
 
 #[cfg(feature = "testing")]
-#[init_computation_definition_accounts("settle_casino_hand_v2", payer)]
+#[init_computation_definition_accounts("settle_casino_hand", payer)]
 #[derive(Accounts)]
 pub struct InitSettleCasinoHandCompDef<'info> {
     #[account(mut)]
@@ -8000,7 +9336,7 @@ pub struct InitSettleCasinoHandCompDef<'info> {
 }
 
 #[cfg(feature = "testing")]
-#[queue_computation_accounts("settle_casino_hand_v2", payer)]
+#[queue_computation_accounts("settle_casino_hand", payer)]
 #[derive(Accounts)]
 #[instruction(computation_offset: u64)]
 pub struct SettleCasinoHand<'info> {
@@ -8057,7 +9393,7 @@ pub struct SettleCasinoHand<'info> {
     pub executing_pool: UncheckedAccount<'info>,
     #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account))]
     pub computation_account: UncheckedAccount<'info>,
-    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("settle_casino_hand_v2")))]
+    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("settle_casino_hand")))]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(mut, address = derive_cluster_pda!(mxe_account))]
     pub cluster_account: Box<Account<'info, Cluster>>,
@@ -8070,11 +9406,11 @@ pub struct SettleCasinoHand<'info> {
 }
 
 #[cfg(feature = "testing")]
-#[callback_accounts("settle_casino_hand_v2")]
+#[callback_accounts("settle_casino_hand")]
 #[derive(Accounts)]
-pub struct SettleCasinoHandV2Callback<'info> {
+pub struct SettleCasinoHandCallback<'info> {
     pub arcium_program: Program<'info, Arcium>,
-    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("settle_casino_hand_v2")))]
+    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("settle_casino_hand")))]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Box<Account<'info, MXEAccount>>,
@@ -8147,7 +9483,7 @@ pub struct InitRedeemDealerPoolCompDef<'info> {
 }
 
 #[cfg(feature = "testing")]
-#[init_computation_definition_accounts("apply_casino_player_net_v2", payer)]
+#[init_computation_definition_accounts("apply_casino_player_net", payer)]
 #[derive(Accounts)]
 pub struct InitApplyCasinoPlayerNetCompDef<'info> {
     #[account(mut)]
@@ -8330,7 +9666,7 @@ pub struct RedeemDealerPoolCallback<'info> {
 }
 
 #[cfg(feature = "testing")]
-#[queue_computation_accounts("apply_casino_player_net_v2", payer)]
+#[queue_computation_accounts("apply_casino_player_net", payer)]
 #[derive(Accounts)]
 #[instruction(computation_offset: u64, player_index: u8, player_net_abs: u64, player_won: bool)]
 pub struct ApplyCasinoPlayerNet<'info> {
@@ -8387,7 +9723,7 @@ pub struct ApplyCasinoPlayerNet<'info> {
     pub executing_pool: UncheckedAccount<'info>,
     #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account))]
     pub computation_account: UncheckedAccount<'info>,
-    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("apply_casino_player_net_v2")))]
+    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("apply_casino_player_net")))]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(mut, address = derive_cluster_pda!(mxe_account))]
     pub cluster_account: Box<Account<'info, Cluster>>,
@@ -8400,11 +9736,11 @@ pub struct ApplyCasinoPlayerNet<'info> {
 }
 
 #[cfg(feature = "testing")]
-#[callback_accounts("apply_casino_player_net_v2")]
+#[callback_accounts("apply_casino_player_net")]
 #[derive(Accounts)]
-pub struct ApplyCasinoPlayerNetV2Callback<'info> {
+pub struct ApplyCasinoPlayerNetCallback<'info> {
     pub arcium_program: Program<'info, Arcium>,
-    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("apply_casino_player_net_v2")))]
+    #[account(address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("apply_casino_player_net")))]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Box<Account<'info, MXEAccount>>,
@@ -8651,7 +9987,7 @@ pub struct SetShowdownHash<'info> {
         seeds = [b"game_state", &game_state.game_id],
         bump
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 #[derive(Accounts)]
@@ -8663,7 +9999,7 @@ pub struct SetPotAmounts<'info> {
         seeds = [b"game_state", &game_state.game_id],
         bump
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 #[cfg(feature = "testing")]
@@ -8676,10 +10012,10 @@ pub struct SetVerified<'info> {
         seeds = [b"game_state", &game_state.game_id],
         bump
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
-#[init_computation_definition_accounts("compute_pots_v4", payer)]
+#[init_computation_definition_accounts("compute_pots", payer)]
 #[derive(Accounts)]
 pub struct InitComputePotsCompDef<'info> {
     #[account(mut)]
@@ -8701,7 +10037,7 @@ pub struct InitComputePotsCompDef<'info> {
     pub arcium_program: Program<'info, Arcium>,
 }
 
-#[queue_computation_accounts("compute_pots_v4", payer)]
+#[queue_computation_accounts("compute_pots", payer)]
 #[derive(Accounts)]
 #[instruction(computation_offset: u64)]
 pub struct ComputePots<'info> {
@@ -8735,7 +10071,7 @@ pub struct ComputePots<'info> {
     )]
     pub computation_account: UncheckedAccount<'info>,
     #[account(
-        address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("compute_pots_v4"))
+        address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("compute_pots"))
     )]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(
@@ -8771,6 +10107,7 @@ pub struct ComputePots<'info> {
     )]
     pub sealed_showdown_coefficients: Box<Account<'info, SealedShowdownCoefficients>>,
     #[account(
+        mut,
         seeds = [b"table", &game_state.table_room_id[..], &game_state.table_id.to_le_bytes()],
         bump
     )]
@@ -8779,12 +10116,12 @@ pub struct ComputePots<'info> {
     pub arcium_program: Program<'info, Arcium>,
 }
 
-#[callback_accounts("compute_pots_v4")]
+#[callback_accounts("compute_pots")]
 #[derive(Accounts)]
-pub struct ComputePotsV4Callback<'info> {
+pub struct ComputePotsCallback<'info> {
     pub arcium_program: Program<'info, Arcium>,
     #[account(
-        address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("compute_pots_v4"))
+        address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("compute_pots"))
     )]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(
@@ -8805,6 +10142,15 @@ pub struct ComputePotsV4Callback<'info> {
         bump
     )]
     pub game_state: Box<Account<'info, GameState>>,
+    #[account(
+        mut,
+        seeds = [b"table", &table_state.room_id[..], &table_state.table_id.to_le_bytes()],
+        bump,
+        constraint = table_state.hand_in_progress
+            && table_state.current_game_id == game_state.game_id
+            @ ErrorCode::InvalidGamePhase
+    )]
+    pub table_state: Box<Account<'info, TableState>>,
 }
 
 #[derive(Accounts)]
@@ -8827,7 +10173,7 @@ pub struct ConsumeProofReceipt<'info> {
     /// light-casino `cpi_authority` PDA. No other signer may call this.
     pub authority: Signer<'info>,
     #[account(mut)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     /// CHECK: owned by light-casino; validated in handler via seeds + layout.
     pub proof_receipt: UncheckedAccount<'info>,
     /// CHECK: required only for share receipts; validated in handler.
@@ -8844,7 +10190,7 @@ pub struct ConsumeRegisterReceipt<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
     #[account(mut)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     #[account(
         init,
         payer = authority,
@@ -8870,7 +10216,7 @@ pub struct OpenPreflop<'info> {
         seeds = [b"game_state", &game_state.game_id[..]],
         bump
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 #[cfg(feature = "testing")]
@@ -8886,7 +10232,7 @@ pub struct StartBettingRound<'info> {
         seeds = [b"game_state", &game_state.game_id[..]],
         bump
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 #[cfg(feature = "testing")]
@@ -9216,7 +10562,7 @@ pub struct VerifyShareHashChunk<'info> {
 }
 
 
-#[init_computation_definition_accounts("reveal_card_v2", payer)]
+#[init_computation_definition_accounts("reveal_card", payer)]
 #[derive(Accounts)]
 pub struct InitRevealCardCompDef<'info> {
     #[account(mut)]
@@ -9290,7 +10636,7 @@ pub struct SyncShowdownMaterial<'info> {
     pub showdown_material: Box<Account<'info, ShowdownMaterialCommitment>>,
 }
 
-#[queue_computation_accounts("reveal_card_v2", payer)]
+#[queue_computation_accounts("reveal_card", payer)]
 #[derive(Accounts)]
 #[instruction(
     computation_offset: u64,
@@ -9337,7 +10683,7 @@ pub struct RevealCard<'info> {
     )]
     pub computation_account: UncheckedAccount<'info>,
     #[account(
-        address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("reveal_card_v2"))
+        address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("reveal_card"))
     )]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(
@@ -9384,12 +10730,12 @@ pub struct RevealCard<'info> {
     pub arcium_program: Program<'info, Arcium>,
 }
 
-#[callback_accounts("reveal_card_v2")]
+#[callback_accounts("reveal_card")]
 #[derive(Accounts)]
-pub struct RevealCardV2Callback<'info> {
+pub struct RevealCardCallback<'info> {
     pub arcium_program: Program<'info, Arcium>,
     #[account(
-        address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("reveal_card_v2"))
+        address = derive_comp_def_pda!(::arcium_anchor::comp_def_offset("reveal_card"))
     )]
     pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
     #[account(
@@ -9462,7 +10808,7 @@ pub struct WriteDeckStaging<'info> {
         bump,
         constraint = game_state.game_id == game_id @ ErrorCode::InvalidGamePhase,
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     /// Table that owns this hand; membership checked in the handler.
     pub table_state: Account<'info, TableState>,
     #[account(
@@ -9541,7 +10887,7 @@ pub struct WriteShareDeckStaging<'info> {
         bump,
         constraint = game_state.game_id == game_id @ ErrorCode::InvalidGamePhase,
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     /// Table that owns this hand; membership checked in the handler.
     pub table_state: Account<'info, TableState>,
     #[account(
@@ -9561,11 +10907,11 @@ pub struct InitializeGame<'info> {
     #[account(
         init,
         payer = payer,
-        space = 8 + GameState::INIT_SPACE,
+        space = 8 + GameState::INIT_SPACE + 1920,
         seeds = [b"game_state", &game_id[..]],
         bump
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     pub system_program: Program<'info, System>,
 }
 
@@ -9579,7 +10925,7 @@ pub struct CreateDeckStaging<'info> {
         seeds = [b"game_state", &game_id[..]],
         bump
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     #[account(
         init,
         payer = payer,
@@ -9677,7 +11023,7 @@ pub struct RecordReveal<'info> {
         bump,
         constraint = authority.key() == game_state.staging_authority @ ErrorCode::UnauthorizedStagingAuthority
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 #[derive(Accounts)]
@@ -9696,7 +11042,7 @@ pub struct CloseDeckStaging<'info> {
         bump,
         constraint = authority.key() == game_state.staging_authority @ ErrorCode::UnauthorizedStagingAuthority
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 #[error_code]
@@ -9816,6 +11162,10 @@ pub enum ErrorCode {
     SessionNotPlaying,
     #[msg("Session key does not belong to this owner")]
     InvalidSessionKey,
+    #[msg("The betting decision window has expired")]
+    ActionExpired,
+    #[msg("The betting decision window is still open")]
+    ActionNotExpired,
 }
 
 #[account]
@@ -10204,6 +11554,24 @@ pub struct GameState {
     pub rake_bps: u16,
     /// Lamports removed from the contested pots for the house.
     pub rake_amount: u64,
+    /// Bits of players whose public key and padding are stored.
+    /// The key bytes live in `RegistrationMaterial`, not on this account.
+    pub registered_mask: u16,
+    /// See `NEXT_HAND_*`. Opens when poker betting enters showdown.
+    pub next_hand_phase: u8,
+    /// Players who joined the hand that opened this pipeline.
+    pub next_num_players: u8,
+    /// Next sequential shuffler. Share is parallel.
+    pub next_shuffler: u8,
+    /// `hand_seat_order` captured so a seat can still act after `end_hand`.
+    pub next_seat_saved: bool,
+    pub next_registered_mask: u16,
+    pub next_shuffled_mask: u16,
+    pub next_shared_mask: u16,
+    pub next_seat_order: [u8; 10],
+    /// Unix timestamp by which `current_player` must check, fold, or raise.
+    /// `0` when no betting decision is open. The registration tail follows this field.
+    pub act_deadline_unix: i64,
 }
 
 /// Callback-owned encrypted output of `settle_all_seats`.
@@ -10262,6 +11630,8 @@ pub struct PlayerActionRequired {
     pub action_kind: u8,
     pub phase: u8,
     pub betting_phase: u8,
+    /// Unix time the current betting decision must be in by. `0` outside a street.
+    pub act_deadline_unix: i64,
 }
 
 #[event]

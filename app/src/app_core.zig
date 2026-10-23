@@ -193,7 +193,7 @@ pub const App = struct {
         const auto_play_flag = if (auto_play) |value|
             std.mem.eql(u8, value, "1") or std.ascii.eqlIgnoreCase(value, "true")
         else
-            true;
+            false;
 
         const backend_json: []const u8 = if (backend) |value|
             if (std.ascii.eqlIgnoreCase(value, "solana"))

@@ -35,16 +35,8 @@ main {
   opacity: 80%;
 }
 
-#shared_cards rect {
-  fill: url(#card-bg-gradient);
-}
-
 #shared_cards text {
   font-size: 160px;
-}
-
-#player_cards g>rect {
-  fill: url(#card-bg-gradient);
 }
 
 #shared_cards g.flipped>rect,

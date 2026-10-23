@@ -33,6 +33,26 @@ extern fn zkpoker_dispatch_on_main(
     ctx: ?*anyopaque,
 ) void;
 
+extern fn pthread_set_qos_class_self_np(qos_class: c_uint, relative_priority: c_int) c_int;
+
+const QOS_CLASS_USER_INITIATED: c_uint = 0x19;
+const QOS_CLASS_UTILITY: c_uint = 0x11;
+
+fn setQos(qos_class: c_uint) void {
+    if (comptime builtin.os.tag != .macos and builtin.os.tag != .ios) return;
+    _ = pthread_set_qos_class_self_np(qos_class, 0);
+}
+
+/// Witness and Groth16 threads inherit this. Utility QoS lets the AppKit main
+/// thread preempt the prover so the table keeps painting during a prove.
+pub fn setBackgroundComputeQos() void {
+    setQos(QOS_CLASS_UTILITY);
+}
+
+pub fn setUserInitiatedQos() void {
+    setQos(QOS_CLASS_USER_INITIATED);
+}
+
 extern fn zkpoker_dispatch_on_main_sync(
     fn_ptr: *const fn (?*anyopaque) callconv(.c) void,
     ctx: ?*anyopaque,

@@ -247,3 +247,158 @@ export function formatHandStatus(
 export function isBettingPhase(phase: GameSnapshot['phase']): boolean {
   return BETTING_PHASES.has(phase);
 }
+
+export type TableStatusTone = 'you' | 'seat' | 'work' | 'idle';
+
+export type TableStatus = {
+  /** Stable while the same wait continues, so the timer does not reset on every poll. */
+  key: string;
+  text: string;
+  timed: boolean;
+  tone: TableStatusTone;
+};
+
+function yourTurn(): TableStatus {
+  return { key: 'turn:you', text: "It's your turn", timed: false, tone: 'you' };
+}
+
+function seatTurn(seat: number): TableStatus {
+  return { key: `turn:seat:${seat}`, text: `Seat ${seat}'s turn`, timed: false, tone: 'seat' };
+}
+
+function work(key: string, text: string): TableStatus {
+  return { key, text, timed: true, tone: 'work' };
+}
+
+function idle(key: string, text: string): TableStatus {
+  return { key, text, timed: false, tone: 'idle' };
+}
+
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+export function renderTableStatus(status: TableStatus, elapsedMs: number): string {
+  if (!status.text) return '';
+  if (!status.timed) return status.text;
+  return `${status.text} · ${formatElapsed(elapsedMs)}`;
+}
+
+function pendingShareSeats(snapshot: GameSnapshot): number[] {
+  const zk = snapshot.zk;
+  if (!zk) return [];
+  const total = zk.requiredShares ?? zk.registeredCount;
+  const partials = zk.hasSharedPartial ?? [];
+  const seats: number[] = [];
+  for (let playerIndex = 0; playerIndex < total; playerIndex += 1) {
+    if (partials[playerIndex] === true) continue;
+    const seatEntry = Object.entries(snapshot.playerIndexBySeat ?? {}).find(
+      ([, idx]) => idx === playerIndex,
+    );
+    if (seatEntry) seats.push(Number(seatEntry[0]));
+  }
+  seats.sort((a, b) => a - b);
+  return seats;
+}
+
+function shareWaitText(seats: number[]): string {
+  if (seats.length === 1) return `Waiting on seat ${seats[0]}'s share`;
+  if (seats.length > 1) return `Waiting on seats ${seats.join(' and ')} to share`;
+  return 'Waiting on share';
+}
+
+function busyActionText(statusMessage: string): string | null {
+  const text = statusMessage.trim();
+  if (!text) return null;
+  if (/advancing street/i.test(text)) return 'Advancing street';
+  if (/posting blind/i.test(text)) return 'Posting blind';
+  if (/^(fold|check|call|raise)$/i.test(text)) return `Submitting ${text.toLowerCase()}`;
+  return null;
+}
+
+export function formatTableStatus(opts: {
+  snapshot: GameSnapshot | null;
+  localSeat: number | null;
+  zkBusy: boolean;
+  busy: boolean;
+  statusMessage: string;
+  /** Set when this seat must post a blind, or is waiting on the other blind. */
+  blindPrompt?: string | null;
+  blindPromptTone?: TableStatusTone;
+}): TableStatus {
+  const { snapshot, localSeat, zkBusy, busy, statusMessage } = opts;
+  if (!snapshot || snapshot.phase === 'lobby') {
+    return idle('lobby', 'Waiting to start');
+  }
+  if (snapshot.phase === 'Complete') {
+    return idle('complete', 'Hand complete');
+  }
+
+  if (snapshot.phase === 'Register') {
+    return zkBusy ? work('register:run', 'Running register') : work('register:wait', 'Waiting on register');
+  }
+
+  if (snapshot.phase === 'Shuffle') {
+    const shuffler = snapshot.zk?.currentShufflerSeat;
+    if (shuffler !== null && shuffler !== undefined && localSeat !== null && shuffler === localSeat) {
+      return zkBusy ? work('shuffle:run', 'Running shuffle') : yourTurn();
+    }
+    if (typeof shuffler === 'number') {
+      return work(`shuffle:wait:${shuffler}`, `Waiting on seat ${shuffler}'s shuffle`);
+    }
+    return work('shuffle:wait', 'Waiting on shuffle');
+  }
+
+  if (snapshot.phase === 'Share') {
+    const pending = pendingShareSeats(snapshot);
+    const mine = localSeat !== null && pending.includes(localSeat);
+    if (zkBusy || (mine && pending.length === 1)) {
+      return work('share:run', 'Running share');
+    }
+    if (mine) return yourTurn();
+    return work(`share:wait:${pending.join('+')}`, shareWaitText(pending));
+  }
+
+  if (snapshot.phase === 'Showdown') {
+    if (isHandLifecycleComplete(snapshot) && !zkBusy) {
+      return idle('complete', 'Hand complete');
+    }
+    const submitter = snapshot.zkShowdown?.submitterSeat;
+    if (zkBusy || (submitter !== null && submitter !== undefined && submitter === localSeat)) {
+      return work('showdown:run', 'Running showdown');
+    }
+    if (typeof submitter === 'number') {
+      return work(`showdown:wait:${submitter}`, `Waiting on seat ${submitter}'s showdown`);
+    }
+    return work('showdown:wait', 'Waiting on showdown');
+  }
+
+  if (isBettingPhase(snapshot.phase)) {
+    if (busy) {
+      const action = busyActionText(statusMessage);
+      if (action) return work(`bet:${action}`, action);
+    }
+    if (snapshot.bettingRoundOpen && snapshot.currentPlayerSeat !== null) {
+      if (localSeat !== null && snapshot.currentPlayerSeat === localSeat) return yourTurn();
+      return seatTurn(snapshot.currentPlayerSeat);
+    }
+    if (opts.blindPrompt) {
+      return {
+        key: `blind:${opts.blindPrompt}`,
+        text: opts.blindPrompt,
+        timed: false,
+        tone: opts.blindPromptTone ?? 'you',
+      };
+    }
+    if (snapshot.holesViewPending) {
+      return work(`holes:${snapshot.phase}`, 'Viewing hole cards');
+    }
+    return work(`street:${snapshot.phase}`, 'Waiting for the next street');
+  }
+
+  return idle('idle', '');
+}

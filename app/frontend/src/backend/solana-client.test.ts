@@ -193,6 +193,7 @@ describe('SolanaPokerClient', () => {
     const snap = client.applyLogsToSnapshot([betEvent(0, 3, 40n)]);
     const seat0 = snap.seats.find((s) => s.seat === 0);
     expect(seat0?.bet).toBe('40');
+    expect(seat0?.chips).toBe('960');
     expect(snap.currentBet).toBe('40');
     expect(snap.pots[0]?.amount).toBe('40');
     expect(snap.pots[0]?.lastBet).toBe('40');
@@ -215,6 +216,7 @@ describe('SolanaPokerClient', () => {
     const snap = client.applyLogsToSnapshot([betEvent(1, 2, 40n)]);
     const seat1 = snap.seats.find((s) => s.seat === 1);
     expect(seat1?.bet).toBe('40');
+    expect(seat1?.chips).toBe('960');
     expect(snap.currentBet).toBe('40');
     expect(snap.pots[0]?.amount).toBe('80');
   });
@@ -404,6 +406,20 @@ describe('SolanaPokerClient', () => {
     expect(merged.seats[1]?.active).toBe(true);
   });
 
+  it('keeps a faucet personal balance when the worker phase lags the chain', () => {
+    const chain = baseSnap({
+      phase: 'Showdown',
+      callerPersonalEscrow: '40',
+    });
+    const worker = baseSnap({
+      phase: 'lobby',
+      callerPersonalEscrow: '60',
+    });
+    const merged = mergeWorkerIntoChainSnapshot(chain, worker);
+    expect(merged.phase).toBe('Showdown');
+    expect(merged.callerPersonalEscrow).toBe('60');
+  });
+
   it('mergeWorkerIntoChainSnapshot keeps chain bettingRoundOpen when worker lags', () => {
     const chain = baseSnap({
       phase: 'PreFlop',
@@ -524,10 +540,40 @@ describe('SolanaPokerClient', () => {
     })).toBe('PreFlop');
     expect(phaseFromChainAdvanced({
       gameId,
+      phase: 0,
+      bettingPhase: 1,
+      currentPlayer: 0,
+    })).toBe('Register');
+    expect(phaseFromChainAdvanced({
+      gameId,
+      phase: 1,
+      bettingPhase: 1,
+      currentPlayer: 0,
+    })).toBe('Shuffle');
+    expect(phaseFromChainAdvanced({
+      gameId,
       phase: 5,
       bettingPhase: 5,
       currentPlayer: 0,
     })).toBe('Showdown');
+    expect(phaseFromChainAdvanced({
+      gameId,
+      phase: 6,
+      bettingPhase: 5,
+      currentPlayer: 0,
+    })).toBe('Complete');
+    expect(phaseFromChainAdvanced({
+      gameId,
+      phase: 6,
+      bettingPhase: 1,
+      currentPlayer: 0,
+    })).toBe('Complete');
+    expect(phaseFromChainAdvanced({
+      gameId,
+      phase: 6,
+      bettingPhase: 2,
+      currentPlayer: 1,
+    })).toBe('Complete');
   });
 
   it('PhaseAdvancedEvent to Showdown marks all partials public', () => {

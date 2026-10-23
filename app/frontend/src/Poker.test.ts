@@ -126,6 +126,8 @@ const mockClient = {
   submitShare: vi.fn(),
   placeBet: vi.fn(),
   advanceStreet: vi.fn(),
+  healthCheck: vi.fn(async () => null as { ok?: boolean; rpcReady?: boolean; localnetReady?: boolean; hint?: string } | null),
+  faucetCreditPersonal: vi.fn(),
   resetTable: vi.fn(async () => ({
     gameId: 'local-table',
     backend: 'local',
@@ -154,6 +156,7 @@ vi.mock('./backend', async (importOriginal) => {
 vi.mock('./identity', () => ({
   getActivePublicKey: vi.fn(() => TEST_PUBLIC_KEY),
   getOrCreateLocalPublicKey: vi.fn(() => TEST_PUBLIC_KEY),
+  hydrateE2eWalletFromMeta: vi.fn(async () => TEST_PUBLIC_KEY),
   createNewLocalWallet: vi.fn(() => 'NewWallet111111111111111111111111111'),
   getWalletPublicKey: vi.fn(() => null),
   shortPublicKey: (key: string) => (key.length > 10 ? `${key.slice(0, 4)}…${key.slice(-4)}` : key),
@@ -174,6 +177,8 @@ vi.mock('./poker/zk-hand-flow', () => ({
   isMyZkTurn: vi.fn(() => false),
   isZkHandPhase: vi.fn(() => false),
   maybeAdvanceZkHand: vi.fn(async () => null),
+  setNextHandStageEnabled: vi.fn(),
+  showdownWinnerSeats: vi.fn(() => new Set<number>()),
 }));
 
 vi.mock('./poker/zk-flow', () => ({
@@ -314,7 +319,7 @@ describe('Poker backend selector UI', () => {
     await waitFor(() => expect(screen.getByTestId('seat-select')).toBeInTheDocument());
     const options = screen.getByTestId('seat-select').querySelectorAll('option');
     expect(options).toHaveLength(11);
-    expect(screen.getByTestId('player-public-key')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('player-public-key')).toBeInTheDocument());
     expect(document.querySelector('#seats circle')).toBeTruthy();
   });
 
@@ -434,6 +439,89 @@ describe('Poker backend selector UI', () => {
     expect(screen.queryByTestId('seat-select')).not.toBeInTheDocument();
   });
 
+  it('requires a manual sit and faucet before start on devnet', async () => {
+    const user = userEvent.setup();
+    render(Poker);
+
+    await user.selectOptions(screen.getByTestId('backend-select'), 'devnet');
+
+    await waitFor(() => expect(screen.getByTestId('add-chips-submit')).toHaveTextContent('Faucet'));
+    expect(screen.getByTestId('add-chips-submit')).toBeDisabled();
+    expect(screen.getByTestId('start-hand')).toBeDisabled();
+    expect(screen.getByTestId('sit-down')).toBeDisabled();
+    expect(mockClient.joinGame).not.toHaveBeenCalled();
+    expect(mockClient.startHand).not.toHaveBeenCalled();
+  });
+
+  it('keeps sit disabled until the faucet balance is confirmed', async () => {
+    let releaseFund: (snapshot: {
+      gameId: string;
+      backend: 'solana';
+      phase: 'lobby';
+      dealerSeat: number;
+      smallBlindSeat: number;
+      bigBlindSeat: number;
+      smallBlind: string;
+      currentBet: string;
+      currentPlayerSeat: null;
+      bettingRoundOpen: boolean;
+      seats: [];
+      pots: [];
+      callerPersonalEscrow: string;
+    }) => void = () => {};
+    mockClient.healthCheck.mockResolvedValue({ ok: true, rpcReady: true, localnetReady: true });
+    mockClient.faucetCreditPersonal.mockImplementation(() => new Promise((resolve) => {
+      releaseFund = resolve;
+    }));
+    mockClient.getDefaultGame.mockResolvedValue({
+      gameId: 'local-table',
+      backend: 'solana',
+      phase: 'lobby',
+      dealerSeat: -1,
+      smallBlindSeat: -1,
+      bigBlindSeat: -1,
+      smallBlind: '1',
+      currentBet: '0',
+      currentPlayerSeat: null,
+      bettingRoundOpen: false,
+      seats: [],
+      pots: [],
+      callerPersonalEscrow: '0',
+    });
+
+    const user = userEvent.setup();
+    render(Poker);
+    await user.selectOptions(screen.getByTestId('backend-select'), 'solana');
+
+    await waitFor(() => expect(screen.getByTestId('add-chips-submit')).toBeEnabled());
+    await user.selectOptions(screen.getByTestId('seat-select'), '0');
+    expect(screen.getByTestId('sit-down')).toBeDisabled();
+
+    await user.click(screen.getByTestId('add-chips-submit'));
+    expect(screen.getByTestId('sit-down')).toBeDisabled();
+    expect(screen.getByTestId('share-bond').textContent).toMatch(/Account 0 chips/);
+
+    releaseFund({
+      gameId: 'local-table',
+      backend: 'solana',
+      phase: 'lobby',
+      dealerSeat: -1,
+      smallBlindSeat: -1,
+      bigBlindSeat: -1,
+      smallBlind: '1',
+      currentBet: '0',
+      currentPlayerSeat: null,
+      bettingRoundOpen: false,
+      seats: [],
+      pots: [],
+      callerPersonalEscrow: '1000',
+    });
+
+    await waitFor(() => expect(screen.getByTestId('sit-down')).toBeEnabled());
+    expect(screen.getByTestId('share-bond').textContent).toMatch(/Account 1000 chips/);
+    mockClient.healthCheck.mockResolvedValue(null);
+  });
+
   it('keeps seating controls when Solana backend selected', async () => {
     const user = userEvent.setup();
     render(Poker);
@@ -541,6 +629,82 @@ describe('Poker backend selector UI', () => {
     await user.click(screen.getByTestId('reset-server-table'));
 
     await waitFor(() => expect(mockClient.resetTable).toHaveBeenCalled());
+  });
+
+  it('offers a new hand when the current hand is complete', async () => {
+    mockClient.getDefaultGame.mockResolvedValueOnce({
+      gameId: 'local-table',
+      backend: 'local',
+      phase: 'Complete',
+      dealerSeat: 0,
+      smallBlindSeat: 0,
+      bigBlindSeat: 1,
+      smallBlind: '1',
+      currentBet: '0',
+      currentPlayerSeat: null,
+      currentPlayerIndex: null,
+      bettingRoundOpen: false,
+      seats: [{
+        seat: 1,
+        name: '7xKX…7ee',
+        publicKey: TEST_PUBLIC_KEY,
+        chips: '1000',
+        bet: '0',
+        folded: false,
+        active: false,
+      }],
+      pots: [],
+    });
+
+    const user = userEvent.setup();
+    render(Poker);
+
+    const startNew = await screen.findByTestId('start-new-hand');
+    expect(startNew).toHaveTextContent('Start new hand');
+    expect(screen.getByTestId('start-hand')).toHaveTextContent('Start new hand');
+    await user.click(startNew);
+    await waitFor(() => expect(mockClient.startHand).toHaveBeenCalledWith('local-table', { gameKind: 'poker' }));
+  });
+
+  it('shows start new hand as soon as showdown is done', async () => {
+    mockClient.getDefaultGame.mockResolvedValueOnce({
+      gameId: 'local-table',
+      backend: 'local',
+      phase: 'Showdown',
+      dealerSeat: 0,
+      smallBlindSeat: 0,
+      bigBlindSeat: 1,
+      smallBlind: '1',
+      currentBet: '0',
+      currentPlayerSeat: null,
+      currentPlayerIndex: null,
+      bettingRoundOpen: false,
+      seats: [{
+        seat: 1,
+        name: '7xKX…7ee',
+        publicKey: TEST_PUBLIC_KEY,
+        chips: '1000',
+        bet: '0',
+        folded: false,
+        active: false,
+      }],
+      pots: [],
+      zkShowdown: {
+        requested: true,
+        submittedCount: 1,
+        requiredCount: 1,
+        submittedSeats: [0],
+        eligibleSeats: [0],
+        submitterSeat: 0,
+      },
+    });
+
+    render(Poker);
+
+    const startNew = await screen.findByTestId('start-new-hand');
+    expect(startNew).toHaveTextContent('Start new hand');
+    expect(screen.getByTestId('start-hand')).toHaveTextContent('Start new hand');
+    expect(screen.getByTestId('start-hand')).toBeEnabled();
   });
 
   it('does not launch a host process from the app when the server is down', async () => {

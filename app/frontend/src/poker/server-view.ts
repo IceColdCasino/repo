@@ -55,12 +55,20 @@ function buildCardViewForDealIndex(
   }
   const decrypted = decryptedCards?.get(dealIndex);
   if (usesDecryption) {
-    if (decrypted === undefined) {
+    if (!isRealCardId(decrypted)) {
       return faceDownCard;
     }
     return cardView(decrypted, true);
   }
-  return cardView(decrypted ?? dealIndex, true);
+  const value = decrypted ?? dealIndex;
+  if (!isRealCardId(value)) {
+    return faceDownCard;
+  }
+  return cardView(value, true);
+}
+
+function isRealCardId(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 51;
 }
 
 function revealedBoardCount(phase: BettingPhase): number {
@@ -98,17 +106,82 @@ function shouldRenderTableCards(state: GameSnapshot): boolean {
     || (state.phase === 'Complete' && Boolean(state.handResult));
 }
 
+/**
+ * Shuffle is finished only after every registered player has shuffled.
+ * A missing zk block means this snapshot is not a proof hand.
+ */
+export function shuffleFinished(state: GameSnapshot): boolean {
+  if (state.phase === 'Register' || state.phase === 'Shuffle') return false;
+  const zk = state.zk;
+  if (!zk) return true;
+  const registered = zk.registeredCount ?? 0;
+  if (registered <= 0) return false;
+  return (zk.shuffledCount ?? 0) >= registered;
+}
+
+/**
+ * A finished ZK hand has no faces until decryption. Painting backs there looks
+ * like a deal that has not started.
+ */
+/** Board deal indices that were actually dealt when a fold ended the hand. */
+function uncontestedFoldBoard(state: GameSnapshot): number[] | null {
+  if (state.handResult?.reason !== 'fold') return null;
+  const fromResult = (state.handResult.boardCards ?? []).filter(
+    (index) => index >= 20 && index <= 24,
+  );
+  const fromReveal = (state.zkReveal?.revealedCardIndices ?? []).filter(
+    (index) => index >= 20 && index <= 24,
+  );
+  if (state.zkReveal && state.handResult.boardCards.length > 0) {
+    const allowed = new Set(fromResult);
+    return fromReveal.filter((index) => allowed.has(index));
+  }
+  if (state.zkReveal) return fromReveal;
+  return fromResult;
+}
+
+function completeFacesReady(
+  state: GameSnapshot,
+  decryptedCards: ReadonlyMap<number, number> | undefined,
+): boolean {
+  if (state.phase !== 'Complete' || !usesZkCardDecryption(state)) {
+    return true;
+  }
+  const foldBoard = uncontestedFoldBoard(state);
+  if (foldBoard) {
+    if (foldBoard.length === 0) return true;
+    return foldBoard.every((dealIndex) => decryptedCards?.has(dealIndex));
+  }
+  const needed: number[] = [...(state.boardCards ?? [])];
+  for (const seat of state.seats) {
+    if (seat.folded) continue;
+    const holes = state.holeCards?.[seat.seat];
+    if (holes) needed.push(...holes);
+  }
+  if (needed.length === 0) return false;
+  return needed.every((dealIndex) => decryptedCards?.has(dealIndex));
+}
+
 /** Community board + hole backs appear only after shuffle completes (Share+). */
-function shouldRenderSharedCards(state: GameSnapshot): boolean {
+function shouldRenderSharedCards(
+  state: GameSnapshot,
+  decryptedCards?: ReadonlyMap<number, number>,
+): boolean {
   if (!shouldRenderTableCards(state)) {
     return false;
   }
-  return state.phase !== 'Register' && state.phase !== 'Shuffle';
+  if (!shuffleFinished(state)) {
+    return false;
+  }
+  return completeFacesReady(state, decryptedCards);
 }
 
 /** Same gate as the board: face-down holes once shuffle is done. */
-function shouldRenderHoleCards(state: GameSnapshot): boolean {
-  return shouldRenderSharedCards(state);
+function shouldRenderHoleCards(
+  state: GameSnapshot,
+  decryptedCards?: ReadonlyMap<number, number>,
+): boolean {
+  return shouldRenderSharedCards(state, decryptedCards);
 }
 
 /**
@@ -303,13 +376,16 @@ export function snapshotFromServer(
     && state.zkShowdown.submittedCount < state.zkShowdown.requiredCount,
   );
 
-  const sharedCards: CardView[] = shouldRenderSharedCards(state)
+  const foldBoard = uncontestedFoldBoard(state);
+  const sharedCards: CardView[] = shouldRenderSharedCards(state, decryptedCards)
     ? (state.boardCards ?? Array.from({ length: 5 }, (_, slot) => slot))
         .slice(0, 5)
         .map((dealIndex, slotIndex) =>
           buildCardViewForDealIndex(
             dealIndex,
-            resultsVisible ? true : boardSlotFaceUp(slotIndex, state),
+            foldBoard
+              ? foldBoard.includes(dealIndex)
+              : resultsVisible ? true : boardSlotFaceUp(slotIndex, state),
             decryptedCards,
             usesDecryption,
           ),
@@ -317,7 +393,7 @@ export function snapshotFromServer(
     : [];
 
   const playerCards: Record<number, [CardView, CardView]> = {};
-  if (renderingCards && shouldRenderHoleCards(state)) {
+  if (renderingCards && shouldRenderHoleCards(state, decryptedCards)) {
     for (const seat of state.seats) {
       const hole = holeDealIndicesForSeat(seat.seat, state);
       if (!hole) {
@@ -343,7 +419,7 @@ export function snapshotFromServer(
     pots,
     sharedCards,
     playerCards,
-    showDealer: renderingCards,
+    showDealer: state.phase !== 'lobby' && state.dealerSeat >= 0,
     handComplete,
   };
 }

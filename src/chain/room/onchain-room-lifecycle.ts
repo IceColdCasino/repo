@@ -34,6 +34,25 @@ const CLOSE_SESSION_ACCOUNTS = createHash('sha256')
 import { casinoOperatorMetas } from '../casino-factory';
 import { confirmOrResend, installDurableConfirm } from '../confirm-tx';
 
+function gameIdFromTable(table: {
+  currentGameId?: unknown;
+  current_game_id?: unknown;
+}): Uint8Array | null {
+  const raw = table.currentGameId ?? table.current_game_id;
+  let bytes: Uint8Array | null = null;
+  if (raw instanceof Uint8Array) bytes = raw;
+  else if (Array.isArray(raw)) bytes = Uint8Array.from(raw as number[]);
+  else if (typeof raw === 'object' && raw !== null && 'length' in raw) {
+    try {
+      bytes = Uint8Array.from(raw as ArrayLike<number>);
+    } catch {
+      bytes = null;
+    }
+  }
+  if (!bytes || bytes.length !== 32 || bytes.every((byte) => byte === 0)) return null;
+  return bytes;
+}
+
 export class OnchainRoomLifecycle {
   readonly polling: ArciumPollingHelper;
   private readonly arcium: ArciumMPCHelper;
@@ -861,12 +880,18 @@ export class OnchainRoomLifecycle {
     tableId: bigint,
     authorityProvider: AnchorProvider = this.provider,
   ): Promise<void> {
+    const table = await this.fetchTable(tableId);
+    const gameId = gameIdFromTable(table);
+    if (!gameId) {
+      throw new Error('end_hand needs the table game');
+    }
     await (this.pokerProgram.methods as any)
       .endHand()
       .accounts({
         authority: authorityProvider.wallet.publicKey,
         room: this.roomPDA(),
         tableState: this.tablePDA(tableId),
+        gameState: this.gameStatePDA(gameId),
       })
       .signers(authorityProvider.wallet.payer ? [authorityProvider.wallet.payer] : [])
       .rpc();

@@ -1,5 +1,6 @@
 pub mod field_element;
 pub mod share_penalty;
+pub mod street_close;
 
 pub use field_element::{FieldElement, field_element_from_low_high, field_element_from_u64, field_element_from_u128, field_element_zero};
 
@@ -35,6 +36,7 @@ mod circuits {
     const SEAL_ROWS: usize = 4;
 
     include!("seal_weights.rs");
+    include!("street_close_logic.rs");
 
     /// Reconstruct BaseField25519 from LE u128 limbs (bytes 0..16 / 16..32).
     fn field_from_u128_halves(low: u128, high: u128) -> BaseField25519 {
@@ -317,7 +319,7 @@ mod circuits {
     /// A mask that is not a 10-bit subset of its pot fails closed.
     /// On hash mismatch: payouts are all-zero and `hash_matches` is false (callback rejects).
     #[instruction]
-    pub fn compute_pots_v4(
+    pub fn compute_pots(
         winner_masks: Enc<Shared, [u64; 9]>,
         coeff0: Enc<Shared, u128>,
         coeff1: Enc<Shared, u128>,
@@ -565,6 +567,11 @@ mod circuits {
     }
 
     /// Validate bet with encrypted outputs sealed to table key.
+    ///
+    /// The last revealed bool is the street-close decision. A heads-up call that
+    /// only matches the blind leaves the street open so the big blind can check
+    /// or raise. The callback applies this flag and does not close the street
+    /// on its own.
     #[instruction]
     pub fn validate_bet(
         player_balance: Enc<Shared, u64>,
@@ -578,7 +585,22 @@ mod circuits {
         expected_action: u8,
         expected_current_bet: u64,
         expected_last_aggressor_amount: u64,
-    ) -> (Enc<Shared, u64>, Enc<Shared, u64>, Enc<Shared, u64>, bool, bool, bool, u64) {
+        player_index: u8,
+        num_players: u8,
+        folded_mask: u16,
+        all_in_mask: u16,
+        acted_mask: u16,
+        hand_commit_0: u64,
+        hand_commit_1: u64,
+        hand_commit_2: u64,
+        hand_commit_3: u64,
+        hand_commit_4: u64,
+        hand_commit_5: u64,
+        hand_commit_6: u64,
+        hand_commit_7: u64,
+        hand_commit_8: u64,
+        hand_commit_9: u64,
+    ) -> (Enc<Shared, u64>, Enc<Shared, u64>, Enc<Shared, u64>, bool, bool, bool, u64, bool) {
         let pb = player_balance.to_arcis();
         let pcb = player_current_bet.to_arcis();
         let act = action.to_arcis();
@@ -640,6 +662,33 @@ mod circuits {
             is_valid = false;
         }
 
+        let hand_commits = [
+            hand_commit_0,
+            hand_commit_1,
+            hand_commit_2,
+            hand_commit_3,
+            hand_commit_4,
+            hand_commit_5,
+            hand_commit_6,
+            hand_commit_7,
+            hand_commit_8,
+            hand_commit_9,
+        ];
+        let street_closed = street_closes_after_action(
+            num_players,
+            player_index,
+            act,
+            bet_delta,
+            is_fold,
+            is_all_in,
+            is_valid,
+            cb,
+            folded_mask,
+            all_in_mask,
+            acted_mask,
+            hand_commits,
+        );
+
         (
             player_balance.owner.from_arcis(new_balance),
             player_current_bet.owner.from_arcis(new_current_bet),
@@ -648,6 +697,7 @@ mod circuits {
             is_fold.reveal(),
             is_all_in.reveal(),
             bet_delta.reveal(),
+            street_closed.reveal(),
         )
     }
 
@@ -720,7 +770,7 @@ mod circuits {
     /// Groth16-latched `showdown_hash` (LE halves). Callback hard-fails when
     /// `hash_matches` is false — verify and settle are not separable.
     #[instruction]
-    pub fn distribute_and_settle_v3(
+    pub fn distribute_and_settle(
         winner_masks: Enc<Shared, [u64; 9]>,
         coeff0: Enc<Shared, u128>,
         coeff1: Enc<Shared, u128>,

@@ -51,6 +51,10 @@ export function persistZkHandKey(
   writeKey(storageKey(handNumber), key);
   if (seat !== null && seat !== undefined && Number.isInteger(seat) && seat >= 0) {
     writeKey(seatStorageKey(seat, handNumber), key);
+    // Session storage dies with the WebView. Disk keeps the seat key across reopen.
+    void import('./seat-elgamal-key')
+      .then(({ persistSeatElgamalKey }) => persistSeatElgamalKey(seat, handNumber, key))
+      .catch(() => undefined);
   }
 }
 

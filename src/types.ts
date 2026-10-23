@@ -60,6 +60,8 @@ export interface GameSnapshot {
   currentPlayerSeat: number | null;
   /** Hand player index (0..n-1) for the current actor; differs from table seat number. */
   currentPlayerIndex: number | null;
+  /** Unix seconds by which the current player must check, fold, or raise. */
+  actDeadlineUnix?: number;
   bettingRoundOpen: boolean;
   /** Present during a hand: table seats in clockwise action order from dealer. */
   actionOrder?: number[];

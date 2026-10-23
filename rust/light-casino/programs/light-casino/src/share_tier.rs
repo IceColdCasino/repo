@@ -239,6 +239,12 @@ fn store_street_hash(
     let slot = TIER_HASH_AT + street * 32;
     let ready = read_u16(data, READY_MASK_AT);
     if ready & street_flag != 0 {
+        // Groth16 has not landed. A retry proves new partials; keep the street
+        // hash aligned with those partials instead of rejecting the upload.
+        if data.get(84).copied() == Some(RECEIPT_STATUS_INITIALIZED) {
+            data[slot..slot + 32].copy_from_slice(&street_hash);
+            return Ok(());
+        }
         require!(
             data[slot..slot + 32] == street_hash[..],
             ErrorCode::InvalidPublicInputs
@@ -445,14 +451,9 @@ pub fn write_share_chunk(accounts: &[AccountInfo], mut data: &[u8]) -> Result<()
     let _system = ix.system()?;
     let hash = hash_chunk_refs(&fields[..n])?;
     let mut stored = chunk_account.try_borrow_mut_data()?;
-    if stored[..SHARE_CHUNK_LEN] == [0u8; SHARE_CHUNK_LEN] {
-        stored[..SHARE_CHUNK_LEN].copy_from_slice(&hash);
-    } else {
-        require!(
-            stored[..SHARE_CHUNK_LEN] == hash[..],
-            ErrorCode::InvalidPublicInputs
-        );
-    }
+    // Staging only. The receipt fold is the commitment, and a share retry
+    // writes a fresh hash here before Groth16.
+    stored[..SHARE_CHUNK_LEN].copy_from_slice(&hash);
     Ok(())
 }
 
@@ -479,12 +480,20 @@ pub fn finish_share_street(accounts: &[AccountInfo], data: &[u8]) -> Result<()> 
         data.len() >= SHARE_RECEIPT_LEN && read_u16(&data, READY_MASK_AT) & street_flag != 0
     };
     if already {
-        for chunk in &chunks {
-            if chunk.owner() == crate::ID && chunk.lamports() > 0 {
-                refund_staging(chunk, &vault.to_account_info())?;
+        let open = {
+            let data = receipt.try_borrow_data()?;
+            data.len() > 84 && data[84] == RECEIPT_STATUS_INITIALIZED
+        };
+        // Verified receipts keep the committed street. An open receipt is
+        // rewritten from the chunks this retry just uploaded.
+        if !open {
+            for chunk in &chunks {
+                if chunk.owner() == crate::ID && chunk.lamports() > 0 {
+                    refund_staging(chunk, &vault.to_account_info())?;
+                }
             }
+            return Ok(());
         }
-        return Ok(());
     }
 
     let receipt_data = receipt.try_borrow_data()?;

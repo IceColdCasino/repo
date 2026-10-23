@@ -7,12 +7,18 @@ export function eventLogDumpPath(seat: number | null): string {
   return `/tmp/zk-poker-seat${n}-event-log.txt`;
 }
 
-function resolveSeatForDump(explicitSeat: number | null | undefined): number | null {
+export function resolveEventLogSeat(explicitSeat: number | null | undefined): number | null {
   if (explicitSeat !== null && explicitSeat !== undefined && Number.isFinite(explicitSeat)) {
     return explicitSeat;
   }
   if (typeof window === 'undefined') {
     return null;
+  }
+  const launch = (window as Window & {
+    __ZK_LAUNCH_CONFIG?: { seat?: number };
+  }).__ZK_LAUNCH_CONFIG;
+  if (typeof launch?.seat === 'number' && Number.isFinite(launch.seat)) {
+    return launch.seat;
   }
   const params = new URLSearchParams(window.location.search);
   const raw = params.get('e2eSeat') ?? params.get('seat');
@@ -21,6 +27,17 @@ function resolveSeatForDump(explicitSeat: number | null | undefined): number | n
   }
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
+}
+
+export function eventLogMetaKey(seat: number | null): string {
+  const n = seat === null || !Number.isFinite(seat) ? 'x' : String(seat);
+  return `event-log-seat-${n}`;
+}
+
+export function formatHandEventLog(entries: readonly HandEventLogEntry[]): string {
+  return entries
+    .map((ev) => `${formatEventLogTime(ev.at)} [${ev.kind}] ${ev.message}`)
+    .join('\n');
 }
 
 function dumpUrl(): string | null {
@@ -43,27 +60,16 @@ function dumpUrl(): string | null {
 }
 
 /**
- * Persist Event log for offline debug. Mirrors to console (`[event-log]`) and
- * POSTs to the chain worker (`/api/debug/event-log` → `/tmp/zk-poker-seatN-…`).
+ * Persist the on-screen Event log for development.
+ * Native seats write `.local/event-log-seat-N.json` (plain text) through `solana.meta`.
+ * A chain worker, when configured, also receives `/api/debug/event-log`.
  */
 export function dumpHandEventLog(
   entries: readonly HandEventLogEntry[],
   seat?: number | null,
 ): void {
-  const seatN = resolveSeatForDump(seat ?? null);
-  const body = entries
-    .map((ev) => `${formatEventLogTime(ev.at)} [${ev.kind}] ${ev.message}`)
-    .join('\n');
-  const contents = `${body}${body ? '\n' : ''}`;
-
-  // Native app.log capture (always).
-  console.log(`[event-log] seat=${seatN ?? 'x'} n=${entries.length}`);
-  for (const line of contents.split('\n')) {
-    if (line) {
-      console.log(`[event-log] ${line}`);
-    }
-  }
-
+  const seatN = resolveEventLogSeat(seat ?? null);
+  const contents = formatHandEventLog(entries);
   const url = dumpUrl();
   if (url) {
     void fetch(url, {
@@ -71,29 +77,37 @@ export function dumpHandEventLog(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ seat: seatN, contents }),
     }).catch(() => {
-      // Worker may be mid-startHand; meta dump below still available.
+      // Worker may be down; the native meta file below is the dev copy.
     });
   }
-
-  // Throttled native dump to `.local/event-log-seat-N.json` (and mirrored text)
-  // so E2E can inspect without the :3850 worker.
-  void dumpEventLogViaMeta(seatN, contents);
+  scheduleMetaDump(eventLogMetaKey(seatN), contents);
 }
 
-let lastMetaDumpAt = 0;
-async function dumpEventLogViaMeta(seatN: number | null, contents: string): Promise<void> {
-  const now = Date.now();
-  if (now - lastMetaDumpAt < 2000) return;
-  lastMetaDumpAt = now;
+type PendingDump = { key: string; contents: string };
+let pendingDump: PendingDump | null = null;
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+const lastWrittenByKey = new Map<string, string>();
+
+function scheduleMetaDump(key: string, contents: string): void {
+  pendingDump = { key, contents };
+  if (flushTimer !== null) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    const next = pendingDump;
+    pendingDump = null;
+    if (!next || lastWrittenByKey.get(next.key) === next.contents) return;
+    void flushMetaDump(next);
+  }, 300);
+}
+
+async function flushMetaDump(next: PendingDump): Promise<void> {
   try {
-    const { getSharedMetaStore } = await import('../backend/solana-meta-bridge');
-    const key = `event-log-seat-${seatN ?? 'x'}`;
-    getSharedMetaStore().write(key, JSON.stringify({
-      path: eventLogDumpPath(seatN),
-      contents,
-      updatedAt: now,
-    }));
-  } catch {
-    // Bridge optional in browser; console dump above still available.
+    const { writeNativeMetaFile } = await import('../backend/solana-meta-bridge');
+    await writeNativeMetaFile(next.key, next.contents.endsWith('\n') || next.contents.length === 0
+      ? next.contents
+      : `${next.contents}\n`);
+    lastWrittenByKey.set(next.key, next.contents);
+  } catch (err) {
+    console.error('[event-log] disk dump failed', next.key, err);
   }
 }

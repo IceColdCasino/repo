@@ -258,12 +258,20 @@ pub fn build(b: *std.Build) void {
     });
     test_step.dependOn(&b.addRunArtifact(fr_test).step);
 
+    const zkey_store_mod = b.createModule(.{
+        .root_source_file = b.path("src/zig/prove/zkey_store.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+
     const player_test_mod = b.createModule(.{
         .root_source_file = b.path("src/zig/player_crypto_test.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
+    player_test_mod.addImport("zkey_store", zkey_store_mod);
     player_test_mod.addObject(fr_cpp_obj);
     player_test_mod.addObject(fr_asm_obj);
     linkGmp(player_test_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
@@ -314,6 +322,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     player_bridge_lib_mod.addImport("house_options", house_options_mod);
+    player_bridge_lib_mod.addImport("zkey_store", zkey_store_mod);
     player_bridge_lib_mod.addObject(fr_cpp_obj);
     player_bridge_lib_mod.addObject(fr_asm_obj);
     linkGmp(player_bridge_lib_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
@@ -341,6 +350,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    player_prove_mod.addImport("zkey_store", zkey_store_mod);
     player_prove_mod.addObject(fr_cpp_obj);
     player_prove_mod.addObject(fr_asm_obj);
     linkGmp(player_prove_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);

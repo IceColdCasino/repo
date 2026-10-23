@@ -16,8 +16,8 @@ const REQUIRED_ARCIS = [
   'reveal_card',
   'validate_bet',
   'seal_showdown_pair',
-  'compute_pots_v4',
-  'distribute_and_settle_v3',
+  'compute_pots',
+  'distribute_and_settle',
   'settle_casino_hand',
 ].map((name) => path.join(BUILD_DIR, `${name}.arcis`));
 const ENCRYPTED_IXS_DIR = path.join(CASINO_DIR, 'encrypted-ixs');

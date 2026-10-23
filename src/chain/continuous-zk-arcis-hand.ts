@@ -153,8 +153,7 @@ export function streetActionOrder(phase: BettingPhase, numPlayers: number): numb
  * Check-down preflop actions in on-chain turn order (UTG→…→SB→BB for N>2).
  *
  * Heads-up: blinds are posted first (`collect_blinds`), then SB completes with
- * a call — on-chain `matched_call_closes_heads_up` closes PreFlop without a BB
- * option (Arcis rejects open-raises from behind the BB).
+ * a call. That limp does not close preflop — the BB checks or raises.
  *
  * Multiway: UTG… calls `bb`, SB completes for `bb - sb`, BB checks.
  */
@@ -163,7 +162,10 @@ export function checkDownPreFlopActions(
   blinds: { sb: bigint; bb: bigint } = { sb: 10n, bb: 20n },
 ): Array<{ player: number; action: string; amount: bigint }> {
   if (numPlayers === 2) {
-    return [{ player: 0, action: 'call', amount: blinds.bb - blinds.sb }];
+    return [
+      { player: 0, action: 'call', amount: blinds.bb - blinds.sb },
+      { player: 1, action: 'check', amount: 0n },
+    ];
   }
   return streetActionOrder('PreFlop', numPlayers).map((player) => {
     if (player === 0) return { player, action: 'call', amount: blinds.bb - blinds.sb };
@@ -1184,8 +1186,22 @@ export class ContinuousZkArcisHand {
     initialSeatBalances?: bigint[],
   ): Promise<void> {
     await this.startBettingStreet(phase, blinds, initialSeatBalances);
-    for (const a of actions) {
+    for (let i = 0; i < actions.length; i += 1) {
+      const a = actions[i]!;
+      const before = await this.arcium.fetchGameState(this.gameId);
+      const beforeBp = Number(before.bettingPhase ?? before.betting_phase ?? 0);
       await this.placeEncryptedBet(a.player, a.action, a.amount);
+      // Heads-up preflop stays open until the big blind checks or the raise is called.
+      if (phase === 'PreFlop' && this.numPlayers === 2 && i < actions.length - 1) {
+        const after = await this.arcium.fetchGameState(this.gameId);
+        const afterBp = Number(after.bettingPhase ?? after.betting_phase ?? 0);
+        if (afterBp !== beforeBp) {
+          throw new Error(
+            `Preflop closed before the big blind finished acting `
+            + `(player ${a.player} ${a.action} moved betting_phase ${beforeBp} → ${afterBp})`,
+          );
+        }
+      }
     }
   }
 

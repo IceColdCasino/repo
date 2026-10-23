@@ -5,6 +5,7 @@
  */
 import { web3 } from '@coral-xyz/anchor';
 import { requiredShareStake } from '../poker-share-penalty';
+import { confirmOrResend } from './confirm-tx';
 
 type Hold = {
   gameId: string;
@@ -74,19 +75,26 @@ async function transfer(
   payer: web3.Keypair = from,
 ): Promise<void> {
   if (lamports <= 0) return;
-  const tx = new web3.Transaction().add(
-    web3.SystemProgram.transfer({
-      fromPubkey: from.publicKey,
-      toPubkey: to,
-      lamports,
-    }),
-  );
-  tx.feePayer = payer.publicKey;
-  await web3.sendAndConfirmTransaction(
-    connection,
-    tx,
-    from.publicKey.equals(payer.publicKey) ? [from] : [payer, from],
-  );
+  const signers = from.publicKey.equals(payer.publicKey) ? [from] : [payer, from];
+  // web3's sendAndConfirmTransaction signs with a cached `finalized`
+  // blockhash. Fetch a `confirmed` one right before each signature instead.
+  await confirmOrResend(connection, async (latest) => {
+    const tx = new web3.Transaction({
+      feePayer: payer.publicKey,
+      blockhash: latest.blockhash,
+      lastValidBlockHeight: latest.lastValidBlockHeight,
+    }).add(
+      web3.SystemProgram.transfer({
+        fromPubkey: from.publicKey,
+        toPubkey: to,
+        lamports,
+      }),
+    );
+    tx.sign(...signers);
+    return connection.sendRawTransaction(tx.serialize(), {
+      preflightCommitment: 'confirmed',
+    });
+  });
 }
 
 /** Top the seat up from the fee payer so it can open its room session. */

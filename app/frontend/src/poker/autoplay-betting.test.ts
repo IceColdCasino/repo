@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GameSnapshot } from '../backend/client';
-import { chooseAutoBetAction, shouldAutoAdvanceStreet } from './autoplay-betting';
+import { chooseAutoBetAction, shouldAutoAdvanceStreet, shouldOpenPreflop } from './autoplay-betting';
 
 function snapshot(overrides: Partial<GameSnapshot> = {}): GameSnapshot {
   return {
@@ -37,7 +37,7 @@ describe('autoplay betting decisions', () => {
     expect(decision).toEqual({ kind: 'act', action: 'check', toCall: 0n });
   });
 
-  it('waits on PreFlop when bets are already matched (no check)', () => {
+  it('checks PreFlop when the big blind option is open', () => {
     const decision = chooseAutoBetAction(snapshot({
       phase: 'PreFlop',
       currentBet: '20',
@@ -49,10 +49,7 @@ describe('autoplay betting decisions', () => {
       ],
     }), 1);
 
-    expect(decision).toEqual({
-      kind: 'wait',
-      reason: 'preflop matched — await street advance',
-    });
+    expect(decision).toEqual({ kind: 'act', action: 'check', toCall: 0n });
   });
 
   it('calls PreFlop when facing the big blind (no check / no open-raise)', () => {
@@ -100,6 +97,25 @@ describe('autoplay betting decisions', () => {
       holesViewPending: true,
       currentBet: '0',
     }))).toBe(false);
+  });
+
+  it('opens PreFlop once share is done and blinds are not posted', () => {
+    expect(shouldOpenPreflop(snapshot({
+      phase: 'PreFlop',
+      bettingRoundOpen: false,
+      holesViewPending: true,
+      currentBet: '0',
+      seats: [
+        { seat: 0, name: 'Seat 0', publicKey: 'a', chips: '1000', bet: '0', folded: false, active: false },
+        { seat: 1, name: 'Seat 1', publicKey: 'b', chips: '1000', bet: '0', folded: false, active: false },
+      ],
+    }))).toBe(true);
+    expect(shouldOpenPreflop(snapshot({
+      phase: 'PreFlop',
+      bettingRoundOpen: true,
+      currentBet: '20',
+    }))).toBe(false);
+    expect(shouldOpenPreflop(snapshot({ phase: 'Flop', bettingRoundOpen: false }))).toBe(false);
   });
 
   it('does not skip PreFlop when blinds have not posted yet', () => {

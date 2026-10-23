@@ -55,6 +55,8 @@ export {
   shouldSubmitShowdownNow,
   isShowdownAlreadySettledError,
   isShowdownRetryQuietlyError,
+  setNextHandStageEnabled,
+  stageNextHandCriticalPath,
 } from './zk-hand-flow';
 
 const REGISTER_STAGGER_MS_PER_SEAT = 8_000;

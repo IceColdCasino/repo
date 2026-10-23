@@ -18,7 +18,14 @@
   import HandResultPanel from './HandResultPanel.svelte';
   import CardHoverPreview from './CardHoverPreview.svelte';
   import AvatarHoverPreview from './AvatarHoverPreview.svelte';
-  import { displayHandLifecycleStatus, formatHandLifecycleStatus } from './poker/hand-status';
+  import {
+    displayHandLifecycleStatus,
+    formatHandLifecycleStatus,
+    formatTableStatus,
+    isHandLifecycleComplete,
+    renderTableStatus,
+  } from './poker/hand-status';
+  import { shouldAutoCheckBeforeDeadline } from './poker/turn-clock';
   import { requiredShareStake } from '@poker-src/poker-share-penalty';
   import {
     appendHandEvents,
@@ -32,12 +39,14 @@
     formatProveEventMessage,
     setProveEventLogListener,
   } from './poker/prove-event-log';
+  import { setHandProgressListener } from '@poker-src/hand-progress';
   import { buildProvisionalShowdownResult } from './poker/provisional-showdown';
   import type { HandResultSnapshot } from '@poker-src/backend/hand-result';
   import { buildHandResultView, type HandResultView } from './poker/hand-result-view';
   import {
     callAmountForSeat,
     selectableSeats,
+    shuffleFinished,
     snapshotFromServer,
     usesZkCardDecryption,
   } from './poker/server-view';
@@ -52,8 +61,48 @@
     type UiGameKind,
   } from './poker/game-kind';
   import { presentTableView } from './poker/table-view-adapt';
-  import { chooseAutoBetAction, shouldAutoAdvanceStreet } from './poker/autoplay-betting';
+  import { chooseAutoBetAction, shouldAutoAdvanceStreet, shouldOpenPreflop } from './poker/autoplay-betting';
+  import {
+    BLIND_POSTS_KEY,
+    blindsReady,
+    blindOwners,
+    mergeBlindPosts,
+    blindRoleForSeat,
+    blindAmounts,
+    claimHeldByOther,
+    describeBlindPrompt,
+    loadAutoCollectBlinds,
+    noteClaim,
+    notePosted,
+    parseBlindPosts,
+    saveAutoCollectBlinds,
+    type BlindPostRecord,
+  } from './poker/blind-post';
+  import {
+    anySeatSittingOut,
+    initialNextHandBlindGate,
+    loadOptInNextHand,
+    nextHandBlindsAllowed,
+    nextHandReadyToOpen,
+    NEXT_HAND_SITOUT_KEY,
+    noteSitOut,
+    parseSitOutRecord,
+    reduceNextHandBlindGate,
+    saveOptInNextHand,
+    shouldSitOutNextHand,
+    uncontestedFoldFinish,
+    type SitOutRecord,
+  } from './poker/next-hand';
   import { tableShowsDecryptedFaces } from './poker/decrypt-to-faces';
+  import {
+    HOLES_REVEALED_KEY,
+    allHoleCardsRevealed,
+    claimPreflopOpen,
+    localHolesFaceUp,
+    mergeHolesRevealed,
+    noteHolesRevealed,
+    parseHolesRevealed,
+  } from './poker/holes-revealed';
   import {
     shouldDeferNativeDecrypt,
     shouldPaintNativeDecrypt,
@@ -70,7 +119,9 @@
     dockedCardHoverPreviewLayout,
     TABLE_BELOW_BAND_PX,
   } from './poker/card-hover-preview-layout';
-  import { getActivePublicKey, getOrCreateLocalPublicKey, createNewLocalWallet, shortPublicKey } from './identity';
+  import { getActivePublicKey, getOrCreateLocalPublicKey, hydrateE2eWalletFromMeta, createNewLocalWallet, shortPublicKey } from './identity';
+  import { canBeginHand } from './poker/manual-start';
+  import { MIN_SIT_CHIPS } from '@poker-src/chain/sit-minimum';
   import type { TableView, CardView } from './poker/view-model';
   import { pingZkRuntime, resetZkRuntime, tryRefreshNativeBridge } from './zk';
   import { agentDebugLog } from './debug-agent-log';
@@ -149,6 +200,8 @@
   let playerPublicKey = $state('');
   let raiseAmount = $state(40);
   let addChipsAmount = $state(1000);
+  let personalChips = $state(0);
+  const minSitChips = Number(MIN_SIT_CHIPS);
   let statusMessage = $state('');
   /** Append-only history for the current hand (cleared on new handNumber). */
   let handEventLog = $state<HandEventLogEntry[]>([]);
@@ -162,6 +215,45 @@
   let zkHandFlowNumber = $state<number | null>(null);
   let zkBusy = $state(false);
   let busy = $state(false);
+  let statusNow = $state(Date.now());
+  let statusKey = $state('');
+  let statusStartedAt = $state(Date.now());
+  let autoCollectBlinds = $state(loadAutoCollectBlinds());
+  let optInNextHand = $state(loadOptInNextHand());
+  let blindGate = $state(initialNextHandBlindGate());
+  let sittingOutNextHand = $state(false);
+  let sitOutRecord = $state<SitOutRecord | null>(null);
+  let sitOutChainSent = false;
+  let sitOutTransferAttempted = false;
+  /** Native launch automation: auto check/call and hole-card ack without manual clicks. */
+  let nativeAutoPlay = $state(false);
+  void loadZkHandFlowModule().then((mod) => {
+    mod.setNextHandStageEnabled(() => optInNextHand && !sittingOutNextHand);
+  });
+  let blindPosts = $state<BlindPostRecord | null>(null);
+  let blindCollectLock = 0;
+  const blindPrompt = $derived(describeBlindPrompt({
+    snapshot: gameState,
+    localSeat,
+    autoCollect: autoCollectBlinds || nativeAutoPlay,
+    record: blindPosts,
+    previousHandSettled: nextHandBlindsAllowed(blindGate),
+  }));
+  const blindHold = $derived(
+    Boolean(gameState && shouldOpenPreflop(gameState) && !nextHandBlindsAllowed(blindGate)),
+  );
+  const tableStatus = $derived(formatTableStatus({
+    snapshot: gameState,
+    localSeat,
+    zkBusy,
+    busy,
+    statusMessage,
+    blindPrompt: blindPrompt?.text ?? null,
+    blindPromptTone: blindPrompt?.tone,
+  }));
+  const tableStatusLine = $derived(
+    renderTableStatus(tableStatus, Math.max(0, statusNow - statusStartedAt)),
+  );
   let serverStatus = $state<ServerConnectionStatus>('checking');
   let serverDetail = $state('');
   let serverBootId = $state<string | null>(null);
@@ -172,6 +264,14 @@
   let unsubscribeTable: (() => void) | null = null;
   let unsubscribeChainEvents: (() => void) | null = null;
   let tableConnected = $state(false);
+  let catalogRooms = $state<Array<{
+    roomIdHex: string;
+    label: string;
+    tables: Array<{ tableId: string; label: string }>;
+  }>>([]);
+  let selectedRoomId = $state('');
+  let selectedTableId = $state('');
+  let catalogTimer: ReturnType<typeof setInterval> | null = null;
   let partialStore = $state(new PartialStore());
   let partialCount = $state(0);
   /** Once Complete faces decrypt, stop polling; until then keep retrying sync+decrypt. */
@@ -284,8 +384,6 @@
   let tableSvgEl = $state<SVGSVGElement | null>(null);
   /** Live instrumentation for bridge detection events (visible + console + __zkBridgeDebug). */
   let bridgeEvents = $state<Array<{ t: string; msg: string }>>([]);
-  /** Native launch automation: auto check/call and hole-card ack without manual clicks. */
-  let nativeAutoPlay = $state(false);
   let handStartRequested = false;
   /** Native WebView on phone-sized screens — use stacked layout so the table stays visible. */
   let compactNativeLayout = $state(false);
@@ -364,6 +462,7 @@
   const bridgeDebugEarly = $derived(earlyBridgeDebug());
   /** Prevents overlapping maybeRunZkHand calls (losing call must not clear zkBusy early). */
   let zkHandLock = 0;
+  let showdownPrep = false;
 
   function handleCardHover(card: CardView | null): void {
     hoveredAvatar = null;
@@ -425,8 +524,9 @@
     let text = message;
     if (text.includes('provided too many arguments') && text.includes('submitBet')) {
       text = 'submitBet arg mismatch vs on-chain IDL (too many arguments)';
-    } else if (text.length > 280) {
-      text = `${text.slice(0, 240)}…`;
+    } else if (text.length > 420) {
+      // Keep the program error at the end (0x1777 / invalid argument).
+      text = `${text.slice(0, 180)} … ${text.slice(-200)}`;
     }
     // Street-advance race: chain still prompts a seat that worker already closed.
     if (kind === 'error' && /cannot act now/i.test(text)) {
@@ -454,6 +554,210 @@
       formatProveEventMessage(payload),
     );
   });
+  setHandProgressListener((message) => {
+    pushEventLog('info', message);
+  });
+
+  function newHandDropsFaces(prev: GameSnapshot | null, next: GameSnapshot): boolean {
+    if (!prev) return false;
+    if (
+      next.handNumber != null
+      && prev.handNumber != null
+      && next.handNumber !== prev.handNumber
+    ) {
+      return true;
+    }
+    return next.phase === 'Register' && prev.phase !== 'Register' && prev.phase !== 'Shuffle';
+  }
+
+  async function publishSitOut(snapshot: GameSnapshot, sittingOut: boolean): Promise<void> {
+    if (localSeat === null) return;
+    const { writeSharedMeta, getSharedMetaStore, readSharedMeta } = await import('@poker-src/chain/shared-meta-store');
+    const { refreshWebViewMetaCache } = await import('./backend/solana-meta-bridge');
+    await refreshWebViewMetaCache([NEXT_HAND_SITOUT_KEY]).catch(() => undefined);
+    const current = parseSitOutRecord(readSharedMeta(NEXT_HAND_SITOUT_KEY), snapshot.gameId);
+    const next = noteSitOut(current, localSeat, sittingOut, Date.now());
+    writeSharedMeta(NEXT_HAND_SITOUT_KEY, JSON.stringify(next));
+    await getSharedMetaStore().flushWrites?.();
+    sitOutRecord = next;
+    sittingOutNextHand = sittingOut;
+  }
+
+  async function refreshSitOutRecord(snapshot: GameSnapshot): Promise<void> {
+    const { readSharedMeta } = await import('@poker-src/chain/shared-meta-store');
+    const { refreshWebViewMetaCache } = await import('./backend/solana-meta-bridge');
+    await refreshWebViewMetaCache([NEXT_HAND_SITOUT_KEY]).catch(() => undefined);
+    const record = parseSitOutRecord(readSharedMeta(NEXT_HAND_SITOUT_KEY), snapshot.gameId);
+    sitOutRecord = record;
+    if (localSeat !== null) {
+      const mine = record.seats[String(localSeat)];
+      if (mine) sittingOutNextHand = mine.sittingOut;
+    }
+  }
+
+  let syncingNextHand = false;
+  /** One settlement per fold. Cleared when the table leaves Complete. */
+  let foldFinishKey: string | null = null;
+  let foldFinishError = '';
+
+  function foldFinishToken(snapshot: GameSnapshot): string {
+    const live = (snapshot.actionOrder ?? [])
+      .filter((seat) => snapshot.seats.some((row) => row.seat === seat && !row.folded))
+      .join(',');
+    return `${snapshot.gameId}:${snapshot.handNumber ?? 0}:${live}`;
+  }
+
+  async function finishUncontestedFold(snapshot: GameSnapshot): Promise<void> {
+    if (
+      !uncontestedFoldFinish(snapshot)
+      || localSeat === null
+      || !gameId
+      || !client.settleUncontestedFold
+    ) {
+      return;
+    }
+    const token = foldFinishToken(snapshot);
+    if (foldFinishKey === token || foldFinishKey === `busy:${token}`) return;
+    foldFinishKey = `busy:${token}`;
+    try {
+      if (zkHandFlow && !sittingOutNextHand) {
+        const flow = zkHandFlow;
+        const seat = localSeat;
+        const mod = await loadZkHandFlowModule();
+        void mod.stageNextHandCriticalPath(flow, snapshot, seat, true);
+      }
+      const settled = await client.settleUncontestedFold(gameId, localSeat);
+      if (settled === 'wait') {
+        foldFinishKey = null;
+        setTimeout(() => {
+          const latest = gameState;
+          if (latest && uncontestedFoldFinish(latest)) void finishUncontestedFold(latest);
+        }, 800);
+        return;
+      }
+      if (settled) {
+        foldFinishKey = token;
+        foldFinishError = '';
+        applySnapshot(settled);
+        return;
+      }
+      foldFinishKey = token;
+    } catch (err) {
+      foldFinishKey = null;
+      const message = err instanceof Error ? err.message : 'fold settlement failed';
+      if (message !== foldFinishError) {
+        foldFinishError = message;
+        pushEventLog('error', `Fold settlement failed: ${message}`);
+      }
+      setTimeout(() => {
+        const latest = gameState;
+        if (latest && uncontestedFoldFinish(latest)) void finishUncontestedFold(latest);
+      }, 1500);
+    }
+  }
+
+  async function syncNextHand(snapshot: GameSnapshot): Promise<void> {
+    if (syncingNextHand || gameKind !== 'poker' || localSeat === null) return;
+    syncingNextHand = true;
+    try {
+    await refreshSitOutRecord(snapshot);
+    const seat = snapshot.seats.find((entry) => entry.seat === localSeat);
+    let stack = 0n;
+    try {
+      stack = BigInt(seat?.chips || '0');
+    } catch {
+      stack = 0n;
+    }
+    const big = blindAmounts(snapshot).big;
+    const { showdownWinnerSeats } = await loadZkHandFlowModule();
+    const winners = showdownWinnerSeats(snapshot, provisionalHandResult);
+    const winnersKnown = winners.size > 0 || Boolean(snapshot.handResult);
+    const sit = shouldSitOutNextHand({
+      stack,
+      bigBlind: big,
+      winnersKnown,
+      won: winners.has(localSeat),
+    });
+    if (stack >= big && sittingOutNextHand) {
+      await publishSitOut(snapshot, false);
+    } else if (winnersKnown && sit !== sittingOutNextHand) {
+      await publishSitOut(snapshot, sit);
+    }
+    const handClosed = snapshot.phase === 'Complete' || snapshot.phase === 'lobby';
+    if (sittingOutNextHand && handClosed && !sitOutChainSent && client.sitOut) {
+      sitOutChainSent = true;
+      try {
+        const next = await client.sitOut(snapshot.gameId);
+        applySnapshot(next);
+        pushEventLog('info', `Sitting out — stack is below the big blind (${big})`);
+      } catch (err) {
+        sitOutChainSent = false;
+        const message = err instanceof Error ? err.message : String(err);
+        pushEventLog('error', `sit out failed: ${message}`);
+      }
+    }
+    if (!sittingOutNextHand) {
+      sitOutChainSent = false;
+      sitOutTransferAttempted = false;
+    } else if (
+      handClosed
+      && !sitOutTransferAttempted
+      && playerPublicKey
+      && client.transferPersonalToSeat
+      && stack < big
+    ) {
+      const personal = BigInt(Math.max(0, Math.floor(personalChips)));
+      if (stack + personal >= big) {
+        sitOutTransferAttempted = true;
+        try {
+          const next = await client.transferPersonalToSeat(
+            snapshot.gameId,
+            playerPublicKey,
+            (big - stack).toString(),
+          );
+          applySnapshot(next);
+          await publishSitOut(snapshot, false);
+          pushEventLog('info', 'Chips moved to the seat — back in for the next hand');
+        } catch (err) {
+          sitOutTransferAttempted = false;
+          const message = err instanceof Error ? err.message : String(err);
+          pushEventLog('error', `move chips to seat failed: ${message}`);
+        }
+      }
+    }
+    if (
+      optInNextHand
+      && !sittingOutNextHand
+      && !anySeatSittingOut(sitOutRecord)
+      && zkHandFlow
+      && (snapshot.phase === 'Showdown' || nextHandReadyToOpen(blindGate))
+    ) {
+      const flow = zkHandFlow;
+      const seat = localSeat;
+      void loadZkHandFlowModule().then((mod) => {
+        mod.setNextHandStageEnabled(() => optInNextHand && !sittingOutNextHand);
+        if (snapshot.phase === 'Showdown' && !zkBusy) {
+          return mod.stageNextHandCriticalPath(flow, snapshot, seat);
+        }
+        return undefined;
+      });
+    }
+    if (
+      optInNextHand
+      && !sittingOutNextHand
+      && !anySeatSittingOut(sitOutRecord)
+      && nextHandReadyToOpen(blindGate)
+      && (snapshot.phase === 'Complete' || snapshot.phase === 'lobby')
+      && !(uncontestedFoldFinish(snapshot) && !snapshot.handResult)
+      && canStartHand
+      && !handStartRequested
+    ) {
+      await startHand();
+    }
+    } finally {
+      syncingNextHand = false;
+    }
+  }
 
   function applySnapshot(incoming: GameSnapshot) {
     // Solana: never let a lagging worker/HTTP response regress UI phase vs chain cursor.
@@ -480,6 +784,27 @@
       });
     }
     ingestSnapshotEvents(snapshot);
+    if (newHandDropsFaces(gameState, snapshot)) {
+      lastDecryptedCards = undefined;
+    }
+    if (snapshot.phase !== 'Complete') {
+      foldFinishKey = null;
+      foldFinishError = '';
+    }
+    blindGate = reduceNextHandBlindGate(
+      blindGate,
+      snapshot.phase,
+      Boolean(zkHandFlow?.showdownSubmitted)
+        || Boolean(
+          snapshot.zkShowdown
+          && snapshot.zkShowdown.submittedCount >= snapshot.zkShowdown.requiredCount,
+        ),
+      snapshot.handResult?.reason === 'fold',
+    );
+    if (snapshot.callerPersonalEscrow !== undefined) {
+      const nextPersonal = Number(snapshot.callerPersonalEscrow);
+      if (Number.isFinite(nextPersonal)) personalChips = nextPersonal;
+    }
     gameState = snapshot;
     gameId = snapshot.gameId;
     if (snapshot.gameKind && snapshot.gameKind !== gameKind) {
@@ -514,6 +839,8 @@
     }
     reportUi(snapshot, 'phase');
     void (async () => {
+      // Pay the fold and stage the next shuffle before the next hand can open.
+      await finishUncontestedFold(snapshot);
       // Ack / auto-bet / street advance must not wait on decrypt. After Share,
       // dual WKWebView Poker.init can hang for minutes — the acting seat then
       // never call/checks, and the peer sits forever waiting for their turn.
@@ -534,6 +861,7 @@
       await maybeAutoBet(gameState ?? current);
       await maybeAutoAdvanceStreet(gameState ?? current);
       reportUi(current, 'phase');
+      void syncNextHand(current);
       if (current.phase === 'Complete' && current.handResult) {
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
@@ -582,6 +910,14 @@
       && Boolean(gameState?.zkCrypto || gameState?.zkReveal)
       && (!lastDecryptedCards || lastDecryptedCards.size === 0);
     if (
+      phase === 'Complete'
+      && gameState
+      && uncontestedFoldFinish(gameState)
+      && foldFinishKey !== foldFinishToken(gameState)
+    ) {
+      void finishUncontestedFold(gameState);
+    }
+    if (
       !phase
       || (phase === 'lobby' && !solanaLobbyNeedsHandPoll)
       || (phase === 'Complete' && !completeNeedsDecryptRetry)
@@ -606,6 +942,7 @@
         ingestSnapshotEvents(snapshot);
         gameState = snapshot;
         gameId = snapshot.gameId;
+        void maybeExpireBettingTurn(snapshot);
         paintTableView(snapshot, lastDecryptedCards, handResultView);
         syncLocalSeatFromState();
         updateZkStatus(snapshot);
@@ -630,8 +967,13 @@
         return;
       }
       applySnapshot(snapshot);
+      void maybeExpireBettingTurn(snapshot);
+      // A raw table read is `lobby` even while a hand is still open. Only an
+      // explicit e2eStartHand launch may deal; the Start button is the manual path.
+      const explicitStart = new URLSearchParams(window.location.search).get('e2eStartHand') === '1';
       if (
-        e2eAuto
+        explicitStart
+        && e2eAuto
         && localSeat === 0
         && (snapshot.phase === 'lobby' || snapshot.phase == null)
         && (snapshot.seats?.length ?? 0) >= 2
@@ -677,7 +1019,7 @@
       return [];
     }
     try {
-      const { visibleDealIndicesForViewerPhase } = await import('@poker-src/backend/card-layout');
+      const { holeCardIndices, visibleDealIndicesForViewerPhase } = await import('@poker-src/backend/card-layout');
       const {
         refreshShareCiphertexts,
         entriesFromPersistedShareCiphertexts,
@@ -687,10 +1029,26 @@
         ?? snapshot.seats.filter((seat) => seat.playerIndex !== undefined).length
         ?? 2;
       await refreshShareCiphertexts(numPlayers);
+      const requested = snapshot.handResult?.reason === 'fold'
+        ? [
+            ...new Set([
+              ...holeCardIndices(viewerIndex),
+              ...(snapshot.zkReveal?.revealedCardIndices ?? snapshot.handResult.boardCards ?? [])
+                .filter((index) => index >= 20 && index <= 24),
+            ]),
+          ]
+        : visibleDealIndicesForViewerPhase(snapshot.phase, viewerIndex, numPlayers);
+      const cardIndices = requested.filter((index) => {
+        if (index >= 20) return true;
+        const owner = Math.floor(index / 2);
+        if (owner === viewerIndex) return true;
+        const seat = snapshot.seats.find((entry) => entry.playerIndex === owner);
+        return !seat?.folded;
+      });
       return entriesFromPersistedShareCiphertexts({
         viewerPlayerIndex: viewerIndex,
         numPlayers,
-        cardIndices: visibleDealIndicesForViewerPhase(snapshot.phase, viewerIndex, numPlayers),
+        cardIndices,
       });
     } catch {
       return [];
@@ -725,9 +1083,11 @@
       ?? snapshot.seats.find((seat) => seat.seat === localSeat)?.playerIndex;
     try {
       const reveal = await client.fetchRevealedPartials(gameId, localSeat);
-      const includeAllPartials = snapshot.phase === 'Showdown'
-        || snapshot.phase === 'Complete'
-        || snapshot.zkReveal?.allPartialsPublic === true;
+      const includeAllPartials = snapshot.handResult?.reason === 'fold'
+        ? false
+        : snapshot.phase === 'Showdown'
+          || snapshot.phase === 'Complete'
+          || snapshot.zkReveal?.allPartialsPublic === true;
       let entries = includeAllPartials || viewerIndex === undefined
         ? reveal.entries
         : reveal.entries.filter(
@@ -865,6 +1225,9 @@
       const handNumPlayers = result.handNumPlayers
         ?? snapshot?.zkCrypto?.handNumPlayers
         ?? result.seatHands.length;
+      const foldBoard = result.reason === 'fold'
+        ? result.boardCards.filter((index) => index >= 20 && index <= 24)
+        : null;
       const decrypted = await decryptDealCards({
         zkCrypto: {
           handNumPlayers,
@@ -875,6 +1238,9 @@
         partialEntries: partialStore.entries,
         privateKey: flow.player.elGamalPrivateKey,
         viewerPlayerIndex: seatHand.playerIndex,
+        onlyDealIndices: foldBoard
+          ? [...seatHand.holeCards, ...foldBoard]
+          : undefined,
       });
       // Empty map means wrong key / incomplete partials — treat as failure so UI retries.
       return decrypted.size > 0 ? decrypted : undefined;
@@ -926,6 +1292,63 @@
     handResultView = null;
   }
 
+  async function decryptShowdownRankingCards(
+    snapshot: GameSnapshot,
+  ): Promise<Map<number, number> | undefined> {
+    if (localSeat === null || !snapshot.zkCrypto) {
+      return lastDecryptedCards;
+    }
+    const viewerPlayerIndex = snapshot.playerIndexBySeat?.[localSeat]
+      ?? snapshot.seats.find((seat) => seat.seat === localSeat)?.playerIndex;
+    if (viewerPlayerIndex === undefined) {
+      return lastDecryptedCards;
+    }
+    const numPlayers = snapshot.zkCrypto.handNumPlayers
+      ?? snapshot.actionOrder?.length
+      ?? snapshot.seats.filter((seat) => seat.playerIndex !== undefined).length
+      ?? 2;
+    const { visibleDealIndicesForViewerPhase } = await import('@poker-src/backend/card-layout');
+    const onlyDealIndices = visibleDealIndicesForViewerPhase('Showdown', viewerPlayerIndex, numPlayers)
+      .filter((index) => {
+        if (index >= 20) return true;
+        const owner = Math.floor(index / 2);
+        if (owner === viewerPlayerIndex) return true;
+        const seat = snapshot.seats.find((entry) => entry.playerIndex === owner);
+        return !seat?.folded;
+      });
+    if (
+      lastDecryptedCards
+      && onlyDealIndices.length > 0
+      && onlyDealIndices.every((dealIndex) => lastDecryptedCards!.has(dealIndex))
+    ) {
+      return lastDecryptedCards;
+    }
+    await syncPartials(snapshot);
+    if (partialStore.entryCount() === 0) {
+      return lastDecryptedCards;
+    }
+    const flow = await ensureZkHandFlow(snapshot);
+    if (!flow) {
+      return lastDecryptedCards;
+    }
+    try {
+      const { decryptDealCards } = await import('./poker/decrypt-deal-cards');
+      const decrypted = await decryptDealCards({
+        zkCrypto: snapshot.zkCrypto,
+        partialEntries: partialStore.entries,
+        privateKey: flow.player.elGamalPrivateKey,
+        viewerPlayerIndex,
+        onlyDealIndices,
+      });
+      if (decrypted.size > 0) {
+        return mergeDecryptedCardMaps(lastDecryptedCards, decrypted);
+      }
+    } catch {
+      // Opponent holes stay sealed until share partials are public.
+    }
+    return lastDecryptedCards;
+  }
+
   async function resolveDecryptedCards(snapshot: GameSnapshot | null): Promise<Map<number, number> | undefined> {
     if (!snapshot) {
       return undefined;
@@ -937,6 +1360,12 @@
           Number(cardValue),
         ]),
       );
+    }
+    if (snapshot.phase === 'Showdown') {
+      const ranked = await decryptShowdownRankingCards(snapshot);
+      if (ranked && ranked.size > 0) {
+        return ranked;
+      }
     }
     if (!nativeDecryptPaintable(snapshot)) {
       return lastDecryptedCards;
@@ -992,7 +1421,7 @@
                 ? [viewerPlayerIndex * 2, viewerPlayerIndex * 2 + 1]
                 : []);
             const onlyDealIndices = [
-              ...streetBoardDealIndices(snapshot.phase),
+              ...streetBoardDealIndices(snapshot),
               ...viewerHoles,
             ];
             const decrypted = await decryptDealCards({
@@ -1014,8 +1443,12 @@
     return undefined;
   }
 
-  function streetBoardDealIndices(phase: GameSnapshot['phase']): number[] {
-    switch (phase) {
+  function streetBoardDealIndices(snapshot: GameSnapshot): number[] {
+    if (snapshot.handResult?.reason === 'fold') {
+      const source = snapshot.zkReveal?.revealedCardIndices ?? snapshot.handResult.boardCards ?? [];
+      return source.filter((index) => index >= 20 && index <= 24);
+    }
+    switch (snapshot.phase) {
       case 'Flop':
         return [20, 21, 22];
       case 'Turn':
@@ -1040,7 +1473,7 @@
       return !decrypted || decrypted.size === 0;
     }
     // Street advance unlocks board 20–22 / +23 / +24 — re-fetch if those faces are missing.
-    const boardNeeded = streetBoardDealIndices(snapshot.phase);
+    const boardNeeded = streetBoardDealIndices(snapshot);
     if (boardNeeded.length > 0) {
       return boardNeeded.some((dealIndex) => !decrypted?.has(dealIndex));
     }
@@ -1324,30 +1757,124 @@
       return;
     }
 
-    // Showdown: only the designated seat may take the prove lock. The peer
-    // used to set zkBusy and start WASM decrypt/materials here, which froze
-    // both WKWebViews so the table looked stuck on River.
+    // Rank the showdown before anyone proves. A PhaseAdvanced snapshot often
+    // has no pot winner, so the small blind used to take the Groth16 lock
+    // (or nobody did, because zkShowdown.requested was missing). Limited
+    // hole+board decrypt names the winner; only that seat continues.
     if (snapshot.phase === 'Showdown') {
+      if (showdownPrep) {
+        return;
+      }
+      showdownPrep = true;
+      let proveThisSeat = false;
       try {
-        const { isMyShowdownTurn, designatedShowdownSeat } = await loadZkHandFlowModule();
-        const mine = zkHandFlow
-          ? isMyShowdownTurn(snapshot, localSeat, zkHandFlow, provisionalHandResult)
-          : designatedShowdownSeat(snapshot) === localSeat;
-        if (!mine) {
+        let active = snapshot;
+        try {
+          let refreshed = await client.getGame(gameId);
+          if (
+            gameState
+            && gameState.backend === 'solana'
+            && refreshed.backend === 'solana'
+            && !isChainPhaseForward(gameState.phase, refreshed.phase)
+          ) {
+            refreshed = mergeWorkerIntoChainSnapshot(gameState, refreshed);
+          }
+          if (refreshed.phase === 'Showdown' || refreshed.phase === 'Complete') {
+            active = refreshed;
+            ingestSnapshotEvents(active);
+            gameState = active;
+            syncLocalSeatFromState();
+            updateZkStatus(active);
+          }
+        } catch {
+          active = snapshot;
+        }
+        if (!zkHandFlow && active.phase === 'Showdown') {
+          await ensureZkHandFlow(active);
+        }
+        const winnerNamed = Boolean(
+          provisionalHandResult?.potResults.some((pot) => pot.winnerSeats.length > 0),
+        );
+        if (active.phase === 'Showdown' && !winnerNamed) {
+          await refreshHandResultView(active);
+        }
+        const { isMyShowdownTurn } = await loadZkHandFlowModule();
+        proveThisSeat = isMyShowdownTurn(
+          active,
+          localSeat,
+          zkHandFlow ?? undefined,
+          provisionalHandResult,
+        );
+        if (!proveThisSeat) {
+          const ranked = Boolean(
+            provisionalHandResult?.potResults.some((pot) => pot.winnerSeats.length > 0),
+          );
+          if (!ranked) {
+            setTimeout(() => {
+              const latest = gameState;
+              if (latest?.phase === 'Showdown') {
+                void runZkHandIfMyTurn(latest);
+              }
+            }, 1500);
+          }
           return;
         }
+        snapshot = gameState ?? active;
       } catch {
+        proveThisSeat = false;
         return;
+      } finally {
+        if (!proveThisSeat) {
+          showdownPrep = false;
+        }
       }
     }
 
     // Take the lock BEFORE ensureZkHandFlow / getGame — concurrent Register polls
     // otherwise each mint a register_main prove (3× proves, one on-chain key).
     if (zkHandLock > 0 || zkBusy) {
+      showdownPrep = false;
       return;
     }
     const lock = ++zkHandLock;
+    showdownPrep = false;
     zkBusy = true;
+    if (snapshot.phase === 'Showdown' && gameId && localSeat !== null && client.settleUncontestedFold) {
+      try {
+        const settled = await client.settleUncontestedFold(gameId, localSeat);
+        if (settled === 'wait') {
+          if (lock === zkHandLock) {
+            zkHandLock = 0;
+            zkBusy = false;
+            registerBusySince = null;
+          }
+          setTimeout(() => {
+            const latest = gameState;
+            if (latest?.phase === 'Showdown') void runZkHandIfMyTurn(latest);
+          }, 1000);
+          return;
+        }
+        if (settled) {
+          pushEventLog('action', 'Last player wins the pot');
+          applySnapshot(settled);
+          if (lock === zkHandLock) {
+            zkHandLock = 0;
+            zkBusy = false;
+            registerBusySince = null;
+          }
+          return;
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        pushEventLog('error', message);
+        if (lock === zkHandLock) {
+          zkHandLock = 0;
+          zkBusy = false;
+          registerBusySince = null;
+        }
+        return;
+      }
+    }
     if (snapshot.phase === 'Register') {
       registerBusySince = Date.now();
     }
@@ -1488,8 +2015,11 @@
         }, 2000);
       }
       if (activeSnapshot.phase === 'Showdown') {
-        const designated = zkModule.designatedShowdownSeat(activeSnapshot);
-        if (designated === localSeat) {
+        const preferred = zkModule.resolveShowdownSubmitterSeat(
+          activeSnapshot,
+          provisionalResult,
+        );
+        if (preferred === null || preferred === localSeat) {
           setTimeout(() => {
             const latest = gameState;
             if (latest?.phase === 'Showdown') {
@@ -1628,7 +2158,59 @@
     }
   }
 
+  function stopCatalogRefresh() {
+    if (catalogTimer) {
+      clearInterval(catalogTimer);
+      catalogTimer = null;
+    }
+  }
+
+  async function refreshCatalog() {
+    if (!onChain() || !client.listTableCatalog) return;
+    try {
+      const catalog = await client.listTableCatalog();
+      catalogRooms = catalog.rooms.map((room) => ({
+        roomIdHex: room.roomIdHex,
+        label: room.label,
+        tables: room.tables.map((table) => ({ tableId: table.tableId, label: table.label })),
+      }));
+      const roomId = catalog.selectedRoomIdHex
+        && catalogRooms.some((room) => room.roomIdHex === catalog.selectedRoomIdHex)
+        ? catalog.selectedRoomIdHex
+        : catalogRooms[0]?.roomIdHex ?? '';
+      selectedRoomId = roomId;
+      const tables = catalogRooms.find((room) => room.roomIdHex === roomId)?.tables ?? [];
+      selectedTableId = catalog.selectedTableId
+        && tables.some((table) => table.tableId === catalog.selectedTableId)
+        ? catalog.selectedTableId
+        : tables[0]?.tableId ?? '';
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!catalogRooms.length) statusMessage = message;
+    }
+  }
+
+  function startCatalogRefresh() {
+    stopCatalogRefresh();
+    void refreshCatalog();
+    catalogTimer = setInterval(() => {
+      if (!busy && !zkBusy && onChain() && tableConnected) void refreshCatalog();
+    }, 12_000);
+  }
+
+  async function openSelectedTable(roomIdHex: string, tableId: string) {
+    if (!client.selectTable || !roomIdHex || !tableId || handInProgress) return;
+    await runAction('Opening table...', async () => {
+      const snapshot = await client.selectTable!(roomIdHex, tableId);
+      lastDecryptedCards = undefined;
+      gameState = null;
+      return snapshot;
+    });
+    await refreshCatalog();
+  }
+
   function disconnectTable() {
+    stopCatalogRefresh();
     unsubscribeTable?.();
     unsubscribeTable = null;
     unsubscribeChainEvents?.();
@@ -1701,6 +2283,7 @@
         pushEventLog('info', 'Listening for on-chain Solana poker program events…');
       }
       tableConnected = true;
+      if (onChain()) startCatalogRefresh();
       logBridge('connectToTable: success, tableConnected=true, subscribed');
       ensureZkPollTimer();
       return true;
@@ -1871,15 +2454,40 @@
   const showConnectServer = $derived(
     (backendKind === 'local' || onChain()) && !localServerReady,
   );
+  const chainSeatsReady = $derived(
+    !onChain()
+    || (
+      localSeat !== null
+      && canBeginHand(playerPublicKey, gameState?.seats ?? [])
+    ),
+  );
+  const handFinished = $derived(
+    gameState?.phase === 'Complete'
+    || Boolean(gameState?.handResult)
+    || (
+      gameState?.phase === 'Showdown'
+      && isHandLifecycleComplete(gameState)
+    ),
+  );
   const canStartHand = $derived(
     Boolean(gameId)
     && (backendKind !== 'local' || localServerReady)
     && (!onChain() || localServerReady)
+    && chainSeatsReady
     && !busy
+    && !sittingOutNextHand
+    && !anySeatSittingOut(sitOutRecord)
     && (
       gameState?.phase === 'lobby'
-      || (gameState?.phase === 'Complete' && Boolean(gameState.handResult))
+      || handFinished
     ),
+  );
+  const canStartNewHand = $derived(
+    Boolean(gameId)
+    && (backendKind !== 'local' || localServerReady)
+    && (!onChain() || localServerReady)
+    && chainSeatsReady
+    && handFinished,
   );
 
   function pinSeatInUrl(seat: number) {
@@ -1913,12 +2521,45 @@
     }
   }
 
-  async function maybeAcknowledgeHoleCards(snapshot: GameSnapshot) {
-    // Interactive play: after share, PreFlop betting is already open.
-    // Only E2E autoplay still posts ack-holes.
-    if (!isNativeAutoPlay()) {
-      return;
+  async function publishHoleReveal(
+    snapshot: GameSnapshot,
+    seat: number,
+  ): Promise<boolean> {
+    const handNumber = snapshot.handNumber ?? 1;
+    const inHand = snapshot.seats
+      .filter((entry) => entry.playerIndex !== undefined && !entry.folded)
+      .map((entry) => entry.seat);
+    const { writeSharedMeta, getSharedMetaStore, readSharedMeta } = await import('@poker-src/chain/shared-meta-store');
+    const { refreshWebViewMetaCache } = await import('./backend/solana-meta-bridge');
+    let stored = noteHolesRevealed(
+      parseHolesRevealed(null, snapshot.gameId, handNumber),
+      seat,
+    );
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await refreshWebViewMetaCache([HOLES_REVEALED_KEY]);
+      const disk = parseHolesRevealed(
+        readSharedMeta(HOLES_REVEALED_KEY),
+        snapshot.gameId,
+        handNumber,
+      );
+      let next = mergeHolesRevealed(disk, noteHolesRevealed(disk, seat));
+      if (allHoleCardsRevealed(next, inHand)) {
+        next = claimPreflopOpen(next, seat);
+      }
+      writeSharedMeta(HOLES_REVEALED_KEY, JSON.stringify(next));
+      await getSharedMetaStore().flushWrites?.();
+      await refreshWebViewMetaCache([HOLES_REVEALED_KEY]);
+      stored = parseHolesRevealed(
+        readSharedMeta(HOLES_REVEALED_KEY),
+        snapshot.gameId,
+        handNumber,
+      );
+      if (stored.seats.includes(seat)) break;
     }
+    return stored.opener === seat && allHoleCardsRevealed(stored, inHand);
+  }
+
+  async function maybeAcknowledgeHoleCards(snapshot: GameSnapshot) {
     // Solana: Share→Evaluation often arrives via PhaseAdvanced without zkReveal.
     const solanaHoleAck =
       snapshot.backend === 'solana'
@@ -1949,15 +2590,18 @@
     if (!mine || playerIndex === undefined || mine.folded) {
       return;
     }
-    const myCards = view.playerCards[localSeat];
-    if (!nativeAutoPlay && (!myCards || !myCards.every((card) => card.flipped))) {
+    if (!isNativeAutoPlay()) {
+      if (!localHolesFaceUp(view.playerCards[localSeat])) return;
+      const open = await publishHoleReveal(snapshot, localSeat);
+      if (!open) return;
+    } else if (snapshot.playerIndexBySeat?.[localSeat] !== 0) {
       return;
     }
     holesAcked = true;
     try {
       const updated = await client.acknowledgeHoleCards(gameId, localSeat);
       applySnapshot(updated);
-      pushEventLog('info', `Acknowledged hole cards seat=${localSeat}`);
+      pushEventLog('action', 'Preflop betting open');
     } catch (err) {
       holesAcked = false;
       const message = err instanceof Error ? err.message : String(err);
@@ -1968,19 +2612,181 @@
   let autoAdvanceLock = 0;
   let autoAdvanceRetryAfter = 0;
 
+  function setAutoCollectBlinds(on: boolean) {
+    autoCollectBlinds = on;
+    saveAutoCollectBlinds(on);
+    if (gameState) void maybeAutoAdvanceStreet(gameState);
+  }
+
+  function setOptInNextHand(on: boolean) {
+    optInNextHand = on;
+    saveOptInNextHand(on);
+    void loadZkHandFlowModule().then((mod) => {
+      mod.setNextHandStageEnabled(() => optInNextHand && !sittingOutNextHand);
+    });
+    if (gameState) void syncNextHand(gameState);
+  }
+
+  async function readBlindPostRecord(snapshot: GameSnapshot): Promise<BlindPostRecord> {
+    const { refreshWebViewMetaCache } = await import('./backend/solana-meta-bridge');
+    await refreshWebViewMetaCache([BLIND_POSTS_KEY]);
+    const { readSharedMeta } = await import('@poker-src/chain/shared-meta-store');
+    return parseBlindPosts(
+      readSharedMeta(BLIND_POSTS_KEY),
+      snapshot.gameId,
+      snapshot.handNumber ?? null,
+    );
+  }
+
+  async function writeBlindPostRecord(record: BlindPostRecord): Promise<BlindPostRecord> {
+    const { writeSharedMeta, getSharedMetaStore, readSharedMeta } = await import('@poker-src/chain/shared-meta-store');
+    const { refreshWebViewMetaCache } = await import('./backend/solana-meta-bridge');
+    let stored = record;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await refreshWebViewMetaCache([BLIND_POSTS_KEY]);
+      const disk = parseBlindPosts(readSharedMeta(BLIND_POSTS_KEY), record.gameId, record.handNumber);
+      stored = mergeBlindPosts(disk, record);
+      writeSharedMeta(BLIND_POSTS_KEY, JSON.stringify(stored));
+      await getSharedMetaStore().flushWrites?.();
+      await refreshWebViewMetaCache([BLIND_POSTS_KEY]);
+      const after = parseBlindPosts(readSharedMeta(BLIND_POSTS_KEY), record.gameId, record.handNumber);
+      const covered = Object.entries(record.posted).every(([seat, at]) => (after.posted[seat] ?? 0) >= at)
+        && Object.entries(record.auto).every(([seat, stamp]) => {
+          const current = after.auto[seat];
+          return current != null && current.at >= stamp.at && current.on === stamp.on;
+        });
+      if (covered) {
+        blindPosts = after;
+        return after;
+      }
+    }
+    blindPosts = stored;
+    return stored;
+  }
+
+  async function publishBlindChoice(snapshot: GameSnapshot): Promise<BlindPostRecord | null> {
+    if (nativeAutoPlay || localSeat === null || !shouldOpenPreflop(snapshot)) {
+      blindPosts = null;
+      return null;
+    }
+    const owners = blindOwners(snapshot);
+    if (!owners || !blindRoleForSeat(owners, localSeat)) {
+      const record = await readBlindPostRecord(snapshot);
+      blindPosts = record;
+      return record;
+    }
+    const current = await readBlindPostRecord(snapshot);
+    const prev = current.auto[String(localSeat)];
+    if (prev && prev.on === autoCollectBlinds) {
+      blindPosts = current;
+      return current;
+    }
+    const next = {
+      ...current,
+      auto: { ...current.auto, [String(localSeat)]: { on: autoCollectBlinds, at: Date.now() } },
+    };
+    await writeBlindPostRecord(next);
+    return next;
+  }
+
+  function bothBlindsAutomatic(snapshot: GameSnapshot, record: BlindPostRecord): boolean {
+    const owners = blindOwners(snapshot);
+    if (!owners) return false;
+    return [owners.smallSeat, owners.bigSeat].every((seat) => record.auto[String(seat)]?.on === true);
+  }
+
+  /** Player index 0 sends the one collect transaction once every blind seat has posted. */
+  async function maybeSendPostedBlinds(snapshot: GameSnapshot, record: BlindPostRecord) {
+    if (
+      !gameId
+      || localSeat === null
+      || snapshot.playerIndexBySeat?.[localSeat] !== 0
+      || blindCollectLock > 0
+      || autoAdvanceLock > 0
+    ) {
+      return;
+    }
+    const owners = blindOwners(snapshot);
+    if (!owners || !blindsReady(record, owners)) return;
+    if (claimHeldByOther(record, localSeat, Date.now())) return;
+    const claimed = noteClaim(record, localSeat, Date.now());
+    blindCollectLock += 1;
+    busy = true;
+    statusMessage = 'Posting blind…';
+    try {
+      const stored = await writeBlindPostRecord(claimed);
+      if (stored.claim?.seat !== localSeat) return;
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const latest = await readBlindPostRecord(snapshot);
+      blindPosts = latest;
+      if (latest.claim?.seat !== localSeat) return;
+      const next = await client.advanceStreet(gameId, 'PreFlop');
+      applySnapshot(next);
+      statusMessage = '';
+      pushEventLog('action', 'Blinds posted');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      statusMessage = message;
+      pushEventLog('error', message);
+    } finally {
+      busy = false;
+      blindCollectLock -= 1;
+    }
+  }
+
+  async function postBlind() {
+    if (!gameState || localSeat === null || busy || !blindPrompt?.canPost) return;
+    if (!nextHandBlindsAllowed(blindGate)) return;
+    const owners = blindOwners(gameState);
+    const role = owners ? blindRoleForSeat(owners, localSeat) : null;
+    if (!owners || !role) return;
+    busy = true;
+    statusMessage = 'Posting blind…';
+    try {
+      const current = await readBlindPostRecord(gameState);
+      const posted = await writeBlindPostRecord(notePosted(current, localSeat, Date.now()));
+      const amount = role === 'small' ? owners.smallAmount : owners.bigAmount;
+      pushEventLog('action', `Seat ${localSeat} posted the ${role} blind (${amount})`);
+      statusMessage = '';
+      if (blindsReady(posted, owners)) {
+        await maybeSendPostedBlinds(gameState, posted);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      statusMessage = message;
+      pushEventLog('error', message);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function maybeAutoAdvanceStreet(snapshot: GameSnapshot) {
     if (
-      !nativeAutoPlay
-      || !gameId
+      !gameId
+      || localSeat === null
       || busy
       || (zkBusy && isActiveZkPhase(snapshot.phase))
       || autoAdvanceLock > 0
       || Date.now() < autoAdvanceRetryAfter
-      || snapshot.holesViewPending
     ) {
       return;
     }
-    if (!shouldAutoAdvanceStreet(snapshot)) {
+    const openPreflop = shouldOpenPreflop(snapshot);
+    if (openPreflop && !nextHandBlindsAllowed(blindGate)) {
+      return;
+    }
+    if (openPreflop && !nativeAutoPlay) {
+      const record = await publishBlindChoice(snapshot);
+      if (!record || !bothBlindsAutomatic(snapshot, record)) {
+        if (record) await maybeSendPostedBlinds(snapshot, record);
+        return;
+      }
+    }
+    if (!openPreflop && !shouldAutoAdvanceStreet(snapshot)) {
+      return;
+    }
+    // One seat posts the street transaction. The other window follows the snapshot.
+    if (snapshot.playerIndexBySeat?.[localSeat] !== 0) {
       return;
     }
     autoAdvanceLock += 1;
@@ -2138,6 +2944,9 @@
     void refreshViewWithDecryption();
   }
 
+  const catalogTables = $derived(
+    catalogRooms.find((room) => room.roomIdHex === selectedRoomId)?.tables ?? [],
+  );
   const seatOptions = $derived(selectableSeats(gameState, seatCountForGame(gameKind)));
   const isSeated = $derived(localSeat !== null);
   const handInProgress = $derived(
@@ -2154,14 +2963,34 @@
     !localServerReady || busy || seatOptions.length === 0,
   );
   const sitDisabled = $derived(
-    seatSelectDisabled || selectedSeat === '',
+    seatSelectDisabled
+    || selectedSeat === ''
+    || (onChain() && personalChips < minSitChips),
   );
+  const dealReady = $derived(gameState ? shuffleFinished(gameState) : false);
   const canStandUp = $derived(
     (backendKind === 'local' || onChain()) &&
     localServerReady &&
     isSeated &&
-    !handInProgress,
+    (!handInProgress || !dealReady),
   );
+
+  $effect(() => {
+    const key = tableStatus.key;
+    if (key !== statusKey) {
+      statusKey = key;
+      statusStartedAt = Date.now();
+      statusNow = statusStartedAt;
+    }
+  });
+
+  $effect(() => {
+    if (!tableStatus.timed) return;
+    const id = setInterval(() => {
+      statusNow = Date.now();
+    }, 1000);
+    return () => clearInterval(id);
+  });
 
   $effect(() => {
     if (!canPickSeat || seatOptions.length === 0) {
@@ -2324,6 +3153,11 @@
       return;
     }
 
+    if (onChain() && personalChips < minSitChips) {
+      statusMessage = `Sit requires at least ${minSitChips} chips. Use the faucet first.`;
+      return;
+    }
+
     await runAction(`Joining ${seatLabel(seat)}...`, () =>
       client.joinGame(gameId!, seat, publicKey),
     );
@@ -2364,8 +3198,17 @@
     const startingLabel = gameKind === 'war' || gameKind === 'baccarat'
       ? `Playing ${gameKind === 'war' ? 'War' : 'Baccarat'} on Arcis...`
       : 'Starting hand...';
-    await runAction(startingLabel, () => client.startHand(gameId!, { gameKind }));
+    await runAction(startingLabel, async () => {
+      try {
+        return await client.startHand(gameId!, { gameKind });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        pushEventLog('error', message);
+        throw err;
+      }
+    });
     if (statusMessage) handStartRequested = false;
+    if (onChain()) void refreshCatalog();
   }
 
   async function bet(action: 'fold' | 'check' | 'call' | 'raise', amount?: string) {
@@ -2373,16 +3216,6 @@
       return;
     }
     await runAction(action, () => client.placeBet(gameId!, localSeat, action, amount));
-  }
-
-  async function advanceStreet() {
-    if (!gameId) {
-      return;
-    }
-    const fromPhase = gameState && ['PreFlop', 'Flop', 'Turn', 'River'].includes(gameState.phase)
-      ? gameState.phase
-      : undefined;
-    await runAction('Advancing street...', () => client.advanceStreet(gameId!, fromPhase));
   }
 
   function logFaucetReceived(amount: string, pk: string, seat: number | null) {
@@ -2394,20 +3227,46 @@
   }
 
   async function addChips() {
-    if (!gameId || localSeat === null) {
+    if (!gameId) {
       return;
     }
     if (onChain()) {
       const pk = playerPublicKey;
-      if (!pk || !client.faucetCreditPersonal || !client.transferPersonalToSeat) {
+      if (!pk || !client.faucetCreditPersonal) {
         return;
       }
       const amount = String(addChipsAmount);
-      await runAction('Funding seat escrow...', async () => {
-        await client.faucetCreditPersonal!(gameId!, pk, amount);
-        logFaucetReceived(amount, pk, localSeat);
-        return client.transferPersonalToSeat!(gameId!, pk, amount);
-      });
+      const credit = Number(addChipsAmount);
+      if (!Number.isFinite(credit) || credit <= 0) return;
+      const toSeat = localSeat !== null && Boolean(client.transferPersonalToSeat);
+      try {
+        const funded = await client.faucetCreditPersonal(gameId, pk, amount);
+        if (toSeat) {
+          let next = funded;
+          try {
+            next = await client.transferPersonalToSeat!(gameId, pk, amount);
+          } catch (err) {
+            if (funded) applySnapshot(funded);
+            throw err;
+          }
+          const short = pk.length > 12 ? `${pk.slice(0, 4)}…${pk.slice(-4)}` : pk;
+          pushEventLog('info', `Faucet received: +${amount} → seat stack (${short} seat ${localSeat})`);
+          if (next) applySnapshot(next);
+        } else if (funded) {
+          applySnapshot(funded);
+          const reported = Number(funded.callerPersonalEscrow);
+          if (Number.isFinite(reported)) personalChips = reported;
+          logFaucetReceived(amount, pk, localSeat);
+        }
+        statusMessage = '';
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        statusMessage = message;
+        pushEventLog('error', message);
+      }
+      return;
+    }
+    if (localSeat === null) {
       return;
     }
     await runAction('Adding chips...', () =>
@@ -2436,6 +3295,44 @@
       && new URLSearchParams(window.location.search).get('debugBridge') === '1',
   );
 
+  let clockNow = $state(Math.floor(Date.now() / 1000));
+  let expireInFlight = false;
+  let expireRetryAt = 0;
+  let autoCheckedDeadline = 0;
+  let autoCheckInFlight = false;
+  $effect(() => {
+    const id = setInterval(() => {
+      clockNow = Math.floor(Date.now() / 1000);
+    }, 1000);
+    return () => clearInterval(id);
+  });
+
+  const turnClockLabel = $derived.by(() => {
+    const deadline = gameState?.actDeadlineUnix ?? 0;
+    if (!deadline || !gameState?.bettingRoundOpen) return '';
+    const left = Math.max(0, deadline - clockNow);
+    const minutes = Math.floor(left / 60);
+    const seconds = left % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  });
+
+  async function maybeExpireBettingTurn(snapshot: GameSnapshot) {
+    if (snapshot.backend !== 'solana' && snapshot.backend !== 'devnet') return;
+    if (!snapshot.bettingRoundOpen || localSeat === null) return;
+    const deadline = snapshot.actDeadlineUnix ?? 0;
+    if (deadline <= 0 || clockNow <= deadline || autoCheckInFlight) return;
+    if (expireInFlight || Date.now() < expireRetryAt) return;
+    expireInFlight = true;
+    try {
+      const next = await client.expireBetTurn?.(snapshot.gameId);
+      if (next) applySnapshot(next);
+    } catch {
+      expireRetryAt = Date.now() + 5_000;
+    } finally {
+      expireInFlight = false;
+    }
+  }
+
   const canAct = $derived(
     localSeat !== null &&
     gameState?.bettingRoundOpen === true &&
@@ -2445,6 +3342,24 @@
   const callAmount = $derived(
     gameState && localSeat !== null ? callAmountForSeat(gameState, localSeat) : 0,
   );
+
+  $effect(() => {
+    const deadline = gameState?.actDeadlineUnix ?? 0;
+    if (!shouldAutoCheckBeforeDeadline({
+      canAct,
+      callAmount,
+      busy,
+      deadlineUnix: deadline,
+      nowUnix: clockNow,
+      alreadySentForDeadline: autoCheckedDeadline,
+    })) return;
+    autoCheckedDeadline = deadline;
+    autoCheckInFlight = true;
+    pushEventLog('action', 'Auto-check with 3 seconds left');
+    void bet('check').finally(() => {
+      autoCheckInFlight = false;
+    });
+  });
 
   const minRaiseAdd = $derived(
     canAct && gameState?.minRaiseAdd ? Number(gameState.minRaiseAdd) : 0,
@@ -2516,7 +3431,9 @@
         logBridge('maybeRunNativeE2eBootstrap: bridge ping ok before bootstrap');
       }
     }
-    addChipsAmount = 5000;
+    if (config.autoPlay) {
+      addChipsAmount = 5000;
+    }
     logBridge('maybeRunNativeE2eBootstrap: starting runNativeE2eBootstrap');
     await runNativeE2eBootstrap({
       config,
@@ -2547,6 +3464,18 @@
       addChips,
       joinSeat: bootstrapJoinSeat,
       depositChips: bootstrapDepositChips,
+      fundPersonal: onChain()
+        ? async (amount: number) => {
+          const pk = playerPublicKey || getOrCreateLocalPublicKey();
+          playerPublicKey = pk;
+          if (!gameId || !client.faucetCreditPersonal) {
+            throw new Error('[native-e2e] faucet unavailable before sit');
+          }
+          const next = await client.faucetCreditPersonal(gameId, pk, String(amount));
+          applySnapshot(next);
+          logFaucetReceived(String(amount), pk, null);
+        }
+        : undefined,
       startHand,
       isSeatedAtTarget: () => {
         // Hydrate may have replaced the onMount key — refresh before seat sync.
@@ -2563,7 +3492,7 @@
     }
     syncLocalSeatFromState();
     pinE2eLocalSeatIfNeeded(gameState ?? undefined);
-    if (localSeat === null) {
+    if (config.autoPlay && localSeat === null) {
       localSeat = config.seat;
       pushEventLog('info', `Set localSeat=${config.seat} after native E2E bootstrap`);
     }
@@ -2590,10 +3519,11 @@
     saveUiGameKind(gameKind);
     client = createClient(backendKind);
     if (backendKind === 'local' || onChain()) {
-      playerPublicKey = getOrCreateLocalPublicKey();
+      playerPublicKey = (await hydrateE2eWalletFromMeta()) || getOrCreateLocalPublicKey();
     }
     if (typeof window !== 'undefined') {
-      const presetSeat = new URLSearchParams(window.location.search).get('seat');
+      const params = new URLSearchParams(window.location.search);
+      const presetSeat = params.get('seat') ?? params.get('e2eSeat');
       if (presetSeat !== null && presetSeat !== '' && Number.isInteger(Number(presetSeat))) {
         selectedSeat = presetSeat;
       }
@@ -2772,7 +3702,12 @@
     window.addEventListener('e2e-sync-game', onE2eSyncGame);
     window.addEventListener('e2e-bridge-ready', onE2eBridgeReady);
     window.addEventListener('e2e-run-zk', onE2eRunZk);
+    const blindPostTimer = window.setInterval(() => {
+      if (!gameState || nativeAutoPlay || !shouldOpenPreflop(gameState)) return;
+      void maybeAutoAdvanceStreet(gameState);
+    }, 1000);
     return () => {
+      window.clearInterval(blindPostTimer);
       window.removeEventListener('resize', syncCompactNativeLayout);
       window.removeEventListener('e2e-sync-game', onE2eSyncGame);
       window.removeEventListener('e2e-bridge-ready', onE2eBridgeReady);
@@ -2816,6 +3751,54 @@
         {/each}
       </select>
     </label>
+    {#if onChain()}
+      <label>
+        Room
+        <select
+          data-testid="room-select"
+          value={selectedRoomId}
+          onchange={(e) => {
+            const roomIdHex = (e.currentTarget as HTMLSelectElement).value;
+            const room = catalogRooms.find((entry) => entry.roomIdHex === roomIdHex);
+            const tables = room?.tables ?? [];
+            const tableId = tables.some((table) => table.tableId === selectedTableId)
+              ? selectedTableId
+              : tables[0]?.tableId ?? '';
+            selectedRoomId = roomIdHex;
+            selectedTableId = tableId;
+            if (tableId) void openSelectedTable(roomIdHex, tableId);
+          }}
+          disabled={busy || handInProgress || catalogRooms.length === 0}
+        >
+          {#if catalogRooms.length === 0}
+            <option value="">No rooms on this chain</option>
+          {/if}
+          {#each catalogRooms as room (room.roomIdHex)}
+            <option value={room.roomIdHex}>{room.label}</option>
+          {/each}
+        </select>
+      </label>
+      <label>
+        Table
+        <select
+          data-testid="table-select"
+          value={selectedTableId}
+          onchange={(e) => {
+            const tableId = (e.currentTarget as HTMLSelectElement).value;
+            selectedTableId = tableId;
+            if (selectedRoomId && tableId) void openSelectedTable(selectedRoomId, tableId);
+          }}
+          disabled={busy || handInProgress || catalogTables.length === 0}
+        >
+          {#if catalogTables.length === 0}
+            <option value="">No tables</option>
+          {/if}
+          {#each catalogTables as table (table.tableId)}
+            <option value={table.tableId}>{table.label}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
     <span
       data-testid="server-status"
       class="server-status"
@@ -2881,6 +3864,15 @@
     {/if}
   </div>
   </div>
+
+  {#if tableStatusLine}
+    <p
+      class="table-status"
+      data-testid="table-status"
+      data-tone={tableStatus.tone}
+      aria-live="polite"
+    >{tableStatusLine}</p>
+  {/if}
 
   <div class="table-viewport">
   <svg
@@ -3022,7 +4014,11 @@
       />
     </div>
     <div class="hand-result-dock">
-      <HandResultPanel result={handResultView} />
+      <HandResultPanel
+        result={handResultView}
+        canStartNewHand={canStartNewHand}
+        onStartNewHand={startHand}
+      />
     </div>
     <div class="hand-lifecycle-panel" aria-live="polite">
       <h3>Hand Lifecycle</h3>
@@ -3118,17 +4114,51 @@
       {/if}
       {#if onChain()}
         <span class="share-bond" data-testid="share-bond">
-          Room session · share bond {shareBondSol()} SOL
+          Account {personalChips} chips · sit requires {minSitChips} · share bond {shareBondSol()} SOL
         </span>
       {/if}
     </div>
     <label class="raise">
-      {onChain() ? 'Fund seat (faucet)' : 'Add chips'}
-      <input type="number" data-testid="add-chips-amount" bind:value={addChipsAmount} min="1" disabled={busy || !gameId || (backendKind === 'local' && !localServerReady) || (onChain() && !tableConnected)} />
-      <button type="button" data-testid="add-chips-submit" onclick={addChips} disabled={busy || !gameId || localSeat === null || (backendKind === 'local' && !localServerReady) || (onChain() && !tableConnected)}>{onChain() ? 'Escrow' : 'Add'}</button>
+      {onChain() ? 'Account (faucet)' : 'Add chips'}
+      <input type="number" data-testid="add-chips-amount" bind:value={addChipsAmount} min="1" disabled={!gameId || (backendKind === 'local' && !localServerReady) || (onChain() && !tableConnected)} />
+      <button type="button" data-testid="add-chips-submit" onclick={addChips} disabled={!gameId || (backendKind === 'local' && (localSeat === null || !localServerReady)) || (onChain() && !tableConnected)}>{onChain() ? 'Faucet' : 'Add'}</button>
     </label>
-    <button type="button" data-testid="start-hand" onclick={startHand} disabled={!canStartHand}>Start hand</button>
+    <button type="button" data-testid="start-hand" onclick={startHand} disabled={!canStartHand}>
+      {canStartNewHand ? 'Start new hand' : 'Start hand'}
+    </button>
+    {#if gameKind === 'poker'}
+      <label class="sit-control" data-testid="auto-collect-blinds">
+        <input
+          type="checkbox"
+          checked={autoCollectBlinds}
+          onchange={(event) => setAutoCollectBlinds((event.currentTarget as HTMLInputElement).checked)}
+        />
+        Automatically collect blinds
+      </label>
+      <label class="sit-control" data-testid="opt-in-next-hand">
+        <input
+          type="checkbox"
+          checked={optInNextHand}
+          onchange={(event) => setOptInNextHand((event.currentTarget as HTMLInputElement).checked)}
+        />
+        Play the next hand
+      </label>
+    {/if}
+    {#if sittingOutNextHand}
+      <span data-testid="sitting-out">Sitting out until the stack covers the big blind</span>
+    {/if}
+    {#if blindHold}
+      <span data-testid="blind-hold">Blinds wait until showdown is submitted and the hand is closed</span>
+    {/if}
+    {#if blindPrompt?.canPost}
+      <button type="button" data-testid="post-blind" onclick={postBlind} disabled={busy}>
+        Post {blindPrompt.role} blind ({blindPrompt.amount})
+      </button>
+    {/if}
 
+    {#if turnClockLabel}
+      <span data-testid="turn-clock">{turnClockLabel} to act</span>
+    {/if}
     <button type="button" data-testid="fold" onclick={() => bet('fold')} disabled={busy || !canAct}>Fold</button>
     <button type="button" data-testid="check" onclick={() => bet('check')} disabled={busy || !canAct || callAmount > 0}>Check</button>
     <button type="button" data-testid="call" onclick={() => bet('call')} disabled={busy || !canAct || callAmount <= 0}>
@@ -3139,9 +4169,6 @@
       <input type="number" data-testid="raise-amount" bind:value={raiseAmount} min="1" disabled={busy || !canAct} />
       <button type="button" data-testid="raise-submit" onclick={() => bet('raise', String(raiseAmount))} disabled={raiseDisabled}>Go</button>
     </label>
-    <button type="button" data-testid="next-street" onclick={advanceStreet} disabled={busy || !gameState || gameState.bettingRoundOpen}>
-      Next street
-    </button>
     {#if showResetTable}
       <button
         type="button"
@@ -3180,9 +4207,29 @@
     padding: 16px 16px 8px;
   }
 
+  .table-status {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 2px 16px 8px;
+    text-align: center;
+    font-family: sans-serif;
+    font-size: 22px;
+    font-weight: 650;
+    line-height: 1.3;
+    color: #ffe6a8;
+  }
+
+  .table-status[data-tone='you'] {
+    color: #b8f5b0;
+  }
+
+  .table-status[data-tone='seat'] {
+    color: #ffffff;
+  }
+
   .table-viewport {
     flex: 1 1 auto;
-    min-height: min(42vh, 360px);
+    min-height: 0;
     position: relative;
     overflow: hidden;
   }
@@ -3282,13 +4329,18 @@
   }
 
   .controls {
-    position: absolute;
-    left: 16px;
-    bottom: 16px;
+    position: static;
+    flex: 0 0 auto;
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 8px;
-    z-index: 1;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 8px 16px 12px;
+    background: #1e1e1e;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
   }
 
   .raise {
@@ -3438,7 +4490,7 @@
 
     .table-viewport {
       flex: 1 1 auto;
-      min-height: min(42vh, 360px);
+      min-height: 0;
     }
 
     .table-below-band {
@@ -3468,10 +4520,7 @@
     }
 
     .controls {
-      left: 8px;
-      right: 8px;
-      bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-      max-width: calc(100% - 16px);
+      padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
     }
 
     .controls button,
@@ -3488,7 +4537,7 @@
 
   .table-root.compact-native .table-viewport {
     flex: 1 1 auto;
-    min-height: min(44vh, 380px);
+    min-height: 0;
   }
 
   .table-root.compact-native .table-below-band {

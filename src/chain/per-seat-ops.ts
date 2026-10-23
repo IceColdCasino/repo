@@ -13,10 +13,12 @@ import {
 import {
   beginSharedHand,
   placeBetPerSeat,
+  expireBettingTurnPerSeat,
   registerHandKeyPerSeat,
   shuffleHandKeyPerSeat,
   shareHandKeyPerSeat,
   showdownHandKeyPerSeat,
+  settleUncontestedFoldPerSeat,
   getShowdownMaterialsPerSeat,
   softCompleteShowdownPerSeat,
   advanceStreetPerSeat,
@@ -36,6 +38,7 @@ import {
   enrichSnapshotFromHandComplete,
 } from './per-seat-chain-hand';
 import { getSharedMetaStore } from './shared-meta-store';
+import { listTableCatalog, selectSharedTable } from './table-catalog';
 import type { GameSnapshot } from '../backend/types';
 import { isBackendGameKind, parseBackendGameKind } from '../backend/game-kind';
 
@@ -90,6 +93,8 @@ export type PerSeatOpRequest = {
   players?: Array<{ secretKey: number[]; seat?: number; chips?: string }>;
   rpcUrl?: string;
   gameKind?: string;
+  roomIdHex?: string;
+  tableId?: string;
 };
 
 const PER_SEAT_READ_OPS = new Set([
@@ -117,6 +122,17 @@ export async function executePerSeatOp(req: PerSeatOpRequest): Promise<object> {
       perSeat: true,
       inProcess: true,
     };
+  }
+  if (req.op === 'listTableCatalog') {
+    return listTableCatalog(rpcUrl);
+  }
+  if (req.op === 'selectTable') {
+    if (!req.roomIdHex || req.tableId === undefined || req.tableId === '') {
+      throw new Error('roomIdHex and tableId are required');
+    }
+    await selectSharedTable(req.roomIdHex, req.tableId, rpcUrl);
+    const snap = await fetchSharedTableSnapshot(rpcUrl) as GameSnapshot;
+    return enrichGameSnapshot(snap, rpcUrl);
   }
   if (req.op === 'ensureRoom' || req.op === 'ensureSharedRoom') {
     const forceFresh = (req as { forceFresh?: boolean }).forceFresh === true;
@@ -204,6 +220,13 @@ export async function executePerSeatOp(req: PerSeatOpRequest): Promise<object> {
       rpcUrl,
     });
   }
+  if (req.op === 'settleFold' || req.op === 'settleUncontestedFold') {
+    if (!req.secretKey) throw new Error('secretKey required for settleFold');
+    return settleUncontestedFoldPerSeat({
+      secretKey: parseSecretKey(req.secretKey),
+      rpcUrl,
+    });
+  }
   if (req.op === 'showdown' || req.op === 'submitShowdown') {
     if (!req.secretKey) throw new Error('secretKey required for showdown');
     if (!req.proof || !req.publicSignals) {
@@ -260,6 +283,13 @@ export async function executePerSeatOp(req: PerSeatOpRequest): Promise<object> {
       rpcUrl,
     });
   }
+  if (req.op === 'expireBetTurn') {
+    if (!req.secretKey) throw new Error('secretKey required for expireBetTurn');
+    return expireBettingTurnPerSeat({
+      secretKey: parseSecretKey(req.secretKey),
+      rpcUrl,
+    });
+  }
   if (req.op === 'action' || req.op === 'placeBet') {
     if (!req.secretKey) throw new Error('secretKey required for placeBet');
     if (!req.action) throw new Error('action required');
@@ -290,6 +320,8 @@ export async function executePerSeatOp(req: PerSeatOpRequest): Promise<object> {
     case 'stand':
     case 'standUp':
       return client.stand();
+    case 'sitOut':
+      return client.sitOut();
     case 'faucet':
     case 'faucetCreditPersonal': {
       if (!req.amount) throw new Error('amount required');

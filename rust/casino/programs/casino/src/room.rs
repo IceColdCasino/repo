@@ -233,6 +233,26 @@ mod tests {
     }
 
     #[test]
+    fn poker_button_moves_one_seat_when_the_hand_ends() {
+        let mut table = TableState::init([1u8; 32], 0, GameKind::Poker as u8, 1, 0);
+        table.assign_seat(0, Pubkey::new_unique()).unwrap();
+        table.refresh_pending_order();
+        table.assign_seat(1, Pubkey::new_unique()).unwrap();
+        table.refresh_pending_order();
+        let first_button = table.dealer_seat;
+        table.snapshot_hand([1u8; 32]).unwrap();
+        assert_eq!(table.hand_seat_order[0], first_button);
+
+        table.end_hand();
+        let next_button = table.dealer_seat;
+        assert_ne!(next_button, first_button);
+        // start_hand snapshots this pending order. It must not refresh again.
+        table.snapshot_hand([2u8; 32]).unwrap();
+        assert_eq!(table.dealer_seat, next_button);
+        assert_eq!(table.hand_seat_order[0], next_button);
+    }
+
+    #[test]
     fn poker_and_bingo_do_not_reserve_a_house_seat() {
         for kind in [GameKind::Poker, GameKind::Bingo] {
             let mut table = TableState::init([1u8; 32], 0, kind as u8, 1, 0);

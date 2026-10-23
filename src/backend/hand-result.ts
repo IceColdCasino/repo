@@ -200,6 +200,21 @@ export interface BuildHandResultInput {
   zkFinalDeck?: string[][];
 }
 
+/**
+ * The player still in the hand when everyone else has folded.
+ * An all-in runout leaves every player unfolded, so it is not a fold win.
+ */
+export function uncontestedWinnerIndex(foldedMask: number, numPlayers: number): number | null {
+  if (numPlayers < 2 || foldedMask === 0) return null;
+  let winner: number | null = null;
+  for (let player = 0; player < numPlayers; player += 1) {
+    if ((foldedMask & (1 << player)) !== 0) continue;
+    if (winner !== null) return null;
+    winner = player;
+  }
+  return winner;
+}
+
 export function buildHandResult(input: BuildHandResultInput): HandResultSnapshot {
   const {
     handNumber,
@@ -238,11 +253,13 @@ export function buildHandResult(input: BuildHandResultInput): HandResultSnapshot
     }
   }
 
-  const board = usedPlaintextHand
+  const board = reason === 'fold'
     ? [...boardCards]
-    : boardCards.length > 0
+    : usedPlaintextHand
       ? [...boardCards]
-      : Array.from({ length: 5 }, (_, index) => boardStartIndex() + index);
+      : boardCards.length > 0
+        ? [...boardCards]
+        : Array.from({ length: 5 }, (_, index) => boardStartIndex() + index);
 
   const seatHands: SeatHandSnapshot[] = [];
   for (const seat of handSeatOrder) {
@@ -323,9 +340,20 @@ export function preferredShowdownSubmitterSeat(
   excludedSeats: ReadonlySet<number> = new Set(),
 ): number | null {
   const winnings = winningsBySeatFromPotResults(potResults);
-  const candidates = [...winnings.entries()].filter(
+  let candidates = [...winnings.entries()].filter(
     ([seat, amount]) => amount > 0n && !excludedSeats.has(seat),
   );
+  if (candidates.length === 0) {
+    const ranked = new Map<number, bigint>();
+    for (const pot of potResults) {
+      for (const seat of pot.winnerSeats) {
+        if (!excludedSeats.has(seat)) {
+          ranked.set(seat, 1n);
+        }
+      }
+    }
+    candidates = [...ranked.entries()];
+  }
   if (candidates.length === 0) {
     return null;
   }

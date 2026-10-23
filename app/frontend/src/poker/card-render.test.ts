@@ -218,7 +218,7 @@ describe('card component DOM render', () => {
     expect(cardAttrs('hole-card-1-0').unicode).toBe(new Card(12).unicode);
   });
 
-  it('keeps face-down CardView placeholders blank in the DOM', () => {
+  it('draws the card-back glyph and gradient on face-down slots', () => {
     const down: CardView = { suit: '', unicode: FACE_DOWN, flipped: false };
     const up: CardView = {
       suit: new Card(0).suitName,
@@ -235,5 +235,8 @@ describe('card component DOM render', () => {
       faceUp: false,
       unicode: FACE_DOWN,
     });
+    expect(document.querySelector('[data-testid="shared-card-1"] text')?.textContent).toBe('\u{1F0A0}');
+    expect(document.querySelector('[data-testid="shared-card-1"] rect')?.getAttribute('fill')).toBe('url(#card-bg-gradient)');
+    expect(document.querySelector('[data-testid="shared-card-0"] text')?.textContent).toBe(String.fromCodePoint(parseInt(new Card(0).unicode, 16)));
   });
 });

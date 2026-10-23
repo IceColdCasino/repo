@@ -30,6 +30,7 @@ import { ALLOW_SOFT_SHOWDOWN, LOCALNET_RPC_URL } from './localnet-config';
 import {
   ensureSharedLocalnetRoom,
   LOCALNET_SHARED_ROOM_SEED,
+  openPokerRoom,
 } from './per-seat-client';
 import { assertRpcReady } from './localnet-ready';
 import { loadLightCasinoProgram, loadCasinoProgram } from './program-loader';
@@ -45,8 +46,11 @@ import {
   fetchDeckJsonFromChain,
   fetchElGamalKeysFromChain,
   clearHandCompleteMeta,
+  HAND_PAYOUT_APPLIED_KEY,
+  handPayoutApplied,
   loadHandCompleteMeta,
   resolveActiveHandFromChain,
+  readActDeadlineUnix,
   saveHandCompleteMeta,
   type ActiveHandContext,
 } from './per-seat-chain-hand';
@@ -54,9 +58,14 @@ import { PokerRoomLifecycle } from './room/game-room-lifecycle';
 import { DeckStagingHelper, RevealedCardsHelper } from './staging';
 import { LightProtocolStorageHelper } from './light-storage';
 import { OnchainGameLifecycle } from './onchain-game-lifecycle';
-import { ArciumMPCHelper } from '../arcium/mpc';
+import { decodeSealAccount, type SealedShowdownAccount } from '../casino-calc';
+import { logHandProgress } from '../hand-progress';
+import { revealCardConcurrency } from '../arcium/heap';
+import { ArciumMPCHelper, SEAL_CONSUMED_OFFSET } from '../arcium/mpc';
 import { ArciumPollingHelper } from '../arcium/polling';
+import { mapPool } from '../arcium/verify-chunk-parallel';
 import {
+  boardIndicesRevealedForBettingPhase,
   holeCardIndices,
   dealCardCount,
   shareCardMask,
@@ -70,8 +79,11 @@ import {
 import {
   buildHandResult,
   potResultsFromWinnerMasks,
+  uncontestedWinnerIndex,
+  winningsBySeatFromPotResults,
   type HandResultSnapshot,
 } from '../backend/hand-result';
+import { stackAfterPayout } from '../room';
 import type { ZkRevealSnapshot, ZkShowdownMaterials } from '../backend/zk-serialize';
 import {
   applyStreetBetAction,
@@ -84,6 +96,7 @@ import {
   openSealedShowdown,
 } from '../showdown-sealed-coeffs';
 import { potMasksFromFolded } from '../backend/zk-crypto-context';
+import { choosePotAmounts } from './pot-amounts';
 import { TOTAL_CARDS } from '../poker-game';
 import {
   loadShareCiphertexts,
@@ -231,6 +244,16 @@ const showdownSealMemory = new Map<string, {
   decryptedCoefficients: string[];
   privateKey?: number[];
 }>();
+
+/**
+ * Showdown card reveals keep running after materials return so the Groth16
+ * prove overlaps them. Keyed by game id + player index.
+ */
+const showdownPrepareInflight = new Map<string, {
+  promise: Promise<void>;
+  materials: ZkShowdownMaterials;
+}>();
+const showdownPrepareErrors = new Map<string, Error>();
 
 function saveShowdownSealMeta(
   meta: ShowdownSealMeta & { decryptedCoefficients: string[]; privateKey?: number[] },
@@ -612,7 +635,7 @@ async function adminContext(rpcUrl: string): Promise<{
   const connection = new web3.Connection(rpcUrl, 'confirmed');
   const admin = await loadWhitelistAdminProvider(connection);
   const pokerProgram = loadCasinoProgram(admin);
-  const room = new PokerRoomLifecycle(pokerProgram, admin, tableMeta.roomSeed);
+  const room = openPokerRoom(pokerProgram, admin, tableMeta.roomSeed);
   return {
     connection,
     admin,
@@ -620,6 +643,228 @@ async function adminContext(rpcUrl: string): Promise<{
     room,
     tableId: BigInt(tableMeta.tableId),
   };
+}
+
+function gameIdBytes(raw: unknown): Uint8Array | null {
+  if (raw instanceof Uint8Array) return raw;
+  if (Array.isArray(raw)) return Uint8Array.from(raw as number[]);
+  if (typeof raw === 'object' && raw !== null && 'length' in raw) {
+    try {
+      return Uint8Array.from(raw as ArrayLike<number>);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** In-flight `compute_pots` callback. Ending the hand would reject that callback. */
+const SETTLEMENT_PENDING = 2;
+
+/**
+ * The pot callback closes the table when the showdown payout is accepted.
+ * Phase 6 is that settled hand. Phase 5 with `showdown_finalized` is the
+ * accepted receipt; `end_hand` is only the fallback while a pot callback is
+ * still in flight, or for a fold that never queues one.
+ * A live deal (register, share, streets, or an unproved showdown) stays put.
+ */
+export function finishedHandCanClose(game: {
+  phase?: unknown;
+  showdownFinalized?: boolean;
+  showdown_finalized?: boolean;
+  settlementStatus?: unknown;
+  settlement_status?: unknown;
+}): boolean {
+  const phase = Number(game.phase ?? -1);
+  if (phase === 6) return true;
+  const finalized = Boolean(game.showdownFinalized ?? game.showdown_finalized);
+  const settlement = Number(game.settlementStatus ?? game.settlement_status ?? 0);
+  return phase === 5 && finalized && settlement !== SETTLEMENT_PENDING;
+}
+
+/**
+ * A completed hand leaves `hand_in_progress` set, so the next Start is rejected.
+ * Close only a finished hand. A live deal stays put.
+ */
+async function endFinishedHandBeforeRestart(
+  room: PokerRoomLifecycle,
+  admin: AnchorProvider,
+  pokerProgram: Program,
+  tableId: bigint,
+  prior: { currentGameId?: unknown; current_game_id?: unknown },
+): Promise<boolean> {
+  const gameId = gameIdBytes(prior.currentGameId ?? prior.current_game_id);
+  if (!gameId || gameId.every((byte) => byte === 0)) return false;
+  try {
+    const game = await (pokerProgram.account as any).gameState.fetch(
+      gameStatePda(pokerProgram.programId, gameId),
+    );
+    if (!finishedHandCanClose(game)) {
+      logHandProgress(
+        `end_hand waiting: phase=${Number(game.phase ?? -1)} `
+        + `finalized=${Boolean(game.showdownFinalized ?? game.showdown_finalized)} `
+        + `settlement=${Number(game.settlementStatus ?? game.settlement_status ?? 0)}`,
+        'info',
+      );
+      return false;
+    }
+    await room.endHand(tableId, admin);
+    return true;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logHandProgress(`end_hand failed: ${message}`, 'info');
+    console.warn('[per-seat] could not close finished hand:', message);
+    return false;
+  }
+}
+
+const HAND_PAYOUT_PLAN_KEY = 'hand-payout-plan';
+
+async function loadSeatKeypair(pubkey: string): Promise<web3.Keypair | null> {
+  const keys = Array.from({ length: 10 }, (_, seat) => `e2e-wallet-seat${seat}`);
+  await getSharedMetaStore().refreshFromDisk?.(keys);
+  for (const key of keys) {
+    const raw = readSharedMeta(key);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as { publicKey?: string; secretKey?: number[] };
+      if (parsed.publicKey !== pubkey || !Array.isArray(parsed.secretKey)) continue;
+      return web3.Keypair.fromSecretKey(Uint8Array.from(parsed.secretKey));
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Move the finished hand's pot into seat escrow.
+ * Winner's stack grows by winnings minus chips committed; the loser drops by
+ * the chips they put in. Runs once per game, after the hand is no longer open.
+ */
+async function payFinishedHandToSeats(
+  room: PokerRoomLifecycle,
+  pokerProgram: Program,
+  tableId: bigint,
+): Promise<boolean> {
+  await getSharedMetaStore().refreshFromDisk?.(['hand-complete', HAND_PAYOUT_APPLIED_KEY, HAND_PAYOUT_PLAN_KEY]);
+  const complete = loadHandCompleteMeta();
+  if (!complete?.gameIdHex || !complete.handResult?.seatHands?.length) return false;
+  if (handPayoutApplied(complete.gameIdHex)) return true;
+
+  const table = await room.fetchTable(tableId);
+  const handOpen = Boolean(
+    (table as { handInProgress?: boolean }).handInProgress
+    ?? (table as { hand_in_progress?: boolean }).hand_in_progress,
+  );
+
+  const seats = table.seats as web3.PublicKey[];
+  let committedByPlayer: bigint[] = [];
+  try {
+    const gameId = Uint8Array.from(complete.gameIdHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
+    const state = await (pokerProgram.account as any).gameState.fetch(
+      gameStatePda(pokerProgram.programId, gameId),
+    );
+    const totals = (state.playerTotalBets ?? state.player_total_bets ?? []) as Array<{ toString(): string }>;
+    committedByPlayer = totals.map((value) => {
+      try {
+        return BigInt(String(value?.toString?.() ?? '0'));
+      } catch {
+        return 0n;
+      }
+    });
+  } catch {
+    committedByPlayer = [];
+  }
+
+  const saved = readSharedMeta(HAND_PAYOUT_PLAN_KEY);
+  let targets: Record<string, string> | null = null;
+  if (saved) {
+    try {
+      const plan = JSON.parse(saved) as { gameIdHex?: string; targets?: Record<string, string> };
+      if (plan.gameIdHex === complete.gameIdHex && plan.targets) targets = plan.targets;
+    } catch {
+      targets = null;
+    }
+  }
+
+  const winnings = winningsBySeatFromPotResults(complete.handResult.potResults ?? []);
+  if (!targets) {
+    if (!committedByPlayer.some((amount) => amount > 0n)) return false;
+    targets = {};
+    for (const seatHand of complete.handResult.seatHands) {
+      const pk = seats[seatHand.seat];
+      if (!pk || pk.equals(web3.PublicKey.default)) continue;
+      const kp = await loadSeatKeypair(pk.toBase58());
+      if (!kp) continue;
+      let escrow = 0n;
+      try {
+        const account = await (pokerProgram.account as any).tableEscrow.fetch(
+          room.tableEscrowPDA(kp.publicKey, tableId),
+        );
+        escrow = BigInt(String(account.balanceU64 ?? account.balance_u64 ?? '0'));
+      } catch {
+        continue;
+      }
+      const committed = committedByPlayer[seatHand.playerIndex] ?? 0n;
+      const won = winnings.get(seatHand.seat) ?? 0n;
+      targets[kp.publicKey.toBase58()] = stackAfterPayout(escrow, committed, won).toString();
+    }
+    if (Object.keys(targets).length === 0) return false;
+    writeSharedMeta(HAND_PAYOUT_PLAN_KEY, JSON.stringify({
+      gameIdHex: complete.gameIdHex,
+      targets,
+    }));
+    await getSharedMetaStore().flushWrites?.();
+  }
+
+  // Record the plan while bets are still on the game account. Move chips only
+  // after end_hand has cleared hand_in_progress.
+  if (handOpen) return false;
+
+  for (const [pubkey, targetRaw] of Object.entries(targets)) {
+    const target = BigInt(targetRaw);
+    const kp = await loadSeatKeypair(pubkey);
+    if (!kp) {
+      console.warn(`[per-seat] payout missing wallet for ${pubkey.slice(0, 4)}…`);
+      return false;
+    }
+    let escrow = 0n;
+    try {
+      const account = await (pokerProgram.account as any).tableEscrow.fetch(
+        room.tableEscrowPDA(kp.publicKey, tableId),
+      );
+      escrow = BigInt(String(account.balanceU64 ?? account.balance_u64 ?? '0'));
+    } catch (err) {
+      console.warn(
+        `[per-seat] payout escrow read failed ${pubkey.slice(0, 4)}…:`,
+        err instanceof Error ? err.message : err,
+      );
+      return false;
+    }
+    const delta = target - escrow;
+    if (delta === 0n) continue;
+    try {
+      await room.sitOut(tableId, kp).catch(() => undefined);
+      if (delta > 0n) {
+        await room.faucetCreditPersonal(kp, delta);
+        await room.transferPersonalToSeat(tableId, delta, kp);
+      } else {
+        await room.transferSeatToPersonal(tableId, -delta, kp);
+      }
+    } catch (err) {
+      console.warn(
+        `[per-seat] payout move failed ${pubkey.slice(0, 4)}… delta=${delta}:`,
+        err instanceof Error ? err.message : err,
+      );
+      return false;
+    }
+  }
+
+  writeSharedMeta(HAND_PAYOUT_APPLIED_KEY, complete.gameIdHex);
+  await getSharedMetaStore().flushWrites?.();
+  console.log(`[per-seat] paid hand ${complete.gameIdHex.slice(0, 8)} into seat escrow`);
+  return true;
 }
 
 /**
@@ -691,13 +936,21 @@ export async function beginSharedHand(opts?: {
   } else {
     // Use currently seated players on the shared table.
     const prior = await room.fetchTable(tableId);
-    if (Boolean((prior as { handInProgress?: boolean }).handInProgress
-      ?? (prior as { hand_in_progress?: boolean }).hand_in_progress)) {
-      throw new Error(
-        `Table ${tableId} already has hand_in_progress — run ensure-room with `
-        + 'E2E_FRESH_TABLE=1 (or PER_SEAT_FRESH_TABLE=1) so clients sit on a new table',
+    const handStillOpen = Boolean((prior as { handInProgress?: boolean }).handInProgress
+      ?? (prior as { hand_in_progress?: boolean }).hand_in_progress);
+    if (handStillOpen) {
+      const closed = await endFinishedHandBeforeRestart(
+        room,
+        admin,
+        pokerProgram,
+        tableId,
+        prior as { currentGameId?: unknown; current_game_id?: unknown },
       );
+      if (!closed) {
+        throw new Error(`Table ${tableId} still has a hand in progress`);
+      }
     }
+    await payFinishedHandToSeats(room, pokerProgram, tableId);
   }
 
   const gameId = crypto.getRandomValues(new Uint8Array(32));
@@ -1094,6 +1347,20 @@ export async function registerHandKeyPerSeat(opts: {
     // ignore optional meta mirror
   }
 
+  // PlayerState exists only after this register. Seal immediately so the
+  // coefficients are ready before the streets. The next hand's pair is sealed
+  // again when this proof consumes them.
+  void ensureShowdownSealForHand({
+    hand,
+    playerIndex,
+    authority: keypair,
+    connection,
+  }).catch((err: unknown) => {
+    console.warn(
+      `[per-seat] showdown seal after register p${playerIndex}: ${sealFailText(err)}`,
+    );
+  });
+
   return {
     ok: true,
     playerIndex,
@@ -1138,7 +1405,7 @@ export async function placeBetPerSeat(opts: {
     commitment: 'confirmed',
   });
   const pokerProgram = loadCasinoProgram(provider);
-  const room = new PokerRoomLifecycle(
+  const room = openPokerRoom(
     pokerProgram,
     provider,
     hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
@@ -1326,6 +1593,45 @@ export async function placeBetPerSeat(opts: {
   };
 }
 
+/** Fold the player who missed the one-minute decision window. */
+export async function expireBettingTurnPerSeat(opts: {
+  secretKey: Uint8Array;
+  rpcUrl?: string;
+}): Promise<{ expired: boolean }> {
+  const rpcUrl = opts.rpcUrl ?? LOCALNET_RPC_URL;
+  const { hand, keypair, gameId } = await seatContext(opts.secretKey, rpcUrl);
+  const connection = new web3.Connection(rpcUrl, 'confirmed');
+  const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
+    commitment: 'confirmed',
+  });
+  const pokerProgram = loadCasinoProgram(provider);
+  const gamePda = gameStatePda(pokerProgram.programId, gameId);
+  const info = await connection.getAccountInfo(gamePda);
+  const deadline = info ? readActDeadlineUnix(info.data) : 0;
+  if (deadline === 0 || Math.floor(Date.now() / 1000) <= deadline) {
+    return { expired: false };
+  }
+  const room = openPokerRoom(
+    pokerProgram,
+    provider,
+    hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
+  );
+  await (pokerProgram.methods as any)
+    .expireBetTurn()
+    .accountsPartial({
+      crank: keypair.publicKey,
+      gameState: gamePda,
+      tableState: room.tablePDA(hand.tableId),
+      encryptedGameBetting: encryptedBettingPda(pokerProgram.programId, gameId),
+      betActionLog: web3.PublicKey.findProgramAddressSync(
+        [Buffer.from('bet_action_log'), Buffer.from(gameId)],
+        pokerProgram.programId,
+      )[0],
+    })
+    .rpc();
+  return { expired: true };
+}
+
 export function playerIndexForSecret(secretKey: Uint8Array): number {
   const meta = loadHandMeta();
   if (!meta) {
@@ -1502,6 +1808,16 @@ export async function shuffleHandKeyPerSeat(opts: {
   }
 
   const connection = new web3.Connection(rpcUrl, 'confirmed');
+  await ensureShowdownSealForHand({
+    hand,
+    playerIndex,
+    authority: keypair,
+    connection,
+  }).catch((err: unknown) => {
+    console.warn(
+      `[per-seat] showdown seal before shuffle p${playerIndex}: ${sealFailText(err)}`,
+    );
+  });
   await stagePokerSeatFloat(connection, keypair.publicKey);
   const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
     commitment: 'confirmed',
@@ -1590,14 +1906,22 @@ export async function shareHandKeyPerSeat(opts: {
   }
 
   const connection = new web3.Connection(rpcUrl, 'confirmed');
+  const shareStarted = performance.now();
+  const shareStep = (message: string) => {
+    const elapsed = ((performance.now() - shareStarted) / 1000).toFixed(1);
+    logHandProgress(`Share tx: ${message} (player ${playerIndex}, ${elapsed}s)`, 'info');
+  };
   try {
+  shareStep(`submitting ${hand.numPlayers}-player share`);
   await postPlayerShareStake({
     connection,
     player: keypair,
     gameId,
     playerCount: hand.numPlayers,
   });
+  shareStep('share bond posted');
   await stagePokerSeatFloat(connection, keypair.publicKey);
+  shareStep('seat float staged');
   const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
     commitment: 'confirmed',
   });
@@ -1607,7 +1931,7 @@ export async function shareHandKeyPerSeat(opts: {
   const arcium = new ArciumMPCHelper(pokerProgram, provider);
   const polling = new ArciumPollingHelper(provider);
   const staging = new DeckStagingHelper(pokerProgram as any, provider);
-  const room = new PokerRoomLifecycle(
+  const room = openPokerRoom(
     pokerProgram,
     provider,
     hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
@@ -1645,6 +1969,7 @@ export async function shareHandKeyPerSeat(opts: {
     );
   }
   await stagingReady;
+  shareStep(`encrypted ${rows.length} verify batches`);
 
   // Poker binds the Groth16 output to the folded street hashes stored on the
   // receipt. The Arcis accumulator only records that every batch decrypted.
@@ -1663,6 +1988,7 @@ export async function shareHandKeyPerSeat(opts: {
     && Number(prior.verifyProgress) < Number(prior.verifyTarget ?? 0),
   );
   if (!alreadyFrozen && !midRound) {
+    shareStep('begin_verify_share_hash sending');
     await arcium.beginVerifyShareHash(
       gameId,
       playerIndex,
@@ -1675,6 +2001,11 @@ export async function shareHandKeyPerSeat(opts: {
         nonceBase: tableKey.nonceBase,
       },
     );
+    shareStep('begin_verify_share_hash confirmed');
+  } else if (alreadyFrozen) {
+    shareStep('verify already frozen');
+  } else {
+    shareStep('resuming verify already in progress');
   }
 
   const shareChunkTimeoutMs = Number(
@@ -1683,12 +2014,20 @@ export async function shareHandKeyPerSeat(opts: {
   );
   const arcis = alreadyFrozen ? Promise.resolve() : (async () => {
     const verifyTarget = rows.reduce((n, r) => n + r.limbCount, 0);
+    shareStep(
+      `${rows.length} verify batches, one Arcium callback at a time`,
+    );
+    let chunkIndex = 0;
     for (const row of rows) {
+      chunkIndex += 1;
+      const label = `verify ${chunkIndex}/${rows.length} start ${row.startIndex}`;
       const rowBytes = Buffer.concat(row.ciphertexts.map((ct) => Buffer.from(ct)));
+      shareStep(`${label} writing ${rowBytes.length} bytes`);
       await withRetry(
         () => staging.writeShareRange(gameId, playerIndex, row.startIndex * 32, rowBytes),
         { retries: 5, delayMs: 500 },
       );
+      shareStep(`${label} staged`);
       const queueShareChunk = async () => {
         try {
           await arcium.verifyShareHashChunk(gameId, playerIndex, nextOffset(), {
@@ -1716,6 +2055,8 @@ export async function shareHandKeyPerSeat(opts: {
           break;
         }
         await withRetry(queueShareChunk, { retries: 5, delayMs: 500 });
+        shareStep(`${label} queued; waiting for callback`);
+        const waitStarted = performance.now();
         try {
           await polling.waitForCallback(
             arcium.deriveShareVerifyAccPDA(gameId, playerIndex),
@@ -1723,6 +2064,8 @@ export async function shareHandKeyPerSeat(opts: {
             (acc: any) => isVerifyChunkStartDone(acc.verifyBits as any[], row.startIndex),
             { timeout: shareChunkTimeoutMs, interval: 500 },
           );
+          const waited = ((performance.now() - waitStarted) / 1000).toFixed(1);
+          shareStep(`${label} callback in ${waited}s`);
           chunkDone = true;
           break;
         } catch (e: any) {
@@ -1738,7 +2081,9 @@ export async function shareHandKeyPerSeat(opts: {
         throw new Error(`share verify chunk never completed player=${playerIndex}`);
       }
     }
+    shareStep('sync_verify_share_hash sending');
     await arcium.syncVerifyShareHash(gameId, playerIndex);
+    shareStep('sync_verify_share_hash confirmed');
     const acc = await arcium.fetchShareVerifyAccumulator(gameId, playerIndex);
     if (!acc.verified || Number(acc.verifyProgress) < verifyTarget) {
       throw new Error(
@@ -1753,6 +2098,7 @@ export async function shareHandKeyPerSeat(opts: {
   if (!frozenAcc.frozen || !frozenAcc.verified) {
     throw new Error(`share MPC verification did not freeze player=${playerIndex}`);
   }
+  shareStep('groth16 verify_share sending');
   await lifecycle.verifyShare(
     playerIndex,
     opts.proof,
@@ -1762,6 +2108,7 @@ export async function shareHandKeyPerSeat(opts: {
     streets,
     laneFund,
   );
+  shareStep('groth16 verify_share confirmed');
 
   const postShare = await arcium.fetchGameState(gameId);
   const chainSharedMask = Number(postShare.sharedMask ?? postShare.shared_mask ?? 0) >>> 0;
@@ -1786,6 +2133,7 @@ export async function shareHandKeyPerSeat(opts: {
   }
 
   if (allShared && !shareFinalized) {
+    shareStep('finalize_share_phase sending');
     await arcium.finalizeSharePhase(gameId, hand.numPlayers);
     const state = await arcium.fetchGameState(gameId);
     if (state.verified !== true || state.shareFinalized !== true) {
@@ -1795,6 +2143,7 @@ export async function shareHandKeyPerSeat(opts: {
     }
     await staging.closeShare(gameId, playerIndex, keypair);
     finalized = true;
+    shareStep('finalize_share_phase confirmed');
   }
 
   return {
@@ -1924,12 +2273,35 @@ export async function getShowdownMaterialsPerSeat(opts: {
     throw new Error('Showdown material seat does not match signer');
   }
 
-  await getSharedMetaStore().refreshFromDisk?.([E2E_SHOWDOWN_COEFFS_KEY]);
-  const earlyCoeffs = pokerSealedCoefficients(
-    loadShowdownSealMeta(hand.gameIdHex, playerIndex)?.decryptedCoefficients,
-  );
+  const prepareKey = `${hand.gameIdHex}:${playerIndex}`;
+  const priorPrepareError = showdownPrepareErrors.get(prepareKey);
+  if (priorPrepareError) {
+    showdownPrepareErrors.delete(prepareKey);
+    throw priorPrepareError;
+  }
+  const inflight = showdownPrepareInflight.get(prepareKey);
+  if (inflight) {
+    const connection = new web3.Connection(rpcUrl, 'confirmed');
+    const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
+      commitment: 'confirmed',
+    });
+    const materialComplete = await readShowdownMaterialComplete(
+      connection,
+      new ArciumMPCHelper(loadCasinoProgram(provider), provider),
+      hand.gameId,
+      playerIndex,
+    );
+    return { ...inflight.materials, materialComplete };
+  }
 
   const connection = new web3.Connection(rpcUrl, 'confirmed');
+  const sealPromise = ensureShowdownSealForHand({
+    hand,
+    playerIndex,
+    authority: keypair,
+    connection,
+  });
+  void sealPromise.catch(() => undefined);
   const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
     commitment: 'confirmed',
   });
@@ -1973,63 +2345,46 @@ export async function getShowdownMaterialsPerSeat(opts: {
     ciphertextPartials: ciphertextPartialsFromPersistedShares(playerIndex, n, ownShare.padding),
     elGamalPublicKeys,
   };
-  // Reuse an existing seal for this hand/player. Resealing on every materials
-  // fetch (preview + prove + retries) overwrites the coeffs committed in an
-  // already-accepted showdown proof and breaks compute_pots.
-  const existingCoeffs = earlyCoeffs
-    ?? pokerSealedCoefficients(
-      loadShowdownSealMeta(hand.gameIdHex, playerIndex)?.decryptedCoefficients,
-    );
-  let sealedCoefficients = existingCoeffs;
+  // A seal stocked before this hand is reused. Sealing again would replace the
+  // coefficients already committed in an accepted showdown proof.
+  const sealedCoefficients = await sealPromise;
   if (!sealedCoefficients) {
-    const seal = await sealShowdownCoefficientsForPerSeat({
-      gameId: hand.gameId,
-      playerIndex,
-      authority: keypair,
-      tableState: new PokerRoomLifecycle(
-        pokerProgram,
-        provider,
-        hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
-      ).tablePDA(hand.tableId),
-      provider,
-      pokerProgram,
-      arcium,
-      polling: new ArciumPollingHelper(provider),
-    });
-    const decryptedCoefficients = seal.decryptedCoefficients.map((c) => c.toString());
-    const pokerCoeffs = pokerSealedCoefficients(decryptedCoefficients) ?? decryptedCoefficients;
-    saveShowdownSealMeta({
-      gameIdHex: hand.gameIdHex,
-      playerIndex,
-      ciphertexts: seal.ciphertexts.map((c) => Array.from(c)),
-      nonce: seal.nonce.toString(),
-      key: {
-        publicKey: Array.from(seal.key.publicKey),
-        nonceBase: seal.key.nonceBase.toString(),
-      },
-      privateKey: Array.from(seal.key.privateKey),
-      decryptedCoefficients: pokerCoeffs,
-    });
-    await getSharedMetaStore().flushWrites?.();
-    sealedCoefficients = pokerCoeffs;
+    throw new Error('showdown coefficients unavailable');
   }
-  if (!(await readShowdownMaterialComplete(connection, arcium, hand.gameId, playerIndex))) {
-    await prepareShowdownMaterialPerSeat({
+  const materialComplete = await readShowdownMaterialComplete(
+    connection,
+    arcium,
+    hand.gameId,
+    playerIndex,
+  );
+  const readyMaterials: ZkShowdownMaterials = {
+    ...materials,
+    sealedCoefficients,
+    materialComplete,
+  };
+  if (!materialComplete) {
+    // Return as soon as the seal exists. Card reveals continue in the
+    // background and overlap the Groth16 prove; verify waits for them.
+    let job!: Promise<void>;
+    job = prepareShowdownMaterialPerSeat({
       secretKey: opts.secretKey,
       seat: opts.seat,
       rpcUrl,
+    }).then(() => undefined).catch((err: unknown) => {
+      showdownPrepareErrors.set(
+        prepareKey,
+        err instanceof Error ? err : new Error(String(err)),
+      );
+    }).finally(() => {
+      const current = showdownPrepareInflight.get(prepareKey);
+      if (current?.promise === job) {
+        showdownPrepareInflight.delete(prepareKey);
+      }
     });
+    showdownPrepareInflight.set(prepareKey, { promise: job, materials: readyMaterials });
+    console.log(`[per-seat] showdown reveals overlap prove p${playerIndex}`);
   }
-  return {
-    ...materials,
-    sealedCoefficients,
-    materialComplete: await readShowdownMaterialComplete(
-      connection,
-      arcium,
-      hand.gameId,
-      playerIndex,
-    ),
-  };
+  return readyMaterials;
 }
 
 function nonZeroCiphertexts(value: unknown): boolean {
@@ -2093,6 +2448,361 @@ async function sealShowdownCoefficientsForPerSeat(opts: {
     key,
     decryptedCoefficients: coefficients,
   };
+}
+
+/**
+ * Coefficients have to be sealed while a hand is open: the seal instruction
+ * requires that hand's PlayerState. Each seat seals as soon as it registers,
+ * then showdown reuses that pair. When settlement consumes the pair, the next
+ * one is sealed before end_hand, so the following hand already has it.
+ */
+type ReadyShowdownSeal = {
+  owner: string;
+  ciphertexts: number[][];
+  nonce: string;
+  publicKey: number[];
+  privateKey: number[];
+  nonceBase: string;
+  decryptedCoefficients: string[];
+};
+
+const readySealMemory = new Map<string, ReadyShowdownSeal>();
+const sealJobs = new Map<string, Promise<void>>();
+
+function sealFailText(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err);
+  return text.replace(/https?:\/\/\S+/g, '[rpc]').slice(0, 180);
+}
+
+function readySealMetaKey(owner: string): string {
+  return `showdown-seal-ready-${owner}`;
+}
+
+function isByteList(value: unknown, length: number): value is number[] {
+  return Array.isArray(value)
+    && value.length === length
+    && value.every((byte) => Number.isInteger(byte) && (byte as number) >= 0 && (byte as number) <= 255);
+}
+
+function parseReadySeal(owner: string, raw: string): ReadyShowdownSeal | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<ReadyShowdownSeal>;
+    const decryptedCoefficients = pokerSealedCoefficients(parsed.decryptedCoefficients);
+    const first = parsed.ciphertexts?.[0];
+    const second = parsed.ciphertexts?.[1];
+    if (
+      parsed.owner !== owner
+      || !decryptedCoefficients
+      || !isByteList(first, 32)
+      || !isByteList(second, 32)
+      || typeof parsed.nonce !== 'string'
+      || !isByteList(parsed.publicKey, 32)
+      || !isByteList(parsed.privateKey, 32)
+      || typeof parsed.nonceBase !== 'string'
+    ) {
+      return null;
+    }
+    return {
+      owner,
+      ciphertexts: [first, second],
+      nonce: parsed.nonce,
+      publicKey: parsed.publicKey,
+      privateKey: parsed.privateKey,
+      nonceBase: parsed.nonceBase,
+      decryptedCoefficients,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function loadReadySeal(owner: string): ReadyShowdownSeal | null {
+  const cached = readySealMemory.get(owner);
+  if (cached) return cached;
+  const raw = readSharedMeta(readySealMetaKey(owner));
+  if (!raw) return null;
+  const parsed = parseReadySeal(owner, raw);
+  if (parsed) readySealMemory.set(owner, parsed);
+  return parsed;
+}
+
+function saveReadySeal(seal: ReadyShowdownSeal): void {
+  readySealMemory.set(seal.owner, seal);
+  writeSharedMeta(readySealMetaKey(seal.owner), JSON.stringify(seal));
+}
+
+function bindReadySealToHand(
+  gameIdHex: string,
+  playerIndex: number,
+  ready: ReadyShowdownSeal,
+): void {
+  saveShowdownSealMeta({
+    gameIdHex,
+    playerIndex,
+    ciphertexts: ready.ciphertexts,
+    nonce: ready.nonce,
+    key: {
+      publicKey: ready.publicKey,
+      nonceBase: ready.nonceBase,
+    },
+    privateKey: ready.privateKey,
+    decryptedCoefficients: ready.decryptedCoefficients,
+  });
+}
+
+function sameBytes(left: Uint8Array, right: readonly number[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
+function sealIsConsumed(account: SealedShowdownAccount): boolean {
+  return account.data.length > SEAL_CONSUMED_OFFSET
+    && account.data[SEAL_CONSUMED_OFFSET] === 1;
+}
+
+function holdSealJob(owner: string): { finish: () => void } | null {
+  if (sealJobs.has(owner)) return null;
+  let finish!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  sealJobs.set(owner, promise);
+  void promise.finally(() => {
+    if (sealJobs.get(owner) === promise) sealJobs.delete(owner);
+  });
+  return { finish };
+}
+
+function openPlayerChain(authority: web3.Keypair, connection: web3.Connection): {
+  provider: AnchorProvider;
+  pokerProgram: Program;
+  arcium: ArciumMPCHelper;
+} {
+  const provider = new AnchorProvider(connection, new KeypairWallet(authority), {
+    commitment: 'confirmed',
+  });
+  const pokerProgram = loadCasinoProgram(provider);
+  return {
+    provider,
+    pokerProgram,
+    arcium: new ArciumMPCHelper(pokerProgram, provider),
+  };
+}
+
+function tablePdaFor(
+  hand: ActiveHandContext,
+  provider: AnchorProvider,
+  pokerProgram: Program,
+): web3.PublicKey {
+  return openPokerRoom(
+    pokerProgram,
+    provider,
+    hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
+  ).tablePDA(hand.tableId);
+}
+
+async function readSealAccount(
+  connection: web3.Connection,
+  arcium: ArciumMPCHelper,
+  owner: web3.PublicKey,
+): Promise<SealedShowdownAccount | null> {
+  try {
+    const info = await connection.getAccountInfo(
+      arcium.deriveSealedShowdownCoeffsPDA(owner),
+      'confirmed',
+    );
+    if (!info) return null;
+    return decodeSealAccount(Uint8Array.from(info.data));
+  } catch {
+    return null;
+  }
+}
+
+function readyMatchesAccount(account: SealedShowdownAccount, ready: ReadyShowdownSeal): boolean {
+  const live = account.coefficientsCiphertext;
+  return account.written
+    && !sealIsConsumed(account)
+    && sameBytes(live[0] ?? new Uint8Array(), ready.ciphertexts[0] ?? [])
+    && sameBytes(live[1] ?? new Uint8Array(), ready.ciphertexts[1] ?? []);
+}
+
+function readyFromSeal(
+  owner: string,
+  seal: {
+    ciphertexts: Uint8Array[];
+    nonce: bigint;
+    key: TableEncryptionKey;
+    decryptedCoefficients: bigint[];
+  },
+): ReadyShowdownSeal | null {
+  const decryptedCoefficients = pokerSealedCoefficients(
+    seal.decryptedCoefficients.map((coeff) => coeff.toString()),
+  );
+  const first = seal.ciphertexts[0];
+  const second = seal.ciphertexts[1];
+  if (!decryptedCoefficients || !first || !second) return null;
+  return {
+    owner,
+    ciphertexts: [Array.from(first), Array.from(second)],
+    nonce: seal.nonce.toString(),
+    publicKey: Array.from(seal.key.publicKey),
+    privateKey: Array.from(seal.key.privateKey),
+    nonceBase: seal.key.nonceBase.toString(),
+    decryptedCoefficients,
+  };
+}
+
+async function handIsOpen(
+  hand: ActiveHandContext,
+  provider: AnchorProvider,
+  pokerProgram: Program,
+): Promise<boolean> {
+  try {
+    const table = await openPokerRoom(
+      pokerProgram,
+      provider,
+      hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
+    ).fetchTable(hand.tableId);
+    return Boolean(
+      (table as { handInProgress?: boolean }).handInProgress
+      ?? (table as { hand_in_progress?: boolean }).hand_in_progress,
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function sealFreshShowdownCoefficients(opts: {
+  hand: ActiveHandContext;
+  playerIndex: number;
+  authority: web3.Keypair;
+  connection: web3.Connection;
+  bindToHand: boolean;
+}): Promise<void> {
+  const owner = opts.authority.publicKey.toBase58();
+  const { provider, pokerProgram, arcium } = openPlayerChain(opts.authority, opts.connection);
+  const seal = await sealShowdownCoefficientsForPerSeat({
+    gameId: opts.hand.gameId,
+    playerIndex: opts.playerIndex,
+    authority: opts.authority,
+    tableState: tablePdaFor(opts.hand, provider, pokerProgram),
+    provider,
+    pokerProgram,
+    arcium,
+    polling: new ArciumPollingHelper(provider),
+  });
+  const ready = readyFromSeal(owner, seal);
+  if (!ready) throw new Error('showdown seal did not return two coefficients');
+  saveReadySeal(ready);
+  if (opts.bindToHand) {
+    bindReadySealToHand(opts.hand.gameIdHex, opts.playerIndex, ready);
+  }
+  await getSharedMetaStore().flushWrites?.();
+}
+
+/** Use the stocked pair, or seal one for this hand. */
+async function ensureShowdownSealForHand(opts: {
+  hand: ActiveHandContext;
+  playerIndex: number;
+  authority: web3.Keypair;
+  connection: web3.Connection;
+}): Promise<string[]> {
+  const owner = opts.authority.publicKey.toBase58();
+  const existing = sealJobs.get(owner);
+  if (existing) await existing;
+  const local = pokerSealedCoefficients(
+    loadShowdownSealMeta(opts.hand.gameIdHex, opts.playerIndex)?.decryptedCoefficients,
+  );
+  if (local) return local;
+
+  const held = holdSealJob(owner);
+  if (!held) return ensureShowdownSealForHand(opts);
+  try {
+    await getSharedMetaStore().refreshFromDisk?.([
+      readySealMetaKey(owner),
+      E2E_SHOWDOWN_COEFFS_KEY,
+    ]);
+    const again = pokerSealedCoefficients(
+      loadShowdownSealMeta(opts.hand.gameIdHex, opts.playerIndex)?.decryptedCoefficients,
+    );
+    if (again) return again;
+
+    const { arcium } = openPlayerChain(opts.authority, opts.connection);
+    const ready = loadReadySeal(owner);
+    const account = await readSealAccount(opts.connection, arcium, opts.authority.publicKey);
+    if (ready && account && readyMatchesAccount(account, ready)) {
+      bindReadySealToHand(opts.hand.gameIdHex, opts.playerIndex, ready);
+      await getSharedMetaStore().flushWrites?.();
+      logHandProgress(
+        `Showdown coefficients already sealed (seat player ${opts.playerIndex})`,
+        'info',
+      );
+      return ready.decryptedCoefficients;
+    }
+
+    logHandProgress(
+      `Sealing showdown coefficients (seat player ${opts.playerIndex})`,
+      'info',
+    );
+    await sealFreshShowdownCoefficients({ ...opts, bindToHand: true });
+    const sealed = pokerSealedCoefficients(
+      loadShowdownSealMeta(opts.hand.gameIdHex, opts.playerIndex)?.decryptedCoefficients,
+    );
+    if (!sealed) throw new Error('showdown coefficients unavailable');
+    logHandProgress(
+      `Showdown coefficients sealed (seat player ${opts.playerIndex})`,
+      'info',
+    );
+    return sealed;
+  } finally {
+    held.finish();
+  }
+}
+
+/**
+ * Settlement marks the seal consumed inside compute_pots. Seal the next pair
+ * before end_hand so the following hand does not wait on this callback.
+ */
+async function replenishConsumedShowdownSeal(opts: {
+  hand: ActiveHandContext;
+  playerIndex: number;
+  authority: web3.Keypair;
+  connection: web3.Connection;
+}): Promise<void> {
+  const owner = opts.authority.publicKey.toBase58();
+  try {
+    const existing = sealJobs.get(owner);
+    if (existing) await existing;
+    const held = holdSealJob(owner);
+    if (!held) {
+      await replenishConsumedShowdownSeal(opts);
+      return;
+    }
+    try {
+      const { provider, pokerProgram, arcium } = openPlayerChain(opts.authority, opts.connection);
+      const account = await readSealAccount(opts.connection, arcium, opts.authority.publicKey);
+      if (!account || !sealIsConsumed(account)) return;
+      if (!(await handIsOpen(opts.hand, provider, pokerProgram))) return;
+      logHandProgress(
+        `Sealing the next showdown coefficients (seat player ${opts.playerIndex})`,
+        'info',
+      );
+      await sealFreshShowdownCoefficients({ ...opts, bindToHand: false });
+      logHandProgress(
+        `Next showdown coefficients sealed (seat player ${opts.playerIndex})`,
+        'info',
+      );
+    } finally {
+      held.finish();
+    }
+  } catch (err) {
+    console.warn(
+      `[per-seat] next showdown seal p${opts.playerIndex}: ${sealFailText(err)}`,
+    );
+  }
 }
 
 /**
@@ -2173,24 +2883,29 @@ export async function persistHandCompleteAfterShowdown(opts: {
     holeCards.set(seat, holeCardIndices(i));
     seatNames.set(seat, `Seat ${seat}`);
   }
-  let potAmount = 30n;
+  let potAmounts: bigint[] = [30n];
   try {
     const arcium = new ArciumMPCHelper(pokerProgram, admin);
     const state = await arcium.fetchGameState(hand.gameId);
-    const totals = (state.playerTotalBets ?? state.player_total_bets ?? []) as Array<
-      { toString(): string } | number | string
-    >;
-    if (Array.isArray(totals) && totals.length > 0) {
-      const sum = totals.reduce<bigint>((acc, v) => acc + BigInt(String(v)), 0n);
-      if (sum > 0n) potAmount = sum;
-    } else {
-      const chainPots = (state.pots ?? []) as Array<{ toString(): string } | number | string>;
-      const potSum = chainPots.reduce<bigint>((acc, v) => acc + BigInt(String(v)), 0n);
-      if (potSum > 0n) potAmount = potSum;
+    let encryptedFields: Array<ArrayLike<number>> | null = null;
+    try {
+      const betting = await (pokerProgram.account as any).encryptedGameBetting.fetch(
+        encryptedBettingPda(pokerProgram.programId, hand.gameId),
+      );
+      const fields = betting.potsCt ?? betting.pots_ct;
+      if (Array.isArray(fields)) encryptedFields = fields;
+    } catch {
+      encryptedFields = null;
     }
+    potAmounts = choosePotAmounts({
+      encryptedFields,
+      plaintextPots: state.pots,
+      playerTotals: state.playerTotalBets ?? state.player_total_bets,
+    });
   } catch {
     // keep soft default
   }
+  const potAmount = potAmounts.reduce((sum, amount) => sum + amount, 0n);
 
   let zkFinalDeck: string[][] | undefined;
   let zkCrypto: ReturnType<typeof buildZkCryptoFromDeck>;
@@ -2234,7 +2949,7 @@ export async function persistHandCompleteAfterShowdown(opts: {
       foldedMask: 0,
       holeCards,
       boardCards: [20, 21, 22, 23, 24],
-      pots: [{ amount: potAmount }],
+      pots: potAmounts.map((amount) => ({ amount })),
       seatNames,
       usedPlaintextHand: false,
       zkFinalDeck,
@@ -2252,8 +2967,15 @@ export async function persistHandCompleteAfterShowdown(opts: {
       winnerMasks,
       hand.numPlayers,
       [...hand.physicalSeats],
-      [{ amount: potAmount }],
+      potAmounts.map((amount) => ({ amount })),
     );
+  }
+  if (handResult.potResults.length === 0 && potAmounts.some((amount) => amount > 0n)) {
+    handResult.potResults = potAmounts.flatMap((amount, potIndex) => (
+      amount > 0n
+        ? [{ potIndex, amount: amount.toString(), winnerSeats: [] as number[] }]
+        : []
+    ));
   }
   saveHandCompleteMeta({
     tableId: String(tableId),
@@ -2289,7 +3011,7 @@ async function closeRetainedRevealedCardsPerSeat(opts: {
   pokerProgram: Program;
 }): Promise<void> {
   const helper = new RevealedCardsHelper(opts.pokerProgram, opts.provider);
-  const room = new PokerRoomLifecycle(
+  const room = openPokerRoom(
     opts.pokerProgram,
     opts.provider,
     opts.hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
@@ -2345,7 +3067,7 @@ async function settleShowdownPotsPerSeat(opts: {
     );
     return;
   }
-  const room = new PokerRoomLifecycle(
+  const room = openPokerRoom(
     pokerProgram,
     provider,
     hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
@@ -2358,6 +3080,7 @@ async function settleShowdownPotsPerSeat(opts: {
   );
   const arcium = new ArciumMPCHelper(pokerProgram, provider);
   const polling = new ArciumPollingHelper(provider);
+  logHandProgress(`Showdown tx: compute_pots sending (seat player ${playerIndex})`);
   await arcium.computePots(
     hand.gameId,
     nextOffset(),
@@ -2367,12 +3090,22 @@ async function settleShowdownPotsPerSeat(opts: {
     room.tablePDA(hand.tableId),
     authority.publicKey,
   );
+  logHandProgress(`Showdown tx: compute_pots queued; waiting for callback (seat player ${playerIndex})`);
+  // The queue instruction already marked this seal consumed. Stock the next
+  // pair while the callback is in flight, before end_hand closes the hand.
+  void replenishConsumedShowdownSeal({
+    hand,
+    playerIndex,
+    authority,
+    connection: provider.connection,
+  });
   await polling.waitForPhase(
     gamePda,
     (pda) => (pokerProgram.account as any).gameState.fetch(pda),
     6,
     { timeout: 180_000, interval: 2_000 },
   );
+  logHandProgress(`Showdown tx: compute_pots callback landed (seat player ${playerIndex})`);
   await closeRetainedRevealedCardsPerSeat({
     hand,
     playerIndex,
@@ -2468,6 +3201,202 @@ function parseWinnerMasks(raw?: Array<string | bigint | number>): bigint[] | nul
   return masks.some((mask) => mask !== 0n) ? masks.slice(0, 9) : null;
 }
 
+function bigintField(value: unknown): bigint {
+  try {
+    return BigInt(String((value as { toString?: () => string })?.toString?.() ?? value ?? '0'));
+  } catch {
+    return 0n;
+  }
+}
+
+function bigintList(value: unknown): bigint[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => bigintField(item));
+}
+
+/**
+ * One player remains. Record the fold win, close the hand, and pay the pot.
+ * A real showdown (two or more players still in) returns `settled: false`.
+ */
+async function payClosedUncontestedFold(opts: {
+  room: PokerRoomLifecycle;
+  pokerProgram: Program;
+  tableId: bigint;
+  keypair: web3.Keypair;
+  playerIndex: number;
+  rpcUrl: string;
+}): Promise<{ ok: true; settled: boolean; contested: boolean; phase?: 'Complete' }> {
+  const complete = loadHandCompleteMeta();
+  if (!complete?.gameIdHex || complete.handResult?.reason !== 'fold') {
+    return { ok: true, settled: false, contested: true };
+  }
+  const iAmWinner = complete.handResult.seatHands.some(
+    (seat) => seat.playerIndex === opts.playerIndex && !seat.folded,
+  );
+  const applied = handPayoutApplied(complete.gameIdHex);
+  if (!iAmWinner) {
+    return {
+      ok: true,
+      settled: applied,
+      contested: false,
+      phase: applied ? 'Complete' : undefined,
+    };
+  }
+  if (applied) {
+    return { ok: true, settled: true, contested: false, phase: 'Complete' };
+  }
+  logHandProgress('Uncontested fold: paying seat stacks');
+  const paid = await payFinishedHandToSeats(opts.room, opts.pokerProgram, opts.tableId);
+  if (!paid) {
+    logHandProgress('Uncontested fold: seat stacks unchanged', 'info');
+    return { ok: true, settled: false, contested: false };
+  }
+  await releasePlayerShareStake(
+    new web3.Connection(opts.rpcUrl, 'confirmed'),
+    opts.keypair,
+  ).catch(() => undefined);
+  const winnerSeat = complete.handResult.seatHands.find((seat) => !seat.folded)?.seat;
+  logHandProgress(
+    `Uncontested fold: pot awarded to seat ${winnerSeat ?? opts.playerIndex}`,
+    'chain',
+  );
+  return { ok: true, settled: true, contested: false, phase: 'Complete' };
+}
+
+export async function settleUncontestedFoldPerSeat(opts: {
+  secretKey: Uint8Array;
+  rpcUrl?: string;
+}): Promise<{ ok: true; settled: boolean; contested: boolean; phase?: 'Complete' }> {
+  const rpcUrl = opts.rpcUrl ?? LOCALNET_RPC_URL;
+  const { keypair, playerIndex } = await seatContext(opts.secretKey, rpcUrl);
+  const { admin, pokerProgram, room, tableId } = await adminContext(rpcUrl);
+  await getSharedMetaStore().refreshFromDisk?.(['hand-complete', HAND_PAYOUT_APPLIED_KEY]);
+  const openTable = await room.fetchTable(tableId);
+  const tableStillOpen = Boolean(
+    (openTable as { handInProgress?: boolean }).handInProgress
+    ?? (openTable as { hand_in_progress?: boolean }).hand_in_progress,
+  );
+  if (!tableStillOpen) {
+    return payClosedUncontestedFold({
+      room,
+      pokerProgram,
+      tableId,
+      keypair,
+      playerIndex,
+      rpcUrl,
+    });
+  }
+  const hand = await resolveActiveHandFromChain(rpcUrl);
+  const state = await (pokerProgram.account as any).gameState.fetch(
+    gameStatePda(pokerProgram.programId, hand.gameId),
+  );
+  const foldedMask = Number(state.foldedMask ?? state.folded_mask ?? 0) >>> 0;
+  const numPlayers = Number(state.numPlayers ?? state.num_players ?? hand.numPlayers);
+  const winner = uncontestedWinnerIndex(foldedMask, numPlayers);
+  const phase = Number(state.phase ?? 0);
+  const bettingPhase = Number(state.bettingPhase ?? state.betting_phase ?? 0);
+  const handOver = phase === 5 || phase === 6 || bettingPhase === 5 || bettingPhase === 6;
+  if (winner === null || !handOver) {
+    return { ok: true, settled: false, contested: true };
+  }
+  if (playerIndex !== winner) {
+    const complete = loadHandCompleteMeta();
+    const done = Boolean(
+      complete
+      && complete.gameIdHex === hand.gameIdHex
+      && complete.handResult?.reason === 'fold'
+      && handPayoutApplied(hand.gameIdHex),
+    );
+    return { ok: true, settled: done, contested: false, phase: done ? 'Complete' : undefined };
+  }
+
+  const already = loadHandCompleteMeta();
+  if (!(already?.gameIdHex === hand.gameIdHex && already.handResult?.reason === 'fold')) {
+    const holeCards = new Map<number, [number, number]>();
+    const seatNames = new Map<number, string>();
+    for (let i = 0; i < hand.physicalSeats.length; i += 1) {
+      const seat = hand.physicalSeats[i]!;
+      holeCards.set(seat, holeCardIndices(i));
+      seatNames.set(seat, `Seat ${seat}`);
+    }
+    const plainPots = bigintList(state.pots);
+    const refunds = bigintList(state.refunds);
+    const plainSum = plainPots.reduce((sum, amount) => sum + amount, 0n);
+    const potAmounts = plainSum > 0n || refunds.some((amount) => amount > 0n)
+      ? plainPots
+      : choosePotAmounts({
+        plaintextPots: state.pots,
+        playerTotals: state.playerTotalBets ?? state.player_total_bets,
+      });
+    const handResult = buildHandResult({
+      handNumber: Number(state.handNumber ?? state.hand_number ?? 1) || 1,
+      reason: 'fold',
+      handNumPlayers: hand.numPlayers,
+      handSeatOrder: [...hand.physicalSeats],
+      foldedMask,
+      holeCards,
+      boardCards: boardIndicesRevealedForBettingPhase(bettingPhase),
+      pots: potAmounts.map((amount) => ({ amount })),
+      seatNames,
+      usedPlaintextHand: false,
+    });
+    refunds.forEach((amount, playerIndex) => {
+      const seat = hand.physicalSeats[playerIndex];
+      if (amount <= 0n || seat === undefined) return;
+      handResult.potResults.push({
+        potIndex: handResult.potResults.length,
+        amount: amount.toString(),
+        winnerSeats: [seat],
+      });
+    });
+    saveHandCompleteMeta({
+      tableId: String(tableId),
+      gameIdHex: hand.gameIdHex,
+      handResult,
+    });
+    clearStreetActedMeta();
+    clearStreetBetsMeta();
+    await getSharedMetaStore().flushWrites?.();
+  }
+
+  const table = await room.fetchTable(tableId);
+  const handOpen = Boolean(
+    (table as { handInProgress?: boolean }).handInProgress
+    ?? (table as { hand_in_progress?: boolean }).hand_in_progress,
+  );
+  // Snapshot escrow targets while player_total_bets are still readable.
+  await payFinishedHandToSeats(room, pokerProgram, tableId);
+  if (handOpen) {
+    try {
+      logHandProgress('Uncontested fold: closing the hand');
+      await room.endHand(tableId, admin);
+    } catch (err) {
+      const again = await room.fetchTable(tableId);
+      const stillOpen = Boolean(
+        (again as { handInProgress?: boolean }).handInProgress
+        ?? (again as { hand_in_progress?: boolean }).hand_in_progress,
+      );
+      if (stillOpen) {
+        const message = err instanceof Error ? err.message : String(err);
+        logHandProgress(`Uncontested fold: end_hand failed: ${message}`, 'info');
+        throw err;
+      }
+    }
+  }
+  logHandProgress('Uncontested fold: paying seat stacks');
+  const paid = await payFinishedHandToSeats(room, pokerProgram, tableId);
+  if (!paid) {
+    logHandProgress('Uncontested fold: seat stacks unchanged', 'info');
+    return { ok: true, settled: false, contested: false };
+  }
+  await releasePlayerShareStake(new web3.Connection(rpcUrl, 'confirmed'), keypair).catch(
+    () => undefined,
+  );
+  const winnerSeat = hand.physicalSeats[winner] ?? winner;
+  logHandProgress(`Uncontested fold: pot awarded to seat ${winnerSeat}`, 'chain');
+  return { ok: true, settled: true, contested: false, phase: 'Complete' };
+}
+
 export async function showdownHandKeyPerSeat(opts: {
   secretKey: Uint8Array;
   proof: object;
@@ -2486,6 +3415,15 @@ export async function showdownHandKeyPerSeat(opts: {
     const gameAccount = await (adminPokerProgram.account as any).gameState.fetch(
       gameStatePda(adminPokerProgram.programId, hand.gameId),
     );
+    const foldedMask = Number(gameAccount.foldedMask ?? gameAccount.folded_mask ?? 0) >>> 0;
+    const numPlayers = Number(gameAccount.numPlayers ?? gameAccount.num_players ?? hand.numPlayers);
+    const chainPhase = Number(gameAccount.phase ?? 0);
+    const bettingPhase = Number(gameAccount.bettingPhase ?? gameAccount.betting_phase ?? 0);
+    const handOver = chainPhase === 5 || chainPhase === 6 || bettingPhase === 5 || bettingPhase === 6;
+    if (handOver && uncontestedWinnerIndex(foldedMask, numPlayers) !== null) {
+      await settleUncontestedFoldPerSeat({ secretKey: opts.secretKey, rpcUrl });
+      return { ok: true, playerIndex, phase: 'Complete' };
+    }
     alreadyFinalized = Boolean(
       gameAccount.showdownFinalized ?? gameAccount.showdown_finalized,
     );
@@ -2531,6 +3469,7 @@ export async function showdownHandKeyPerSeat(opts: {
       await lifecycle.finalizeShowdown(playerIndex, keypair);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logHandProgress(`Showdown tx: finalize_showdown failed (seat player ${playerIndex}): ${msg}`, 'info');
       console.warn(`[per-seat] finalizeShowdown p${playerIndex}: ${msg}`);
     }
     alreadyFinalized = true;
@@ -2543,6 +3482,10 @@ export async function showdownHandKeyPerSeat(opts: {
 
   const winnerMasks = parseWinnerMasks(opts.winnerMasks)
     ?? await resolveWinnerMasksForComplete(hand, rpcUrl);
+  logHandProgress(
+    `Showdown proof accepted; settling pots (seat player ${playerIndex})`,
+    'zk',
+  );
   console.log(
     `[per-seat] showdown proof accepted p${playerIndex}; settling pots `
     + `masks=${winnerMasks.map((m) => m.toString()).join(',')}`,
@@ -2560,6 +3503,12 @@ export async function showdownHandKeyPerSeat(opts: {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[per-seat] pot settlement p${playerIndex}: ${msg}`);
   }
+  await replenishConsumedShowdownSeal({
+    hand,
+    playerIndex,
+    authority: keypair,
+    connection: new web3.Connection(rpcUrl, 'confirmed'),
+  });
   await persistHandCompleteAfterShowdown({
     hand,
     tableId,
@@ -2568,6 +3517,50 @@ export async function showdownHandKeyPerSeat(opts: {
     pokerProgram: adminPokerProgram,
     admin,
   });
+  try {
+    const room = openPokerRoom(
+      adminPokerProgram,
+      admin,
+      hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
+    );
+    const prior = await room.fetchTable(BigInt(tableId));
+    const handStillOpen = Boolean(
+      (prior as { handInProgress?: boolean }).handInProgress
+      ?? (prior as { hand_in_progress?: boolean }).hand_in_progress,
+    );
+    let closed = !handStillOpen;
+    if (handStillOpen) {
+      logHandProgress(`Showdown tx: end_hand sending (seat player ${playerIndex})`);
+      closed = await endFinishedHandBeforeRestart(
+        room,
+        admin,
+        adminPokerProgram,
+        BigInt(tableId),
+        prior as { currentGameId?: unknown; current_game_id?: unknown },
+      );
+      logHandProgress(
+        closed
+          ? `Showdown tx: end_hand confirmed (seat player ${playerIndex})`
+          : `Showdown tx: end_hand skipped; table still in a hand (seat player ${playerIndex})`,
+        closed ? 'chain' : 'info',
+      );
+    }
+    if (closed) {
+      logHandProgress(`Showdown tx: paying seat stacks (seat player ${playerIndex})`);
+      const paid = await payFinishedHandToSeats(room, adminPokerProgram, BigInt(tableId));
+      logHandProgress(
+        paid
+          ? `Showdown tx: seat stacks paid (seat player ${playerIndex})`
+          : `Showdown tx: seat stacks unchanged (seat player ${playerIndex})`,
+        paid ? 'chain' : 'info',
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `[per-seat] seat payout after showdown p${playerIndex}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
   await releasePlayerShareStake(new web3.Connection(rpcUrl, 'confirmed'), keypair).catch(
     () => undefined,
   );
@@ -2897,7 +3890,7 @@ async function stageCardMajorRevealStagingPerSeat(opts: {
     tableKey.nonceBase,
   );
   const staging = new DeckStagingHelper(pokerProgram, provider);
-  const room = new PokerRoomLifecycle(
+  const room = openPokerRoom(
     pokerProgram,
     provider,
     hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
@@ -2945,7 +3938,7 @@ export async function revealSealedPartialsPerSeat(opts: {
   const lightProgram = loadLightCasinoProgram(provider);
   const light = new LightProtocolStorageHelper(lightProgram, provider);
   const polling = new ArciumPollingHelper(provider);
-  const room = new PokerRoomLifecycle(
+  const room = openPokerRoom(
     pokerProgram,
     provider,
     hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
@@ -2974,12 +3967,19 @@ export async function revealSealedPartialsPerSeat(opts: {
     throw new Error('recipientIndex does not match signer');
   }
 
-  for (const cardIndex of uniqueCards) {
+  const concurrency = revealCardConcurrency(hand.numPlayers, uniqueCards.length);
+  console.log(
+    `[per-seat] reveal r${opts.recipientIndex} cards=${uniqueCards.length} W=${concurrency}`,
+  );
+  // Light writes share one signer. Keep those transactions ordered while the
+  // Arcis jobs overlap. The queue gate still caps in-flight computations.
+  let lightWrites: Promise<void> = Promise.resolve();
+  await mapPool(uniqueCards, concurrency, async (cardIndex) => {
     const existing = await (pokerProgram.account as any).revealedCard.fetchNullable(
       arcium.deriveRevealedCardPDA(gameId, opts.recipientIndex, cardIndex),
     );
     if (existing && Number(existing.filled) === totalCount) {
-      continue;
+      return;
     }
     const revealedPda = arcium.deriveRevealedCardPDA(gameId, opts.recipientIndex, cardIndex);
     const completed = Promise.race([
@@ -2994,7 +3994,7 @@ export async function revealSealedPartialsPerSeat(opts: {
         revealedPda,
         () => arcium.fetchRevealedCard(gameId, opts.recipientIndex, cardIndex),
         (state: any) => Number(state.filled) === totalCount,
-        { timeout: 180_000, interval: 2_000 },
+        { timeout: 180_000, interval: 400 },
       ),
     ]);
     await arcium.revealCardPartials(gameId, cardIndex, nextOffset(), {
@@ -3015,19 +4015,23 @@ export async function revealSealedPartialsPerSeat(opts: {
     const commitments = (revealed.partials as Array<number[] | Uint8Array>)
       .slice(0, totalCount)
       .map((partial) => Uint8Array.from(partial));
-    for (let offset = 0; offset < commitments.length; offset += 8) {
-      const chunk = commitments.slice(offset, offset + 8);
-      await light.createRevealedPartials(
-        gameId,
-        opts.recipientIndex,
-        cardIndex * 5 + Math.floor(offset / 8),
-        cardIndex * 36 + offset,
-        chunk.length,
-        chunk,
-        keypair,
-      );
-    }
-  }
+    const run = lightWrites.then(async () => {
+      for (let offset = 0; offset < commitments.length; offset += 8) {
+        const chunk = commitments.slice(offset, offset + 8);
+        await light.createRevealedPartials(
+          gameId,
+          opts.recipientIndex,
+          cardIndex * 5 + Math.floor(offset / 8),
+          cardIndex * 36 + offset,
+          chunk.length,
+          chunk,
+          keypair,
+        );
+      }
+    });
+    lightWrites = run.then(() => undefined, () => undefined);
+    await run;
+  });
   return {
     ok: true,
     recipientIndex: opts.recipientIndex,
@@ -3082,7 +4086,7 @@ export async function prepareShowdownMaterialPerSeat(opts: {
     generationBn,
     playerIndex,
   );
-  const room = new PokerRoomLifecycle(
+  const room = openPokerRoom(
     pokerProgram,
     provider,
     hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,

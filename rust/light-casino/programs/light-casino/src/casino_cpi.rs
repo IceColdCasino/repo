@@ -74,8 +74,10 @@ pub fn consume_register_receipt_cpi<'info>(
     proof_receipt: &AccountInfo<'info>,
     system_program: &AccountInfo<'info>,
     receipt: &ProofReceiptPayload,
+    public_key: &[[u8; 32]; 2],
+    padding: &[[u8; 32]; 4],
 ) -> Result<()> {
-    let ix_data = receipt.consume_register_ix_data();
+    let ix_data = receipt.consume_register_ix_data(public_key, padding);
     let metas = [
         pinocchio::instruction::AccountMeta::writable_signer(cpi_authority.key_ptr()),
         pinocchio::instruction::AccountMeta::writable(poker_game_state.key_ptr()),

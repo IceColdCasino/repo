@@ -651,6 +651,8 @@ pub mod light_casino {
             &ctx.accounts.poker_player_state,
             &mut ctx.accounts.proof_receipt,
             &ctx.accounts.system_program.to_account_info(),
+            &public_key,
+            &padding,
         )?;
         close_consumed_receipt(
             &ctx.remaining_accounts,
@@ -766,6 +768,8 @@ pub mod light_casino {
             &ctx.accounts.poker_player_state,
             &mut ctx.accounts.proof_receipt,
             &ctx.accounts.system_program.to_account_info(),
+            &public_key,
+            &padding,
         )?;
 
         game_state.shared_mask |= bit;

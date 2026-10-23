@@ -68,6 +68,8 @@ pub fn maybe_consume_register<'info>(
     poker_player_state: &Option<UncheckedAccount<'info>>,
     proof_receipt: &mut Account<'info, ProofReceipt>,
     system_program: &AccountInfo<'info>,
+    public_key: &[[u8; 32]; 2],
+    padding: &[[u8; 32]; 4],
 ) -> Result<()> {
     match (
         poker_program,
@@ -97,6 +99,8 @@ pub fn maybe_consume_register<'info>(
                 &receipt_info,
                 system_program,
                 &payload,
+                public_key,
+                padding,
             )?;
             proof_receipt.status = shared_zk_ids::RECEIPT_STATUS_CONSUMED;
             Ok(())

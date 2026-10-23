@@ -27,18 +27,27 @@ pub fn build(b: *std.Build) void {
     const ios_zk_bridge_mod = localModule(b, ios_target, optimize, "src/zk_bridge.zig");
     ios_zk_bridge_mod.addImport("zero-native", ios_zero_native_mod);
     ios_zk_bridge_mod.addImport("build_options", ios_zk_options_mod);
+    const ios_zkey_store_mod = b.createModule(.{
+        .root_source_file = b.path("../libzkcasino/src/zig/prove/zkey_store.zig"),
+        .target = ios_target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    ios_zk_bridge_mod.addImport("zkey_store", ios_zkey_store_mod);
     ios_zk_bridge_mod.addImport("main_thread_dispatch", ios_main_thread_mod);
 
     const ios_player_bridge_mod = localModule(b, ios_target, optimize, "src/player_bridge.zig");
     ios_player_bridge_mod.addImport("zero-native", ios_zero_native_mod);
     ios_player_bridge_mod.addImport("build_options", ios_zk_options_mod);
     ios_player_bridge_mod.addImport("zk_bridge", ios_zk_bridge_mod);
-    ios_player_bridge_mod.addImport("player_crypto", b.createModule(.{
+    const ios_player_crypto_mod = b.createModule(.{
         .root_source_file = b.path("../libzkcasino/src/zig/player_crypto.zig"),
         .target = ios_target,
         .optimize = optimize,
         .link_libc = true,
-    }));
+    });
+    ios_player_crypto_mod.addImport("zkey_store", ios_zkey_store_mod);
+    ios_player_bridge_mod.addImport("player_crypto", ios_player_crypto_mod);
     ios_player_bridge_mod.link_libc = true;
 
     const ios_server_bridge_mod = localModule(b, ios_target, optimize, "src/server_bridge.zig");

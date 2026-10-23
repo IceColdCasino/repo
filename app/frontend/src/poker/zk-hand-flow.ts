@@ -17,6 +17,7 @@ import {
 import { hasPlayerBridge, pingPlayerBridge } from './player-bridge';
 import { logTiming, timeAsync } from '@poker-src/timing-log';
 import { withProveSeat } from './prove-event-log';
+import { logHandProgress } from '@poker-src/hand-progress';
 import { warmShowdownZkeyPages } from '../zk/runtime';
 import { agentDebugLog } from '../debug-agent-log';
 import {
@@ -30,7 +31,23 @@ import {
   loadZkHandKey,
   persistZkHandKey,
 } from './zk-hand-key-store';
-import { getSharedMetaStore } from '@poker-src/chain/shared-meta-store';
+import { getSharedMetaStore, readSharedMeta, writeSharedMeta } from '@poker-src/chain/shared-meta-store';
+import { handPlayerCount, NEXT_HAND_DECK_KEY, type StagedDeckRecord } from './next-hand';
+import {
+  currentStageFlight,
+  hasStagedShare,
+  hasStagedShuffle,
+  mixKeys,
+  mixLimbs,
+  noteStageFlight,
+  rememberRegisterProof,
+  rememberStagedShare,
+  rememberStagedShuffle,
+  reusableRegisterProof,
+  stagedShuffleDeck,
+  takeStagedShare,
+  takeStagedShuffle,
+} from './next-hand-stage';
 
 export interface ZkHandClient {
   getGame(gameId: string): Promise<GameSnapshot>;
@@ -72,6 +89,15 @@ export interface ZkHandFlowState {
   handNumber: number;
   registeredPublicKey: PublicKey | null;
   currentDeck: Ciphertext[] | null;
+  /**
+   * Deal this seat just wrote into deck_state by the shuffle that opened Share.
+   * A Share snapshot fetched in that same moment can still show the shoe this
+   * seat shuffled. Proving that older shoe is what the verifier rejects.
+   * Cleared on the next shuffle and whenever the account shoe has moved on.
+   */
+  finalShuffleDeck?: Ciphertext[] | null;
+  /** First 25 cards of the shoe this seat shuffled. Identifies a stale snapshot. */
+  preShareDeck?: Ciphertext[] | null;
   shareSubmitted: boolean;
   showdownSubmitted: boolean;
   inFlight: boolean;
@@ -79,6 +105,26 @@ export interface ZkHandFlowState {
   shareRetryAfter?: number;
   /** Monotonic ms — non-preferred players may submit after this instant. */
   showdownPreferenceUntil?: number;
+  /** One share proof for this statement. Retries resubmit it and do not prove again. */
+  shareProof?: CachedShareProof;
+  /** Statement whose share proof was already rebuilt after a verifier rejection. */
+  shareProofRejectedKey?: string;
+  /** One showdown proof for this statement. Retries resubmit it and do not prove again. */
+  showdownProof?: CachedShowdownProof;
+}
+
+interface CachedShareProof {
+  key: string;
+  proof: object;
+  publicSignals: string[];
+  ciphertexts: Ciphertext[][];
+}
+
+interface CachedShowdownProof {
+  key: string;
+  proof: object;
+  publicSignals: string[];
+  winnerMasks: bigint[];
 }
 
 /** How long non-winners wait before submitting showdown as fallback. */
@@ -154,6 +200,10 @@ export async function ensurePlayerKeyForHand(
   if (!stored && expectedPublicKey) {
     stored = findZkHandKeyForPublicKey(handNumber, expectedPublicKey);
   }
+  if (!stored && seat !== null) {
+    const { loadSeatElgamalKey } = await import('./seat-elgamal-key');
+    stored = await loadSeatElgamalKey(seat, expectedPublicKey ?? null);
+  }
   if (stored && expectedPublicKey && !publicKeysEqual(stored.publicKey, expectedPublicKey)) {
     stored = null;
   }
@@ -217,6 +267,8 @@ export async function createFreshZkHandFlow(
       handNumber,
       registeredPublicKey: key,
       currentDeck: null,
+      finalShuffleDeck: null,
+      preShareDeck: null,
       shareSubmitted: false,
       showdownSubmitted: false,
       inFlight: false,
@@ -252,6 +304,8 @@ export async function createNativeHandFlow(
       handNumber,
       registeredPublicKey: key,
       currentDeck: null,
+      finalShuffleDeck: null,
+      preShareDeck: null,
       shareSubmitted: false,
       showdownSubmitted: false,
       inFlight: false,
@@ -297,7 +351,11 @@ export async function syncRegisteredKeyFromSnapshot(
     state.registeredPublicKey = expected;
     return true;
   }
-  const restored = findZkHandKeyForPublicKey(state.handNumber, expected);
+  let restored = findZkHandKeyForPublicKey(state.handNumber, expected);
+  if (!restored) {
+    const { loadSeatElgamalKey } = await import('./seat-elgamal-key');
+    restored = await loadSeatElgamalKey(localSeat, expected);
+  }
   if (!restored) {
     return false;
   }
@@ -436,6 +494,10 @@ export async function syncGameFromSnapshot(state: ZkHandFlowState, snapshot: Gam
     }
   }
 
+  if (snapshot.phase !== 'Shuffle' && snapshot.phase !== 'Share') {
+    state.finalShuffleDeck = null;
+    state.preShareDeck = null;
+  }
   state.currentDeck = deckFromSnapshot(snapshot);
 }
 
@@ -460,7 +522,7 @@ export function resolveShowdownSubmitterSeat(
   provisionalResult?: HandResultSnapshot | null,
 ): number | null {
   const sd = snapshot.zkShowdown;
-  if (!sd || sd.submittedCount >= sd.requiredCount) {
+  if (sd && sd.submittedCount >= sd.requiredCount) {
     return null;
   }
   const handResult = resolveShowdownHandResult(snapshot, provisionalResult);
@@ -470,7 +532,7 @@ export function resolveShowdownSubmitterSeat(
   return preferredShowdownSubmitterSeat(
     handResult.potResults,
     handResult.actionOrder,
-    new Set(sd.submittedSeats),
+    new Set(sd?.submittedSeats ?? []),
   );
 }
 
@@ -546,15 +608,19 @@ export function canAttemptShowdownSubmission(
   localSeat: number | null,
   state?: ZkHandFlowState,
 ): boolean {
-  if (localSeat === null || snapshot.phase !== 'Showdown' || !snapshot.zkShowdown?.requested) {
-    return false;
-  }
-  const seat = snapshot.seats.find((entry) => entry.seat === localSeat);
-  if (!seat || seat.playerIndex === undefined) {
+  if (localSeat === null || snapshot.phase !== 'Showdown') {
     return false;
   }
   const sd = snapshot.zkShowdown;
-  if (sd.submittedCount >= sd.requiredCount || sd.submittedSeats.includes(localSeat)) {
+  if (sd && sd.requested === false) {
+    return false;
+  }
+  const playerIndex = snapshot.seats.find((entry) => entry.seat === localSeat)?.playerIndex
+    ?? snapshot.playerIndexBySeat?.[localSeat];
+  if (playerIndex === undefined) {
+    return false;
+  }
+  if (sd && (sd.submittedCount >= sd.requiredCount || sd.submittedSeats.includes(localSeat))) {
     return false;
   }
   if (state?.showdownSubmitted === true) {
@@ -586,9 +652,11 @@ export function isMyShowdownTurn(
   if (preferred !== null) {
     return false;
   }
-  // Winner unknown: only the designated seat proves. Dual native showdown
-  // zkey load + Groth16 freezes both WKWebViews. Do not let the other seat
-  // start after the preference window — that is what wedged River→Showdown.
+  // Winner not ranked yet. Wait out the preference window so the winning seat
+  // can start the proof first. After that, only the designated seat proves.
+  if (!showdownPreferenceExpired(state)) {
+    return false;
+  }
   const designated = designatedShowdownSeat(snapshot);
   if (designated === localSeat) {
     return true;
@@ -747,7 +815,44 @@ function shareDeckFromSnapshot(snapshot: GameSnapshot): Ciphertext[] {
   if (!deck) {
     throw new Error('Missing ZK shareDeck for share phase');
   }
-  return deck.slice(0, TOTAL_CARDS).map((card) => ciphertextFromJson(card));
+  return shareDealDeck(deck.map((card) => ciphertextFromJson(card)));
+}
+
+/** Share proofs cover the 25-card deal. Shuffle staging keeps the full 52-card shoe. */
+export function shareDealDeck(deck: readonly Ciphertext[]): Ciphertext[] {
+  return deck.slice(0, TOTAL_CARDS).map((card) => card.map((limb) => limb));
+}
+
+/** Stable id for a prove statement. A tx retry with the same id reuses the proof. */
+function mixCiphertexts(cards: Ciphertext[]): string {
+  let mix = 2166136261n;
+  const mask = (1n << 64n) - 1n;
+  for (const card of cards) {
+    for (const limb of card) {
+      mix = ((mix ^ limb) * 16777619n) & mask;
+    }
+  }
+  return `${cards.length}:${mix}`;
+}
+
+function mixPublicKeys(keys: PublicKey[]): string {
+  let mix = 2166136261n;
+  const mask = (1n << 64n) - 1n;
+  for (const key of keys) {
+    mix = ((mix ^ key[0] ^ key[1]) * 16777619n) & mask;
+  }
+  return mix.toString();
+}
+
+function shareProofKey(
+  gameId: string,
+  playerIndex: number,
+  deck: Ciphertext[],
+  nActualPlayers: number,
+  ownKey: PublicKey,
+  shareKeys: PublicKey[],
+): string {
+  return `${gameId}:${playerIndex}:${nActualPlayers}:${mixCiphertexts(deck)}:${mixPublicKeys([ownKey, ...shareKeys])}`;
 }
 
 function publicKeysEqual(a: PublicKey, b: PublicKey): boolean {
@@ -788,6 +893,13 @@ async function assertElGamalKeyMatchesSnapshot(
   state.registeredPublicKey = registered;
 }
 
+let nextHandStageEnabled: () => boolean = () => false;
+
+/** Poker.svelte turns this on when the player opts into the next hand. */
+export function setNextHandStageEnabled(fn: () => boolean): void {
+  nextHandStageEnabled = fn;
+}
+
 export async function submitRegistration(
   client: ZkHandClient,
   gameId: string,
@@ -815,10 +927,37 @@ export async function submitRegistration(
       await syncGameFromSnapshot(state, fresh);
       return fresh;
     }
+    const playerCount = handPlayerCount(fresh);
+    const reusable = reusableRegisterProof(playerCount, state.player.publicKey);
+    if (reusable) {
+      try {
+        logHandProgress(
+          `Register skipped (same key, ${playerCount} players, seat ${localSeat})`,
+          'info',
+        );
+        const snapshot = await client.registerHandKey(
+          gameId,
+          localSeat,
+          reusable.proof,
+          reusable.publicSignals,
+        );
+        state.registeredPublicKey = [...state.player.publicKey] as PublicKey;
+        persistZkHandKey(state.handNumber, {
+          privateKey: state.player.elGamalPrivateKey,
+          publicKey: state.player.publicKey,
+        }, localSeat);
+        await syncGameFromSnapshot(state, snapshot);
+        return snapshot;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logHandProgress(`Register reuse rejected (seat ${localSeat}): ${message}`, 'info');
+      }
+    }
     const proveT0 = Date.now();
     const { proof, publicSignals } = await withProveSeat(localSeat, () =>
       state.player.registerProve(),
     );
+    rememberRegisterProof(playerCount, state.player.publicKey, proof, publicSignals);
     agentDebugLog('H1', 'zk-hand-flow.ts:submitRegistration', 'registerProve done', {
       localSeat,
       ms: Date.now() - proveT0,
@@ -909,12 +1048,35 @@ export async function submitShuffle(
       deck = await loadNativeIdentityDeck();
       state.currentDeck = deck;
     }
+    // A zeroed deck_state is an allocation, not the identity shoe. Proving
+    // that blank deck publishes zeros while the circuit hashes a real shuffle.
+    if (
+      playerIndex === 0
+      && deck.length > 0
+      && deck.every((card) => card.every((limb) => limb === 0n))
+    ) {
+      deck = await loadNativeIdentityDeck();
+      state.currentDeck = deck;
+    }
     const publicKeys = registeredKeysForShuffle(fresh);
-    state.player.preloadShuffle(deck, publicKeys);
+    // This shuffle publishes a new shoe. Drop a deck remembered from an earlier hand.
+    state.finalShuffleDeck = null;
+    state.preShareDeck = copyDeck(deck);
+    const stagedShuffle = await takeStagedShuffle(playerIndex, deck, publicKeys);
     const shuffledBefore = fresh.zk?.shuffledCount ?? 0;
-    const proved = await withProveSeat(localSeat, () =>
-      state.player.shuffleProve(deck, publicKeys),
-    );
+    const proved = stagedShuffle
+      ? {
+        proof: stagedShuffle.proof,
+        publicSignals: stagedShuffle.publicSignals,
+        deck: stagedShuffle.shuffledDeck.map((card) => card.map((limb) => BigInt(limb))),
+      }
+      : await (async () => {
+        state.player.preloadShuffle(deck, publicKeys);
+        return withProveSeat(localSeat, () => state.player.shuffleProve(deck, publicKeys));
+      })();
+    if (stagedShuffle) {
+      logHandProgress(`Using staged shuffle (seat ${localSeat})`, 'info');
+    }
     const { proof, publicSignals } = proved;
     const shuffledDeck = proved.deck.map((card) => card.map((limb) => limb.toString()));
 
@@ -929,6 +1091,9 @@ export async function submitShuffle(
       };
     }
     if (fresh.phase !== 'Shuffle') {
+      if ((fresh.zk?.shuffledCount ?? 0) > shuffledBefore) {
+        rememberFinalShuffleDeck(state, fresh, proved.deck);
+      }
       await syncGameFromSnapshot(state, fresh);
       return fresh;
     }
@@ -938,23 +1103,81 @@ export async function submitShuffle(
       return fresh;
     }
     if ((fresh.zk?.shuffledCount ?? 0) > shuffledBefore) {
+      rememberFinalShuffleDeck(state, fresh, proved.deck);
       await syncGameFromSnapshot(state, fresh);
       return fresh;
     }
 
     try {
       const next = await client.submitShuffle(gameId, localSeat, proof, publicSignals, shuffledDeck);
+      rememberFinalShuffleDeck(state, next, proved.deck);
       await syncGameFromSnapshot(state, next);
       return next;
     } catch (err) {
       const after = await client.getGame(gameId);
       if ((after.zk?.shuffledCount ?? 0) > shuffledBefore) {
+        rememberFinalShuffleDeck(state, after, proved.deck);
         await syncGameFromSnapshot(state, after);
         return after;
       }
       throw err;
     }
   });
+}
+
+function copyDeck(deck: Ciphertext[]): Ciphertext[] {
+  return deck.slice(0, TOTAL_CARDS).map((card) => card.map((limb) => limb));
+}
+
+function decksEqual(left: Ciphertext[], right: Ciphertext[]): boolean {
+  if (left.length === 0 || left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i++) {
+    const a = left[i];
+    const b = right[i];
+    if (!a || !b || a.length !== b.length) return false;
+    for (let j = 0; j < a.length; j++) {
+      if (a[j] !== b[j]) return false;
+    }
+  }
+  return true;
+}
+
+/** Keep the shoe this seat just published. Only the shuffle that opens Share is final. */
+function rememberFinalShuffleDeck(
+  state: ZkHandFlowState,
+  snapshot: GameSnapshot,
+  deck: Ciphertext[],
+): void {
+  if (snapshot.phase !== 'Share' || deck.length === 0) {
+    return;
+  }
+  state.finalShuffleDeck = copyDeck(deck);
+}
+
+function chainShareDeck(snapshot: GameSnapshot): Ciphertext[] | null {
+  try {
+    const deck = shareDeckFromSnapshot(snapshot);
+    return deck.length > 0 ? deck : null;
+  } catch {
+    return null;
+  }
+}
+
+function shareDeckForProve(state: ZkHandFlowState, snapshot: GameSnapshot): Ciphertext[] {
+  const chain = chainShareDeck(snapshot);
+  const remembered = state.finalShuffleDeck && state.finalShuffleDeck.length > 0
+    ? state.finalShuffleDeck.slice(0, TOTAL_CARDS)
+    : null;
+  if (remembered && chain) {
+    if (decksEqual(remembered, chain)) return chain;
+    // The account read can still be the shoe this seat shuffled. That read is
+    // stale; the deck this shuffle published is the one the verifier will use.
+    if (state.preShareDeck && decksEqual(chain, state.preShareDeck)) return remembered;
+    return chain;
+  }
+  if (chain) return chain;
+  if (remembered) return remembered;
+  return shareDeckFromSnapshot(snapshot);
 }
 
 function markShareSubmittedFromServer(
@@ -996,14 +1219,28 @@ export async function submitSharePartials(
     await syncGameFromSnapshot(state, fresh);
     await assertElGamalKeyMatchesSnapshot(state, state.player, fresh, localSeat);
 
-    const shareDeck = shareDeckFromSnapshot(fresh);
-    const shareKeys = shareOthersFromSnapshot(fresh, playerIndex);
-    const nActualPlayers = fresh.zk?.elGamalPublicKeys?.filter((k) => k !== null).length
-      ?? shareKeys.length + 1;
-    state.player.preloadShare(shareDeck, shareKeys, nActualPlayers);
     fresh = await client.getGame(gameId);
+    if (fresh.playerIndexBySeat?.[localSeat] === undefined) {
+      throw new Error(`No player index for seat ${localSeat}`);
+    }
+    const shareDeck = shareDeckForProve(state, fresh);
+    const publishedShoe = state.finalShuffleDeck
+      && state.finalShuffleDeck.length > 0
+      && decksEqual(shareDeck, state.finalShuffleDeck);
+    logHandProgress(
+      publishedShoe
+        ? `Share deck is the shoe this seat just shuffled (seat ${localSeat})`
+        : `Share deck is the on-chain shoe (seat ${localSeat})`,
+      'info',
+    );
+    const shareKeys = shareOthersFromSnapshot(fresh, playerIndex);
+    const nActualPlayers = fresh.zk?.registeredCount && fresh.zk.registeredCount > 1
+      ? fresh.zk.registeredCount
+      : fresh.zk?.elGamalPublicKeys?.filter((k) => k !== null).length
+        ?? shareKeys.length + 1;
     if (fresh.zk?.hasSharedPartial?.[playerIndex] === true) {
       state.shareSubmitted = true;
+      state.shareProof = undefined;
       await syncGameFromSnapshot(state, fresh);
       return fresh;
     }
@@ -1012,9 +1249,62 @@ export async function submitSharePartials(
       await syncGameFromSnapshot(state, fresh);
       return fresh;
     }
-    const { proof, publicSignals, ciphertexts } = await withProveSeat(localSeat, () =>
-      state.player.shareProve(shareDeck, shareKeys, nActualPlayers),
+    const proofKey = shareProofKey(
+      gameId,
+      playerIndex,
+      shareDeck,
+      nActualPlayers,
+      state.player.publicKey,
+      shareKeys,
     );
+    const stagedShare = await takeStagedShare(
+      playerIndex,
+      shareDeck,
+      [state.player.publicKey, ...shareKeys],
+      nActualPlayers,
+    );
+    const cached = stagedShare
+      ? {
+        key: proofKey,
+        proof: stagedShare.proof,
+        publicSignals: stagedShare.publicSignals,
+        ciphertexts: stagedShare.ciphertexts,
+      }
+      : state.shareProof?.key === proofKey
+        ? state.shareProof
+        : undefined;
+    if (stagedShare) {
+      logHandProgress(`Using staged share (seat ${localSeat})`, 'info');
+    }
+    let proof: object;
+    let publicSignals: string[];
+    let ciphertexts: Ciphertext[][];
+    if (cached) {
+      logHandProgress(`Reusing share proof (seat ${localSeat})`, 'info');
+      proof = cached.proof;
+      publicSignals = cached.publicSignals;
+      ciphertexts = cached.ciphertexts;
+    } else {
+      state.player.preloadShare(shareDeck, shareKeys, nActualPlayers);
+      logHandProgress(`Share witness generation starting (seat ${localSeat})`, 'zk');
+      const proveStartedAt = Date.now();
+      // Paint the status line before the native prove call.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const proved = await withProveSeat(localSeat, () =>
+        state.player.shareProve(shareDeck, shareKeys, nActualPlayers),
+      );
+      const proveSeconds = ((Date.now() - proveStartedAt) / 1000).toFixed(1);
+      logHandProgress(`Share proof finished (seat ${localSeat}, ${proveSeconds}s)`, 'zk');
+      state.shareProof = {
+        key: proofKey,
+        proof: proved.proof,
+        publicSignals: proved.publicSignals,
+        ciphertexts: proved.ciphertexts,
+      };
+      proof = proved.proof;
+      publicSignals = proved.publicSignals;
+      ciphertexts = proved.ciphertexts;
+    }
     const json = ciphertexts.map((row) =>
       row.map((cell) => cell.map((value) => value.toString())),
     );
@@ -1037,8 +1327,11 @@ export async function submitSharePartials(
       console.info(
         `[zk-hand] submitShare start seat=${localSeat} playerIndex=${playerIndex} phase=${fresh.phase}`,
       );
+      logHandProgress(`Share tx: sending transactions (seat ${localSeat})`, 'info');
       const next = await client.submitShare(gameId, localSeat, proof, publicSignals, json);
       state.shareSubmitted = true;
+      state.shareProof = undefined;
+      state.shareProofRejectedKey = undefined;
       state.shareRetryAfter = undefined;
       console.info(`[zk-hand] submitShare ok seat=${localSeat}`);
       await syncGameFromSnapshot(state, next);
@@ -1080,6 +1373,16 @@ export async function submitSharePartials(
         return fresh;
       }
       console.error(`[zk-hand] submitShare failed seat=${localSeat}:`, message);
+      // Groth16 `invalid program argument` rejects this proof. Replaying the
+      // cached bytes cannot succeed, so every rejection proves again.
+      if (message.includes('invalid program argument')) {
+        state.shareProofRejectedKey = proofKey;
+        state.shareProof = undefined;
+        logHandProgress(
+          `Share proof rejected by the verifier. Proving again (seat ${localSeat})`,
+          'info',
+        );
+      }
       throw err;
     }
   });
@@ -1098,6 +1401,18 @@ function materialsToInputs(materials: ZkShowdownMaterials) {
     ciphertextCards: materials.finalDeck.map((card) => ciphertextFromJson(card)),
     ciphertextPartials: ciphertextMatrixFromJson(materials.ciphertextPartials),
   };
+}
+
+function showdownProofKey(
+  gameId: string,
+  inputs: ReturnType<typeof materialsToInputs>,
+  coefficients: readonly string[],
+): string {
+  let mix = mixCiphertexts(inputs.ciphertextCards);
+  for (const row of inputs.ciphertextPartials) {
+    mix += `:${mixCiphertexts(row)}`;
+  }
+  return `${gameId}:${inputs.playerIndex}:${coefficients.join('.')}:${mix}`;
 }
 
 async function resolvePreferredShowdownSubmitter(
@@ -1152,6 +1467,9 @@ export async function shouldSubmitShowdownNow(
   if (preferred !== null) {
     return false;
   }
+  if (!showdownPreferenceExpired(state)) {
+    return false;
+  }
   const designated = designatedShowdownSeat(snapshot);
   if (designated === localSeat) {
     return true;
@@ -1193,7 +1511,8 @@ export async function submitShowdownProof(
   snapshotHint?: GameSnapshot,
 ): Promise<GameSnapshot> {
   return timeAsync(`showdown seat=${localSeat}`, async () => {
-    const fresh = await client.getGame(gameId).catch(() => snapshotHint ?? null) ?? snapshotHint;
+    const pending = client.getGame(gameId);
+    const fresh = await Promise.resolve(pending).catch(() => snapshotHint ?? null) ?? snapshotHint;
     if (!fresh) {
       throw new Error('showdown snapshot unavailable');
     }
@@ -1223,43 +1542,75 @@ export async function submitShowdownProof(
         : new Error('showdown seal not ready — host must seal coefficients first');
     });
     await state.player.ensureNativeCircuitsForPhase?.('Showdown');
-    if (materials.materialComplete === false) {
-      materials = await timeAsync(`showdown-material-pda seat=${localSeat}`, async () => {
-        const deadline = Date.now() + 360_000;
-        let last = materials;
-        while (Date.now() < deadline) {
-          last = await client.getShowdownMaterials(gameId, localSeat);
-          if (last.materialComplete !== false) {
-            return last;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 1_500));
-        }
-        throw new Error('ShowdownMaterialsNotVerified');
-      });
-    }
     const inputs = materialsToInputs(materials);
     if (materials.sealedCoefficients?.length !== 2) {
       throw new Error('showdown coefficients must come from the host');
     }
     state.player.setSealedCoefficients(materials.sealedCoefficients.map((value) => BigInt(value)));
 
-    state.player.preloadShowdown(
-      inputs.playerIndex,
-      inputs.publicKeys,
-      inputs.potMasks,
-      inputs.ciphertextCards,
-      inputs.ciphertextPartials,
-    );
-    const { proof, publicSignals, winnerMasks } = await withProveSeat(localSeat, () =>
-      state.player.showdownProve(
-        inputs.playerIndex,
-        inputs.publicKeys,
-        inputs.potMasks,
-        inputs.ciphertextCards,
-        inputs.ciphertextPartials,
-      ),
-    );
+    const proofKey = showdownProofKey(gameId, inputs, materials.sealedCoefficients);
+    const cached = state.showdownProof?.key === proofKey ? state.showdownProof : undefined;
+    // Card reveals are still publishing. The first prove overlaps that wait;
+    // a failed submit reuses this proof instead of running Groth16 again.
+    const proveStartedAt = Date.now();
+    const provePromise = cached
+      ? Promise.resolve(cached)
+      : (async () => {
+        state.player.preloadShowdown(
+          inputs.playerIndex,
+          inputs.publicKeys,
+          inputs.potMasks,
+          inputs.ciphertextCards,
+          inputs.ciphertextPartials,
+        );
+        logHandProgress(`Showdown witness generation starting (seat ${localSeat})`, 'zk');
+        const proved = await withProveSeat(localSeat, () =>
+          state.player.showdownProve(
+            inputs.playerIndex,
+            inputs.publicKeys,
+            inputs.potMasks,
+            inputs.ciphertextCards,
+            inputs.ciphertextPartials,
+          ),
+        );
+        const proveSeconds = ((Date.now() - proveStartedAt) / 1000).toFixed(1);
+        logHandProgress(`Showdown proof finished (seat ${localSeat}, ${proveSeconds}s)`, 'zk');
+        const stored: CachedShowdownProof = {
+          key: proofKey,
+          proof: proved.proof,
+          publicSignals: proved.publicSignals,
+          winnerMasks: proved.winnerMasks,
+        };
+        state.showdownProof = stored;
+        return stored;
+      })();
+    if (cached) {
+      logHandProgress(`Reusing showdown proof (seat ${localSeat})`, 'info');
+    }
+    try {
+      if (materials.materialComplete === false) {
+        materials = await timeAsync(`showdown-material-pda seat=${localSeat}`, async () => {
+          const deadline = Date.now() + 360_000;
+          let last = materials;
+          while (Date.now() < deadline) {
+            last = await client.getShowdownMaterials(gameId, localSeat);
+            if (last.materialComplete !== false) {
+              return last;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 400));
+          }
+          throw new Error('ShowdownMaterialsNotVerified');
+        });
+      }
+    } catch (err) {
+      await provePromise.catch(() => undefined);
+      throw err;
+    }
+    const { proof, publicSignals, winnerMasks } = await provePromise;
     console.log(`[zk-hand] showdown prove seat=${localSeat} → submit`);
+    if (nextHandStageEnabled()) {
+      void stageNextHandCriticalPath(state, fresh, localSeat);
+    }
     const next = await client.submitShowdown(
       gameId,
       localSeat,
@@ -1268,8 +1619,162 @@ export async function submitShowdownProof(
       winnerMasks,
     );
     state.showdownSubmitted = true;
+    state.showdownProof = undefined;
     return next;
   });
+}
+
+async function publishStagedDeck(
+  shufflerIndex: number,
+  playerCount: number,
+  keysMix: string,
+  deck: string[][],
+): Promise<void> {
+  const record: StagedDeckRecord = { shufflerIndex, playerCount, keysMix, deck };
+  writeSharedMeta(NEXT_HAND_DECK_KEY, JSON.stringify(record));
+  await getSharedMetaStore().flushWrites?.();
+}
+
+async function readStagedDeck(): Promise<StagedDeckRecord | null> {
+  try {
+    const { refreshWebViewMetaCache } = await import('../backend/solana-meta-bridge');
+    await refreshWebViewMetaCache([NEXT_HAND_DECK_KEY]);
+  } catch {
+    // Browser tests have no meta bridge.
+  }
+  const raw = readSharedMeta(NEXT_HAND_DECK_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as StagedDeckRecord;
+    if (!Array.isArray(parsed.deck) || !Number.isInteger(parsed.shufflerIndex)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function runNextHandStage(
+  state: ZkHandFlowState,
+  snapshot: GameSnapshot,
+  localSeat: number,
+): Promise<void> {
+  const playerIndex = snapshot.playerIndexBySeat?.[localSeat];
+  if (playerIndex === undefined || playerIndex < 0) return;
+  const playerCount = handPlayerCount(snapshot);
+  if (playerCount < 2) return;
+  let publicKeys: PublicKey[];
+  try {
+    publicKeys = registeredKeysFromSnapshot(snapshot);
+  } catch {
+    return;
+  }
+  if (publicKeys.length !== playerCount) return;
+  const keysMix = mixKeys(publicKeys);
+
+  if (playerIndex === 0 && !hasStagedShuffle(0)) {
+    logHandProgress(`Staging next-hand shuffle (seat ${localSeat})`, 'info');
+    const deck = await loadNativeIdentityDeck();
+    state.player.preloadShuffle(deck, publicKeys);
+    const proved = await withProveSeat(localSeat, () => state.player.shuffleProve(deck, publicKeys));
+    const shuffledDeck = proved.deck.map((card) => card.map((limb) => limb.toString()));
+    rememberStagedShuffle({
+      playerIndex: 0,
+      deckMix: mixLimbs(deck),
+      keysMix,
+      proof: proved.proof,
+      publicSignals: proved.publicSignals,
+      shuffledDeck,
+    });
+    await publishStagedDeck(0, playerCount, keysMix, shuffledDeck);
+    logHandProgress(`Next-hand shuffle staged (seat ${localSeat})`, 'info');
+  }
+
+  if (playerIndex > 0 && !hasStagedShuffle(playerIndex)) {
+    const prior = await readStagedDeck();
+    if (
+      prior
+      && prior.shufflerIndex === playerIndex - 1
+      && prior.playerCount === playerCount
+      && prior.keysMix === keysMix
+    ) {
+      logHandProgress(
+        `Staging next-hand shuffle ${playerIndex + 1}/${playerCount} (seat ${localSeat})`,
+        'info',
+      );
+      const deck = prior.deck.map((card) => ciphertextFromJson(card));
+      state.player.preloadShuffle(deck, publicKeys);
+      const proved = await withProveSeat(localSeat, () => state.player.shuffleProve(deck, publicKeys));
+      const shuffledDeck = proved.deck.map((card) => card.map((limb) => limb.toString()));
+      rememberStagedShuffle({
+        playerIndex,
+        deckMix: mixLimbs(deck),
+        keysMix,
+        proof: proved.proof,
+        publicSignals: proved.publicSignals,
+        shuffledDeck,
+      });
+      await publishStagedDeck(playerIndex, playerCount, keysMix, shuffledDeck);
+      logHandProgress(`Next-hand shuffle staged (seat ${localSeat})`, 'info');
+    }
+  }
+
+  if (hasStagedShare(playerIndex)) return;
+  let shareDeckJson: string[][] | null = null;
+  if (playerIndex === playerCount - 1) {
+    shareDeckJson = stagedShuffleDeck(playerIndex);
+  } else {
+    const published = await readStagedDeck();
+    if (
+      published
+      && published.shufflerIndex === playerCount - 1
+      && published.playerCount === playerCount
+      && published.keysMix === keysMix
+    ) {
+      shareDeckJson = published.deck;
+    }
+  }
+  if (!shareDeckJson) return;
+  const shareDeck = shareDealDeck(shareDeckJson.map((card) => ciphertextFromJson(card)));
+  const shareKeys = shareOthersForPlayer(publicKeys, playerIndex);
+  logHandProgress(`Staging next-hand share (seat ${localSeat})`, 'info');
+  state.player.preloadShare(shareDeck, shareKeys, playerCount);
+  const proved = await withProveSeat(localSeat, () =>
+    state.player.shareProve(shareDeck, shareKeys, playerCount),
+  );
+  rememberStagedShare({
+    playerIndex,
+    deckMix: mixLimbs(shareDeck),
+    keysMix: mixKeys([state.player.publicKey, ...shareKeys]),
+    playerCount,
+    proof: proved.proof,
+    publicSignals: proved.publicSignals,
+    ciphertexts: proved.ciphertexts,
+  });
+  logHandProgress(`Next-hand share staged (seat ${localSeat})`, 'info');
+}
+
+/**
+ * Prepare the next hand's shuffle and share.
+ * Showdown stages only when the player opted into the next hand.
+ * An uncontested fold passes `force` so the same proofs run once the hand is over.
+ */
+export async function stageNextHandCriticalPath(
+  state: ZkHandFlowState,
+  snapshot: GameSnapshot,
+  localSeat: number,
+  force = false,
+): Promise<void> {
+  if (!force && !nextHandStageEnabled()) return;
+  const existing = currentStageFlight();
+  if (existing) return existing;
+  const flight = runNextHandStage(state, snapshot, localSeat)
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      logHandProgress(`Next-hand stage failed (seat ${localSeat}): ${message}`, 'info');
+    })
+    .finally(() => noteStageFlight(null));
+  noteStageFlight(flight);
+  return flight;
 }
 
 export async function maybeAdvanceZkHand(

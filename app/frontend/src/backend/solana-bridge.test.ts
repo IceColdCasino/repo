@@ -88,4 +88,27 @@ describe('solana-bridge', () => {
       tableId: '42',
     });
   });
+
+  it('replaces a stored table from a different room with the launched table', async () => {
+    const map = new Map<string, string>();
+    map.set('shared-table', JSON.stringify({
+      roomSeed: 'zk-poker-share-localnet-v2-g3',
+      tableId: '1',
+    }));
+    setSharedMetaStore({
+      read: (key) => map.get(String(key)) ?? null,
+      write: (key, value) => {
+        map.set(String(key), value);
+      },
+    });
+    (window as { __ZK_LAUNCH_CONFIG?: { roomSeed: string; tableId: string } }).__ZK_LAUNCH_CONFIG = {
+      roomSeed: 'zk-poker-share-localnet-v2',
+      tableId: '0',
+    };
+    await invokeSolanaOp({ op: 'snapshot' });
+    expect(JSON.parse(readSharedMeta('shared-table') ?? '{}')).toMatchObject({
+      roomSeed: 'zk-poker-share-localnet-v2',
+      tableId: '0',
+    });
+  });
 });

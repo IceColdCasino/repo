@@ -82,7 +82,7 @@ pub const CONSUME_PROOF_RECEIPT_V2_DISCRIMINATOR: [u8; 8] =
 pub const CONSUME_REGISTER_RECEIPT_V2_DISCRIMINATOR: [u8; 8] =
     [222, 136, 123, 237, 225, 198, 144, 64];
 pub const CONSUME_PROOF_RECEIPT_ARGS_LEN: usize = 8 + 1 + 1 + 2 + 32;
-pub const CONSUME_REGISTER_RECEIPT_ARGS_LEN: usize = 8 + 1 + 2 + 32;
+pub const CONSUME_REGISTER_RECEIPT_ARGS_LEN: usize = 8 + 1 + 2 + 32 + 64 + 128;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ProofReceiptPayload {
@@ -134,13 +134,26 @@ impl ProofReceiptPayload {
         out
     }
 
-    pub fn consume_register_ix_data(&self) -> [u8; 8 + CONSUME_REGISTER_RECEIPT_ARGS_LEN] {
+    pub fn consume_register_ix_data(
+        &self,
+        public_key: &[[u8; 32]; 2],
+        padding: &[[u8; 32]; 4],
+    ) -> [u8; 8 + CONSUME_REGISTER_RECEIPT_ARGS_LEN] {
         let mut out = [0u8; 8 + CONSUME_REGISTER_RECEIPT_ARGS_LEN];
         out[0..8].copy_from_slice(&CONSUME_REGISTER_RECEIPT_V2_DISCRIMINATOR);
         out[8..16].copy_from_slice(&self.generation.to_le_bytes());
         out[16] = self.player_index;
         out[17..19].copy_from_slice(&self.circuit_version.to_le_bytes());
         out[19..51].copy_from_slice(&self.output_hash);
+        let mut at = 51;
+        for limb in public_key {
+            out[at..at + 32].copy_from_slice(limb);
+            at += 32;
+        }
+        for limb in padding {
+            out[at..at + 32].copy_from_slice(limb);
+            at += 32;
+        }
         out
     }
 }

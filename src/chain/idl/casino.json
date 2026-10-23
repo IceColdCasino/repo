@@ -306,7 +306,7 @@
     {
       "name": "apply_casino_player_net",
       "docs": [
-        "Testing / localnet only — caller-chosen net would mint/drain game escrow.",
+        "Testing / localnet only \u2014 caller-chosen net would mint/drain game escrow.",
         "Do not ship in release until nets are bound to a one-time outcome receipt."
       ],
       "discriminator": [
@@ -469,16 +469,16 @@
       ]
     },
     {
-      "name": "apply_casino_player_net_v2_callback",
+      "name": "apply_casino_player_net_callback",
       "discriminator": [
-        208,
-        235,
-        70,
-        253,
-        172,
-        200,
-        197,
-        1
+        204,
+        88,
+        248,
+        8,
+        222,
+        232,
+        146,
+        74
       ],
       "accounts": [
         {
@@ -517,7 +517,7 @@
                   "kind": "type",
                   "type": {
                     "defined": {
-                      "name": "ApplyCasinoPlayerNetV2Output"
+                      "name": "ApplyCasinoPlayerNetOutput"
                     }
                   }
                 }
@@ -882,7 +882,7 @@
         "Close a per-player `share_deck_staging` PDA after `finalize_share_phase`.",
         "",
         "Authority must be `game_state.staging_authority` (staging rent payer).",
-        "Rent is refunded only to that key — prevents outsider rent theft."
+        "Rent is refunded only to that key \u2014 prevents outsider rent theft."
       ],
       "discriminator": [
         70,
@@ -1095,7 +1095,8 @@
           }
         },
         {
-          "name": "table_state"
+          "name": "table_state",
+          "writable": true
         },
         {
           "name": "system_program",
@@ -1141,16 +1142,16 @@
       ]
     },
     {
-      "name": "compute_pots_v4_callback",
+      "name": "compute_pots_callback",
       "discriminator": [
-        236,
-        94,
-        101,
-        113,
-        181,
-        234,
-        96,
-        173
+        30,
+        52,
+        61,
+        111,
+        239,
+        90,
+        249,
+        199
       ],
       "accounts": [
         {
@@ -1189,7 +1190,7 @@
                   "kind": "type",
                   "type": {
                     "defined": {
-                      "name": "ComputePotsV4Output"
+                      "name": "ComputePotsOutput"
                     }
                   }
                 }
@@ -1276,7 +1277,7 @@
           "name": "authority",
           "docs": [
             "light-casino `cpi_authority` PDA. No other signer may call this.",
-            "Must be mutable and funded — pays rent for the poker `PlayerState` PDA."
+            "Must be mutable and funded \u2014 pays rent for the poker `PlayerState` PDA."
           ],
           "writable": true,
           "signer": true
@@ -1388,9 +1389,9 @@
         "Create a staging PDA for encrypted deck data.",
         "",
         "The PDA size depends on the number of players:",
-        "- 2 players:  25 cards × 4 values  = 100 values  = 3,200 bytes",
-        "- 5 players:  25 cards × 16 values = 400 values  = 12,800 bytes",
-        "- 10 players: 25 cards × 36 values = 900 values  = 28,800 bytes",
+        "- 2 players:  25 cards \u00d7 4 values  = 100 values  = 3,200 bytes",
+        "- 5 players:  25 cards \u00d7 16 values = 400 values  = 12,800 bytes",
+        "- 10 players: 25 cards \u00d7 36 values = 900 values  = 28,800 bytes",
         "",
         "Rent is fully refunded when the PDA is closed via `close_deck_staging`.",
         "Create a staging PDA for encrypted deck data (first chunk).",
@@ -1425,7 +1426,7 @@
         {
           "name": "deck_staging",
           "docs": [
-            "Not `Account<DeckStaging>` — that would stack-allocate 28,800 bytes on init."
+            "Not `Account<DeckStaging>` \u2014 that would stack-allocate 28,800 bytes on init."
           ],
           "writable": true
         },
@@ -2064,16 +2065,16 @@
       ]
     },
     {
-      "name": "distribute_and_settle_v3_callback",
+      "name": "distribute_and_settle_callback",
       "discriminator": [
-        191,
-        59,
-        247,
-        170,
-        86,
-        233,
-        70,
-        201
+        249,
+        83,
+        7,
+        226,
+        183,
+        164,
+        88,
+        246
       ],
       "accounts": [
         {
@@ -2120,7 +2121,7 @@
                   "kind": "type",
                   "type": {
                     "defined": {
-                      "name": "DistributeAndSettleV3Output"
+                      "name": "DistributeAndSettleOutput"
                     }
                   }
                 }
@@ -2157,6 +2158,10 @@
         },
         {
           "name": "table_state",
+          "writable": true
+        },
+        {
+          "name": "game_state",
           "writable": true
         }
       ],
@@ -2238,9 +2243,9 @@
       "name": "faucet_credit_personal",
       "docs": [
         "Localnet / test faucet: credit a player's personal room escrow (`balance_u64`).",
-        "Does not move SPL — use `deposit_spl` + `request_credit_room_balance` for vault-backed",
+        "Does not move SPL \u2014 use `deposit_spl` + `request_credit_room_balance` for vault-backed",
         "encrypted credits. Whitelisted player (or room admin via payer) may call.",
-        "Testing builds only — must not ship in release (inflates plaintext escrow)."
+        "Testing builds only \u2014 must not ship in release (inflates plaintext escrow)."
       ],
       "discriminator": [
         182,
@@ -2521,7 +2526,7 @@
       "docs": [
         "Hash a deck of 900 BN254 commitments using the cross-field polynomial hash.",
         "This produces the same result as the Circom circuit for ZK verification.",
-        "Returns [u8; 32] — the full 256-bit hash (max < 2^239, fits in both BN254 and Ed25519)."
+        "Returns [u8; 32] \u2014 the full 256-bit hash (max < 2^239, fits in both BN254 and Ed25519)."
       ],
       "discriminator": [
         40,
@@ -2565,7 +2570,7 @@
     {
       "name": "init_apply_casino_player_net_comp_def",
       "docs": [
-        "Testing / localnet only — arbitrary `player_net_abs` would mint/drain escrow",
+        "Testing / localnet only \u2014 arbitrary `player_net_abs` would mint/drain escrow",
         "in release. Production must bind nets to a consumed casino outcome receipt."
       ],
       "discriminator": [
@@ -3159,7 +3164,7 @@
       "name": "init_player_state",
       "docs": [
         "Create a `PlayerState` PDA without a Groth16 register receipt.",
-        "Testing only — production initializes via `consume_register_receipt`."
+        "Testing only \u2014 production initializes via `consume_register_receipt`."
       ],
       "discriminator": [
         85,
@@ -4104,10 +4109,10 @@
     {
       "name": "open_preflop",
       "docs": [
-        "Open preflop betting (`betting_phase` 0 → 1).",
+        "Open preflop betting (`betting_phase` 0 \u2192 1).",
         "",
         "Streets advance only via Enc bet-callback",
-        "[`advance_betting_street_on_chain`] — callers cannot select Flop/Turn/River/Showdown."
+        "[`advance_betting_street_on_chain`] \u2014 callers cannot select Flop/Turn/River/Showdown."
       ],
       "discriminator": [
         182,
@@ -4127,6 +4132,45 @@
         },
         {
           "name": "game_state",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "expire_bet_turn",
+      "docs": [
+        "Fold the player who missed the one-minute decision window."
+      ],
+      "discriminator": [
+        101,
+        143,
+        29,
+        14,
+        159,
+        25,
+        36,
+        197
+      ],
+      "accounts": [
+        {
+          "name": "crank",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "table_state"
+        },
+        {
+          "name": "encrypted_game_betting",
+          "writable": true
+        },
+        {
+          "name": "bet_action_log",
           "writable": true
         }
       ],
@@ -5664,16 +5708,16 @@
       ]
     },
     {
-      "name": "settle_casino_hand_v2_callback",
+      "name": "settle_casino_hand_callback",
       "discriminator": [
-        130,
-        11,
-        50,
-        207,
-        225,
+        105,
+        41,
+        67,
+        227,
+        102,
+        103,
         231,
-        6,
-        71
+        237
       ],
       "accounts": [
         {
@@ -5724,7 +5768,7 @@
                   "kind": "type",
                   "type": {
                     "defined": {
-                      "name": "SettleCasinoHandV2Output"
+                      "name": "SettleCasinoHandOutput"
                     }
                   }
                 }
@@ -6083,7 +6127,7 @@
       "name": "start_betting_round",
       "docs": [
         "Testing-only: legacy phase-arg entry (idempotent same-street / open preflop).",
-        "Release builds expose [`open_preflop`] only — no caller-selected street jumps."
+        "Release builds expose [`open_preflop`] only \u2014 no caller-selected street jumps."
       ],
       "discriminator": [
         13,
@@ -6446,7 +6490,7 @@
         {
           "name": "authority",
           "docs": [
-            "Deck staging rent payer — sole party allowed to latch verify state."
+            "Deck staging rent payer \u2014 sole party allowed to latch verify state."
           ],
           "signer": true
         },
@@ -7378,7 +7422,7 @@
       "docs": [
         "Write limb-aligned bytes into the game's `deck_staging` PDA.",
         "",
-        "Account seeds bind the target — there is no generic `target` account.",
+        "Account seeds bind the target \u2014 there is no generic `target` account.",
         "Authority: any seated player; freezes after legacy deck-hash verify",
         "(see [`require_staging_write_authorized`])."
       ],
@@ -8424,7 +8468,7 @@
       }
     },
     {
-      "name": "ApplyCasinoPlayerNetV2Output",
+      "name": "ApplyCasinoPlayerNetOutput",
       "docs": [
         "The output of the callback instruction. Provided as a struct with ordered fields",
         "as anchor does not support tuples and tuple structs yet."
@@ -8436,7 +8480,7 @@
             "name": "field_0",
             "type": {
               "defined": {
-                "name": "ApplyCasinoPlayerNetV2OutputStruct0"
+                "name": "ApplyCasinoPlayerNetOutputStruct0"
               }
             }
           }
@@ -8444,7 +8488,7 @@
       }
     },
     {
-      "name": "ApplyCasinoPlayerNetV2OutputStruct0",
+      "name": "ApplyCasinoPlayerNetOutputStruct0",
       "type": {
         "kind": "struct",
         "fields": [
@@ -8498,7 +8542,7 @@
     {
       "name": "BetActionLog",
       "docs": [
-        "Large account — use `AccountLoader` / zero-copy so callbacks do not Borsh-deserialize ~5KB onto the BPF stack."
+        "Large account \u2014 use `AccountLoader` / zero-copy so callbacks do not Borsh-deserialize ~5KB onto the BPF stack."
       ],
       "serialization": "bytemuck",
       "repr": {
@@ -9057,7 +9101,7 @@
       }
     },
     {
-      "name": "ComputePotsV4Output",
+      "name": "ComputePotsOutput",
       "docs": [
         "The output of the callback instruction. Provided as a struct with ordered fields",
         "as anchor does not support tuples and tuple structs yet."
@@ -9069,7 +9113,7 @@
             "name": "field_0",
             "type": {
               "defined": {
-                "name": "ComputePotsV4OutputStruct0"
+                "name": "ComputePotsOutputStruct0"
               }
             }
           }
@@ -9077,7 +9121,7 @@
       }
     },
     {
-      "name": "ComputePotsV4OutputStruct0",
+      "name": "ComputePotsOutputStruct0",
       "type": {
         "kind": "struct",
         "fields": [
@@ -9327,7 +9371,7 @@
       }
     },
     {
-      "name": "DistributeAndSettleV3Output",
+      "name": "DistributeAndSettleOutput",
       "docs": [
         "The output of the callback instruction. Provided as a struct with ordered fields",
         "as anchor does not support tuples and tuple structs yet."
@@ -9339,7 +9383,7 @@
             "name": "field_0",
             "type": {
               "defined": {
-                "name": "DistributeAndSettleV3OutputStruct0"
+                "name": "DistributeAndSettleOutputStruct0"
               }
             }
           }
@@ -9347,7 +9391,7 @@
       }
     },
     {
-      "name": "DistributeAndSettleV3OutputStruct0",
+      "name": "DistributeAndSettleOutputStruct0",
       "type": {
         "kind": "struct",
         "fields": [
@@ -9471,7 +9515,7 @@
           {
             "name": "kind",
             "docs": [
-              "0=faucet, 1=personal→seat, 2=seat→personal"
+              "0=faucet, 1=personal\u2192seat, 2=seat\u2192personal"
             ],
             "type": "u8"
           }
@@ -9745,7 +9789,7 @@
           {
             "name": "player_total_bets",
             "docs": [
-              "Legacy plaintext per-player totals — use `EncryptedGameBetting` in production."
+              "Legacy plaintext per-player totals \u2014 use `EncryptedGameBetting` in production."
             ],
             "type": {
               "array": [
@@ -9757,7 +9801,7 @@
           {
             "name": "pots",
             "docs": [
-              "Legacy plaintext pots — use `EncryptedGameBetting.pots_ct` in production."
+              "Legacy plaintext pots \u2014 use `EncryptedGameBetting.pots_ct` in production."
             ],
             "type": {
               "array": [
@@ -9855,7 +9899,7 @@
           {
             "name": "verify_bits",
             "docs": [
-              "Bitset of completed commitment indices (900 bits in 15×u64)"
+              "Bitset of completed commitment indices (900 bits in 15\u00d7u64)"
             ],
             "type": {
               "array": [
@@ -9884,7 +9928,7 @@
             "docs": [
               "Player index whose Groth16 showdown proof produced `showdown_hash`.",
               "Settlement (`compute_pots` / `distribute_and_settle`) MUST consume the",
-              "`SealedShowdownCoefficients` PDA seeded by this index — the sealed coeffs",
+              "`SealedShowdownCoefficients` PDA seeded by this index \u2014 the sealed coeffs",
               "used to build `showdown_hash` belong to this player only."
             ],
             "type": "u8"
@@ -10524,7 +10568,7 @@
     {
       "name": "PendingDeposit",
       "docs": [
-        "One-time (accumulating) SPL→encrypted credit entitlement per player/room.",
+        "One-time (accumulating) SPL\u2192encrypted credit entitlement per player/room.",
         "Created/accrued by `deposit_spl`; fully consumed by `request_credit_room_balance`."
       ],
       "type": {
@@ -10656,6 +10700,10 @@
           {
             "name": "betting_phase",
             "type": "u8"
+          },
+          {
+            "name": "act_deadline_unix",
+            "type": "i64"
           }
         ]
       }
@@ -11402,7 +11450,7 @@
             "name": "balance_u64",
             "docs": [
               "Personal escrow stack (chips available to transfer into seat escrows).",
-              "UI / validate_bet public-input mirror of `balance_ciphertext` — updated",
+              "UI / validate_bet public-input mirror of `balance_ciphertext` \u2014 updated",
               "only after successful Enc callbacks (see dual-ledger policy)."
             ],
             "type": "u64"
@@ -11744,7 +11792,7 @@
       }
     },
     {
-      "name": "SettleCasinoHandV2Output",
+      "name": "SettleCasinoHandOutput",
       "docs": [
         "The output of the callback instruction. Provided as a struct with ordered fields",
         "as anchor does not support tuples and tuple structs yet."
@@ -11756,7 +11804,7 @@
             "name": "field_0",
             "type": {
               "defined": {
-                "name": "SettleCasinoHandV2OutputStruct0"
+                "name": "SettleCasinoHandOutputStruct0"
               }
             }
           }
@@ -11764,7 +11812,7 @@
       }
     },
     {
-      "name": "SettleCasinoHandV2OutputStruct0",
+      "name": "SettleCasinoHandOutputStruct0",
       "type": {
         "kind": "struct",
         "fields": [
@@ -12143,9 +12191,9 @@
             "name": "balance_u64",
             "docs": [
               "Seat escrow stack used for betting at this table.",
-              "Locked while `RoomWallet.in_hand_tables` has this table's bit set —",
+              "Locked while `RoomWallet.in_hand_tables` has this table's bit set \u2014",
               "funds may only move into the pot (via `submit_bet` / validate_bet).",
-              "Mirror of Enc seat balance — updated only after Enc lock/unlock callbacks."
+              "Mirror of Enc seat balance \u2014 updated only after Enc lock/unlock callbacks."
             ],
             "type": "u64"
           },
@@ -12509,7 +12557,7 @@
           {
             "name": "verify_target",
             "docs": [
-              "Progress value at which verification is complete (used cards × active limbs)."
+              "Progress value at which verification is complete (used cards \u00d7 active limbs)."
             ],
             "type": "u16"
           },

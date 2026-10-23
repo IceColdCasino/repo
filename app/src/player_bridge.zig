@@ -4,6 +4,7 @@ const std = @import("std");
 const build_options = @import("build_options");
 const zero_native = @import("zero-native");
 const zk_bridge = @import("zk_bridge");
+const main_thread = @import("main_thread_dispatch");
 const player_crypto = @import("player_crypto");
 const ops = player_crypto.bridge_ops;
 
@@ -110,19 +111,31 @@ const PlayerJob = struct {
         defer alloc.free(request_id);
         std.debug.print("[player] async bytes={d}\n", .{payload.len});
 
+        // Hold the player lock only while dispatch runs. Unlock before the
+        // bridge completion so a main-thread callback can start the next
+        // player op (decrypt, calc) without waiting out this call.
         lockState(state);
-        defer state.lock.unlock();
-
         const output = alloc.alloc(u8, zero_native.bridge.max_result_bytes) catch {
+            state.lock.unlock();
             deliverFail(alloc, responder, request_id, "OutOfMemory");
             return;
         };
-        defer alloc.free(output);
         const result = dispatch(state, payload, output) catch |err| {
+            alloc.free(output);
+            state.lock.unlock();
             deliverFail(alloc, responder, request_id, @errorName(err));
             return;
         };
-        deliverSuccess(alloc, responder, request_id, result);
+        const owned = alloc.dupe(u8, result) catch {
+            alloc.free(output);
+            state.lock.unlock();
+            deliverFail(alloc, responder, request_id, "OutOfMemory");
+            return;
+        };
+        alloc.free(output);
+        state.lock.unlock();
+        deliverSuccess(alloc, responder, request_id, owned);
+        alloc.free(owned);
     }
 };
 
@@ -148,6 +161,10 @@ fn proveCb(ctx: *anyopaque, circuit: []const u8, input: []const u8) anyerror!ops
     const self: *State = @ptrCast(@alignCast(ctx));
     const zk = self.zk orelse return error.ZkBridgeUnbound;
     std.debug.print("[player] prove {s} json={d}\n", .{ circuit, input.len });
+    // Drop below the AppKit main thread for witness + Groth16. Child threads
+    // spawned by the witness calculator and rapidsnark inherit this QoS.
+    main_thread.setBackgroundComputeQos();
+    defer main_thread.setUserInitiatedQos();
     const out = try zk.proveCircuit(circuit, input);
     return .{ .proof = out.proof, .public_signals = out.public_signals };
 }

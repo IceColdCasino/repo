@@ -76,20 +76,16 @@ if ! curl -sf --max-time 2 "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; then
   done
 fi
 
-QUERY="nativeE2e=1&e2eAutoPlay=1&backend=devnet&noChainWorker=1&gameKind=poker&e2eNonce=${NONCE}"
+QUERY="manualSetup=1&e2eAutoPlay=0&backend=devnet&noChainWorker=1&gameKind=poker&e2eNonce=${NONCE}"
 BINARY="${APP_DIR}/zig-out/bin/app"
 launch_seat() {
   local seat="$1"
-  local extra="$2"
-  if [[ "${seat}" == "0" ]]; then
-    unset ZK_LAUNCH_NEW_WALLET
-  else
-    export ZK_LAUNCH_NEW_WALLET=new
-  fi
-  ZERO_NATIVE_FRONTEND_URL="http://127.0.0.1:${PORT}/index-seat-${seat}.html?${QUERY}&e2eSeat=${seat}${extra}" \
+  unset ZK_LAUNCH_NEW_WALLET
+  unset ZK_LAUNCH_AUTO_PLAY
+  unset ZK_LAUNCH_START_HAND
+  ZERO_NATIVE_FRONTEND_URL="http://127.0.0.1:${PORT}/index-seat-${seat}.html?${QUERY}&e2eSeat=${seat}" \
     ZK_LAUNCH_MANUAL_SETUP=1 \
     ZK_LAUNCH_SEAT="${seat}" \
-    ZK_LAUNCH_AUTO_PLAY=1 \
     ZK_LAUNCH_BACKEND=devnet \
     ZK_REPO_ROOT="${REPO_DIR}" \
     SOLANA_RPC_URL="${SOLANA_RPC_URL}" \
@@ -101,52 +97,7 @@ launch_seat() {
 }
 
 echo "[devnet-two] launching seat 0"
-launch_seat 0 ""
-
-seated() {
-  bun "${APP_DIR}/scripts/devnet-table.ts" snapshot 2>/dev/null || echo '{"seated":0,"phase":"unknown"}'
-}
-
-echo "[devnet-two] waiting for seat 0"
-for i in $(seq 1 90); do
-  snap="$(seated)"
-  echo "[devnet-two] t=${i}s ${snap}"
-  count="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("seated",0))' "${snap}" 2>/dev/null || echo 0)"
-  if [[ "${count}" -ge 1 ]]; then
-    break
-  fi
-  sleep 2
-done
-
+launch_seat 0
 echo "[devnet-two] launching seat 1"
-launch_seat 1 "&e2eWallet=new"
-
-echo "[devnet-two] waiting for both seats"
-for i in $(seq 1 90); do
-  snap="$(seated)"
-  echo "[devnet-two] t=${i}s ${snap}"
-  count="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("seated",0))' "${snap}" 2>/dev/null || echo 0)"
-  if [[ "${count}" -ge 2 ]]; then
-    break
-  fi
-  sleep 2
-done
-
-echo "[devnet-two] starting the poker hand"
-bun "${APP_DIR}/scripts/devnet-table.ts" start
-
-echo "[devnet-two] watching the hand"
-for i in $(seq 1 180); do
-  snap="$(seated)"
-  echo "[devnet-two] hand t=${i} ${snap}"
-  phase="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("phase",""))' "${snap}" 2>/dev/null || echo "")"
-  if [[ "${phase}" == "Complete" || "${phase}" == "Showdown" ]]; then
-    echo "[devnet-two] reached ${phase}"
-    if [[ "${phase}" == "Complete" ]]; then
-      exit 0
-    fi
-  fi
-  sleep 10
-done
-echo "[devnet-two] hand still in progress" >&2
-exit 1
+launch_seat 1
+echo "[devnet-two] each player: Sit, Faucet, then Start hand"

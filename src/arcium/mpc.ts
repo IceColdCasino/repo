@@ -140,11 +140,11 @@ export function sealShowdownCompDefNames(activeCoeffs: number): string[] {
 
 /** Snake_case circuit name → Anchor initCompDef method suffix. */
 const CIRCUIT_OFFSET_ALIAS: Record<string, string> = {
-  revealCard: 'reveal_card_v2',
-  applyCasinoPlayerNet: 'apply_casino_player_net_v2',
-  settleCasinoHand: 'settle_casino_hand_v2',
-  computePots: 'compute_pots_v4',
-  distributeAndSettle: 'distribute_and_settle_v3',
+  revealCard: 'reveal_card',
+  applyCasinoPlayerNet: 'apply_casino_player_net',
+  settleCasinoHand: 'settle_casino_hand',
+  computePots: 'compute_pots',
+  distributeAndSettle: 'distribute_and_settle',
   sealShowdownPair: 'seal_showdown_pair',
 };
 

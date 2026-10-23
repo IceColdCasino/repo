@@ -35,9 +35,20 @@
         onmouseenter={() => onCardHover?.(card)}
         onmouseleave={() => onCardHover?.(null)}
       >
-        <rect x={cardPosition.x} y={cardPosition.y} width={cardWidth} height={cardHeight} rx="4" />
+        <rect
+          x={cardPosition.x}
+          y={cardPosition.y}
+          width={cardWidth}
+          height={cardHeight}
+          rx="4"
+          fill="url(#card-bg-gradient)"
+        />
         <text x={cardPosition.x - 8} y={cardPosition.y + cardHeight - 22}>
-          {@html `&#x${card.unicode};`}
+          {#if card.flipped && card.unicode.toUpperCase() !== '1F0A0'}
+            {@html `&#x${card.unicode};`}
+          {:else}
+            {@html `&#x1F0A0;`}
+          {/if}
         </text>
       </g>
     {/if}

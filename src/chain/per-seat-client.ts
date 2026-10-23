@@ -24,6 +24,7 @@ import { PokerRoomLifecycle } from './room/game-room-lifecycle';
 import { getSharedMetaStore, readSharedMeta, writeSharedMeta } from './shared-meta-store';
 import { isLocalCluster } from './fund-sol';
 import { ensureSeatLamports, releasePlayerShareStake } from './share-stake';
+import { hasSitChips, MIN_SIT_CHIPS } from './sit-minimum';
 import { seatTableLamports } from './table-float';
 
 /**
@@ -131,6 +132,33 @@ async function ensureAirdrop(
   }
 }
 
+function hexToRoomId(hex: string): Uint8Array | null {
+  const clean = hex.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(clean)) return null;
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 32; i += 1) {
+    out[i] = Number.parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+/**
+ * Open the room recorded in shared-table.
+ * A selected room id overrides the seed so a scanned room still resolves.
+ */
+export function openPokerRoom(
+  pokerProgram: Program,
+  provider: AnchorProvider,
+  roomSeed?: string,
+): PokerRoomLifecycle {
+  const meta = loadTableMeta();
+  const seed = roomSeed || meta?.roomSeed || LOCALNET_SHARED_ROOM_SEED;
+  const room = new PokerRoomLifecycle(pokerProgram, provider, seed);
+  const roomId = meta?.roomIdHex ? hexToRoomId(meta.roomIdHex) : null;
+  if (roomId) room.roomId = roomId;
+  return room;
+}
+
 function loadTableMeta(): SharedTableMeta | null {
   const raw = readSharedMeta('shared-table');
   if (!raw) return null;
@@ -176,6 +204,20 @@ export async function ensureSharedLocalnetRoom(
   const pokerProgram = loadCasinoProgram(adminProvider);
 
   const existing = loadTableMeta();
+  if (
+    !opts?.forceFresh
+    && existing?.roomIdHex
+    && isUsableTableId(existing.tableId)
+    && (typeof process === 'undefined' || process.env?.PER_SEAT_FRESH_TABLE !== '1')
+  ) {
+    try {
+      const selected = openPokerRoom(pokerProgram, adminProvider, existing.roomSeed);
+      await selected.fetchTable(BigInt(existing.tableId));
+      return existing;
+    } catch {
+      // The selected room is gone. Allocate the shared room below.
+    }
+  }
   // Only honor explicit opts / PER_SEAT_FRESH_TABLE — never ambient E2E_FRESH_TABLE.
   // Vite preview inherits E2E_* from the orch and would otherwise create a new
   // table on every ensureSharedLocalnetRoom (wiping seats under native clients).
@@ -329,11 +371,13 @@ async function buildSnapshot(
     });
   }
 
+  const dealerRaw = Number(table.dealerSeat ?? table.dealer_seat ?? 0);
+
   return {
     gameId: SOLANA_TABLE_GAME_ID,
     backend: 'solana',
     phase: 'lobby',
-    dealerSeat: 0,
+    dealerSeat: Number.isFinite(dealerRaw) && dealerRaw >= 0 ? dealerRaw : 0,
     smallBlindSeat: -1,
     bigBlindSeat: -1,
     smallBlind: '10',
@@ -376,11 +420,7 @@ export class PerSeatClient {
       { commitment: 'confirmed' },
     );
     const pokerProgram = loadCasinoProgram(provider);
-    const room = new PokerRoomLifecycle(
-      pokerProgram,
-      provider,
-      meta.roomSeed,
-    );
+    const room = openPokerRoom(pokerProgram, provider, meta.roomSeed);
     return new PerSeatClient(
       rpcUrl,
       keypair,
@@ -396,7 +436,22 @@ export class PerSeatClient {
   }
 
   async snapshot(): Promise<GameSnapshot> {
-    return buildSnapshot(this.room, this.pokerProgram, this.tableId);
+    const snap = await buildSnapshot(this.room, this.pokerProgram, this.tableId);
+    return this.withPersonalBalance(snap);
+  }
+
+  private async personalBalance(): Promise<bigint> {
+    try {
+      const rw = await this.room.fetchRoomWallet(this.keypair.publicKey);
+      return BigInt(rw.balanceU64?.toString?.() ?? rw.balance_u64?.toString?.() ?? '0');
+    } catch {
+      return 0n;
+    }
+  }
+
+  private async withPersonalBalance(snap: GameSnapshot): Promise<GameSnapshot> {
+    const balance = await this.personalBalance();
+    return { ...snap, callerPersonalEscrow: balance.toString() };
   }
 
   private async ensureWhitelisted(): Promise<void> {
@@ -415,8 +470,9 @@ export class PerSeatClient {
   }
 
   /**
-   * Sit at physical seat. Optional chips → faucet personal + transfer to seat.
-   * Signed by this client's keypair (provider wallet).
+   * Sit at physical seat. The personal account must already hold the minimum
+   * chips, which are moved onto the seat. Passing `chips` faucets that amount
+   * first for automated setup.
    */
   async join(seat: number, chips?: bigint): Promise<GameSnapshot> {
     if (seat < 0 || seat > 9) {
@@ -437,20 +493,63 @@ export class PerSeatClient {
       && !occupied.equals(this.keypair.publicKey)) {
       throw new Error(`Seat ${seat} occupied by ${occupied.toBase58()}`);
     }
+
+    let bring = 0n;
+    if (chips !== undefined && chips > 0n) {
+      if (!hasSitChips(chips)) {
+        throw new Error(`Sit requires at least ${MIN_SIT_CHIPS} chips`);
+      }
+      await this.faucet(chips);
+      bring = chips;
+    } else if (!occupied || occupied.equals(emptySeatPk())) {
+      bring = await this.personalBalance();
+      if (!hasSitChips(bring)) {
+        throw new Error(
+          `Sit requires at least ${MIN_SIT_CHIPS} chips in your account. Use the faucet first.`,
+        );
+      }
+    }
+
     if (!occupied || occupied.equals(emptySeatPk())) {
       await this.room.sitAtTable(this.tableId, seat, 0n, this.keypair);
     }
 
-    if (chips !== undefined && chips > 0n) {
-      await this.faucet(chips);
-      await this.transferToSeat(chips);
+    if (bring > 0n) {
+      await this.transferToSeat(bring);
     }
     return this.snapshot();
   }
 
+  /**
+   * Leave the seat. `leave_table` refuses a non-zero seat balance, so chips
+   * move back to the personal account first.
+   */
   async stand(): Promise<GameSnapshot> {
+    const seatChips = await this.seatEscrowBalance();
+    if (seatChips > 0n) {
+      await this.room.transferSeatToPersonal(this.tableId, seatChips, this.keypair);
+    }
     await this.room.leaveTable(this.tableId, this.keypair.publicKey);
     await releasePlayerShareStake(this.provider.connection, this.keypair).catch(() => undefined);
+    return this.snapshot();
+  }
+
+  private async seatEscrowBalance(): Promise<bigint> {
+    try {
+      const escrow = await (this.pokerProgram.account as any).tableEscrow.fetch(
+        this.room.tableEscrowPDA(this.keypair.publicKey, this.tableId),
+      );
+      return BigInt(
+        escrow.balanceU64?.toString?.() ?? escrow.balance_u64?.toString?.() ?? '0',
+      );
+    } catch {
+      return 0n;
+    }
+  }
+
+  /** Keep the seat and chips, and drop the in-hand flag between hands. */
+  async sitOut(): Promise<GameSnapshot> {
+    await this.room.sitOut(this.tableId, this.keypair);
     return this.snapshot();
   }
 
@@ -516,11 +615,7 @@ export async function fetchSharedTableSnapshot(
     });
   }
   const pokerProgram = loadCasinoProgram(provider);
-  const room = new PokerRoomLifecycle(
-    pokerProgram,
-    provider,
-    meta.roomSeed,
-  );
+  const room = openPokerRoom(pokerProgram, provider, meta.roomSeed);
   return buildSnapshot(room, pokerProgram, BigInt(meta.tableId));
 }
 

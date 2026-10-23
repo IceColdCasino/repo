@@ -37,12 +37,17 @@
               width="58"
               height="78"
               rx="4"
+              fill="url(#card-bg-gradient)"
             />
             <text
               x={cardPosition.x + cardIndex * 70 - 6}
               y={cardPosition.y + 66}
             >
-              {@html `&#x${card.unicode};`}
+              {#if card.flipped && card.unicode.toUpperCase() !== '1F0A0'}
+                {@html `&#x${card.unicode};`}
+              {:else}
+                {@html `&#x1F0A0;`}
+              {/if}
             </text>
           </g>
         {/each}

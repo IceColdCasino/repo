@@ -7,12 +7,11 @@ import type { GameSnapshot, SeatSnapshot } from '../backend/types';
 import type { ZkHandSnapshot } from '../backend/zk-serialize';
 import { LOCALNET_RPC_URL } from './localnet-config';
 import { assertRpcReady } from './localnet-ready';
-import { LOCALNET_SHARED_ROOM_SEED } from './per-seat-client';
+import { LOCALNET_SHARED_ROOM_SEED, openPokerRoom } from './per-seat-client';
 import { loadLightCasinoProgram, loadCasinoProgram } from './program-loader';
 import { KeypairWallet } from './keypair-wallet';
 import { loadWhitelistAdminProvider } from './admin-provider';
 import { getSharedMetaStore, readSharedMeta, writeSharedMeta } from './shared-meta-store';
-import { PokerRoomLifecycle } from './room/game-room-lifecycle';
 import {
   bytesToFieldBE,
   parseDeckStateAccount,
@@ -21,6 +20,7 @@ import { deckStateAccountSize } from './shuffle-account';
 import { ciphertextToJson } from '../backend/zk-serialize';
 import type { Ciphertext } from '../zk-casino';
 import {
+  boardIndicesRevealedForBettingPhase,
   boardIndicesRevealedForUiPhase,
   dealCardCount,
   holeCardIndices,
@@ -28,8 +28,16 @@ import {
 import type { HandResultSnapshot } from '../backend/hand-result';
 import type { ZkCryptoSnapshot, ZkRevealSnapshot } from '../backend/zk-serialize';
 import { loadStreetBetsMeta } from './street-bets-meta';
+import { buttonSeatForHand, stackAfterPayout, stackBehind } from '../room';
+import { winningsBySeatFromPotResults } from '../backend/hand-result';
+import { choosePotAmounts, snapshotPots } from './pot-amounts';
 
 const HAND_COMPLETE_META_KEY = 'hand-complete';
+export const HAND_PAYOUT_APPLIED_KEY = 'hand-payout-applied';
+
+export function handPayoutApplied(gameIdHex: string): boolean {
+  return readSharedMeta(HAND_PAYOUT_APPLIED_KEY) === gameIdHex;
+}
 
 export type HandCompleteMeta = {
   tableId: string;
@@ -115,6 +123,17 @@ export function gameStatePda(
   )[0];
 }
 
+/** Account-data offset of `GameState.act_deadline_unix` (final i64, includes the discriminator). */
+export const ACT_DEADLINE_OFFSET = 1053;
+
+export function readActDeadlineUnix(data: Uint8Array): number {
+  if (data.length < ACT_DEADLINE_OFFSET + 8) return 0;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const value = view.getBigInt64(ACT_DEADLINE_OFFSET, true);
+  if (value <= 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) return 0;
+  return Number(value);
+}
+
 export function lightPlayerStatePda(
   lightProgramId: web3.PublicKey,
   gameId: Uint8Array,
@@ -172,7 +191,7 @@ export async function resolveActiveHandFromChain(
 
   const provider = await readOnlyProvider(rpcUrl);
   const pokerProgram = loadCasinoProgram(provider);
-  const room = new PokerRoomLifecycle(pokerProgram, provider, tableMeta.roomSeed);
+  const room = openPokerRoom(pokerProgram, provider, tableMeta.roomSeed);
   const tableId = BigInt(tableMeta.tableId);
   const table = await room.fetchTable(tableId);
 
@@ -283,17 +302,20 @@ export function uiPhaseFromProofPhase(
   phase: number,
   bettingPhase?: number,
 ): GameSnapshot['phase'] {
+  if (phase === PROOF_PHASE_REGISTER) return 'Register';
+  if (phase === PROOF_PHASE_SHUFFLE) return 'Shuffle';
+  if (phase === PROOF_PHASE_SHARE) return 'Share';
+  // Pots distributed (phase 6) and light-casino complete (phase 4) stay
+  // finished. An uncontested fold leaves betting_phase on the last street
+  // dealt, which must not paint that street as still open.
+  if (phase === 4 || phase === 6) return 'Complete';
   const bp = bettingPhase ?? 0;
   if (bp >= 1 && bp <= 4) {
     return (['PreFlop', 'Flop', 'Turn', 'River'] as const)[bp - 1]!;
   }
   if (bp === 5) return 'Showdown';
-  if (phase === PROOF_PHASE_REGISTER) return 'Register';
-  if (phase === PROOF_PHASE_SHUFFLE) return 'Shuffle';
-  if (phase === PROOF_PHASE_SHARE) return 'Share';
   if (phase === 3) return 'PreFlop'; // Evaluation → hole-ack / PreFlop
   if (phase === 5) return 'Showdown';
-  if (phase === 4 || phase === 6) return 'Complete';
   return 'lobby';
 }
 
@@ -346,6 +368,10 @@ export async function fetchDeckJsonFromChain(
   const pokerDeckBytes = deckStateAccountSize(52 * 4);
   if (!info || info.data.length < pokerDeckBytes) return null;
   const deck = parseDeckStateAccount(info.data) as Ciphertext[];
+  // init_deck_state only allocates. An all-zero shoe is not a deck yet.
+  // Player 0 must shuffle the identity deck, not this blank account.
+  const blank = deck.every((card) => card.every((limb) => limb === 0n));
+  if (blank) return null;
   return deck.map((card) => ciphertextToJson(card));
 }
 
@@ -480,14 +506,17 @@ export async function enrichSnapshotFromChain(
   const lightProgram = loadLightCasinoProgram(provider);
   const pokerProgram = loadCasinoProgram(provider);
   let bettingPhase = 0;
+  let actDeadlineUnix = 0;
   let showdownFinalized = false;
   let currentBet = '0';
   let foldedMask = 0;
   let playerTotalBets: string[] = [];
+  let potSnapshots = snap.pots;
   try {
-    const gameAccount = await (pokerProgram.account as any).gameState.fetch(
-      gameStatePda(pokerProgram.programId, hand.gameId),
-    );
+    const gamePda = gameStatePda(pokerProgram.programId, hand.gameId);
+    const gameAccount = await (pokerProgram.account as any).gameState.fetch(gamePda);
+    const rawGame = await provider.connection.getAccountInfo(gamePda);
+    if (rawGame) actDeadlineUnix = readActDeadlineUnix(rawGame.data);
     bettingPhase = Number(gameAccount.bettingPhase ?? gameAccount.betting_phase ?? 0);
     hand = {
       ...hand,
@@ -512,6 +541,23 @@ export async function enrichSnapshotFromChain(
         .slice(0, hand.numPlayers)
         .map((x: { toString(): string }) => String(x?.toString?.() ?? '0'));
     }
+    let encryptedFields: Array<ArrayLike<number>> | null = null;
+    try {
+      const bettingPda = web3.PublicKey.findProgramAddressSync(
+        [Buffer.from('encrypted_betting'), Buffer.from(hand.gameId)],
+        pokerProgram.programId,
+      )[0];
+      const betting = await (pokerProgram.account as any).encryptedGameBetting.fetch(bettingPda);
+      const fields = betting.potsCt ?? betting.pots_ct;
+      if (Array.isArray(fields)) encryptedFields = fields;
+    } catch {
+      encryptedFields = null;
+    }
+    potSnapshots = snapshotPots(choosePotAmounts({
+      encryptedFields,
+      plaintextPots: gameAccount.pots,
+      playerTotals: totals,
+    }));
   } catch {
     // use hand as resolved
   }
@@ -519,7 +565,7 @@ export async function enrichSnapshotFromChain(
   // Hand-complete meta is written only after showdown proof accept (or
   // ALLOW_SOFT_SHOWDOWN smoke). Prefer it for this gameId even if endHand
   // flipped table state / proof phase back toward Register.
-  await getSharedMetaStore().refreshFromDisk?.(['hand-complete']);
+  await getSharedMetaStore().refreshFromDisk?.(['hand-complete', HAND_PAYOUT_APPLIED_KEY]);
   {
     const complete = loadHandCompleteMeta();
     const metaMatchesHand = complete && complete.gameIdHex === hand.gameIdHex;
@@ -527,7 +573,13 @@ export async function enrichSnapshotFromChain(
       && (hand.phase === 5 || bettingPhase === 5 || hand.phase === 6);
     if (metaMatchesHand || (showdownDone && complete?.gameIdHex === hand.gameIdHex)) {
       if (complete) {
-        return applyHandCompleteToSnapshot(snap, complete);
+        return applyHandCompleteToSnapshot(
+          {
+            ...seatsPaidForHand(snap, complete, playerTotalBets),
+            pots: potSnapshots,
+          },
+          complete,
+        );
       }
     }
   }
@@ -598,7 +650,8 @@ export async function enrichSnapshotFromChain(
   // Betting street closure is decided atomically on-chain in validate_bet_v2_callback.
   // If betting_phase is still 1..4, the chain still has an authoritative actor;
   // local `.local` street-bets / acted metadata must not close the round early.
-  const bettingOpen = bettingPhase >= 1 && bettingPhase <= 4;
+  const handClosed = hand.phase === 6;
+  const bettingOpen = !handClosed && bettingPhase >= 1 && bettingPhase <= 4;
   const holesViewPending = pastShare && bettingPhase === 0 && uiPhase === 'PreFlop';
 
   let currentPlayerSeat = snap.currentPlayerSeat;
@@ -611,6 +664,9 @@ export async function enrichSnapshotFromChain(
   } else if (bettingOpen) {
     currentPlayerIndex = hand.currentPlayer;
     currentPlayerSeat = hand.physicalSeats[hand.currentPlayer] ?? null;
+  } else if (handClosed) {
+    currentPlayerSeat = null;
+    currentPlayerIndex = null;
   } else if (zk?.currentShufflerSeat != null) {
     currentPlayerSeat = zk.currentShufflerSeat;
     currentPlayerIndex = zk.currentShufflerIndex;
@@ -629,13 +685,33 @@ export async function enrichSnapshotFromChain(
     playerIndexBySeat,
     streetBets,
     foldedMask,
+  }).map((seat) => {
+    const playerIndex = seat.playerIndex;
+    if (playerIndex === undefined || playerIndex < 0 || playerIndex >= playerTotalBets.length) {
+      return seat;
+    }
+    let escrow = 0n;
+    let committed = 0n;
+    try {
+      escrow = BigInt(seat.seatEscrow ?? seat.chips ?? '0');
+      committed = BigInt(playerTotalBets[playerIndex] ?? '0');
+    } catch {
+      return seat;
+    }
+    return {
+      ...seat,
+      chips: stackBehind(escrow, committed).toString(),
+    };
   });
+  const buttonSeat = buttonSeatForHand(hand.physicalSeats);
 
   const zkCrypto = pastShare
     ? buildZkCryptoFromDeck(hand, keys, zk?.currentDeck ?? zk?.shareDeck)
     : undefined;
-  const boardRevealed = boardIndicesRevealedForUiPhase(uiPhase);
-  const showdownPublic = uiPhase === 'Showdown' || uiPhase === 'Complete';
+  const boardRevealed = handClosed && bettingPhase >= 1 && bettingPhase <= 4
+    ? boardIndicesRevealedForBettingPhase(bettingPhase)
+    : boardIndicesRevealedForUiPhase(uiPhase);
+  const showdownPublic = bettingPhase >= 5;
 
   return {
     ...snap,
@@ -643,14 +719,17 @@ export async function enrichSnapshotFromChain(
     handNumber: snap.handNumber ?? 1,
     actionOrder: [...hand.physicalSeats],
     playerIndexBySeat,
+    dealerSeat: buttonSeat ?? snap.dealerSeat,
     smallBlindSeat: hand.physicalSeats[0] ?? snap.smallBlindSeat,
     bigBlindSeat: hand.physicalSeats[1] ?? snap.bigBlindSeat,
     currentBet: bettingOpen || holesViewPending ? currentBet : snap.currentBet,
     currentPlayerSeat,
     currentPlayerIndex,
+    actDeadlineUnix: actDeadlineUnix > 0 ? actDeadlineUnix : undefined,
     bettingRoundOpen: bettingOpen,
     holesViewPending,
     seats,
+    pots: potSnapshots,
     holeCards: pastShare ? holeCards : snap.holeCards,
     boardCards: pastShare ? boardCards : snap.boardCards,
     zk,
@@ -766,11 +845,85 @@ export function mergeHandSeatsForUi(opts: {
     });
 }
 
+/** Show the paid stack on a finished hand. After escrow is updated, use that balance. */
+function seatsPaidForHand(
+  snap: GameSnapshot,
+  complete: HandCompleteMeta,
+  playerTotalBets: string[],
+): GameSnapshot {
+  const applied = handPayoutApplied(complete.gameIdHex);
+  const winnings = winningsBySeatFromPotResults(complete.handResult.potResults ?? []);
+  const playerIndexBySeat = new Map(
+    complete.handResult.seatHands.map((seat) => [seat.seat, seat.playerIndex]),
+  );
+  return {
+    ...snap,
+    seats: snap.seats.map((seat) => {
+      let escrow = 0n;
+      try {
+        escrow = BigInt(seat.seatEscrow ?? seat.chips ?? '0');
+      } catch {
+        return seat;
+      }
+      if (applied) {
+        return { ...seat, chips: escrow.toString() };
+      }
+      const playerIndex = playerIndexBySeat.get(seat.seat);
+      let committed = 0n;
+      if (playerIndex !== undefined && playerIndex >= 0 && playerIndex < playerTotalBets.length) {
+        try {
+          committed = BigInt(playerTotalBets[playerIndex] ?? '0');
+        } catch {
+          committed = 0n;
+        }
+      }
+      const won = winnings.get(seat.seat) ?? 0n;
+      if (playerTotalBets.length === 0 || (won === 0n && committed === 0n)) {
+        return seat;
+      }
+      return {
+        ...seat,
+        chips: stackAfterPayout(escrow, committed, won).toString(),
+      };
+    }),
+  };
+}
+
+function handResultWithChainPots(
+  result: HandResultSnapshot,
+  pots: GameSnapshot['pots'],
+): HandResultSnapshot {
+  const existing = result.potResults ?? [];
+  const hasAmount = existing.some((pot) => {
+    try {
+      return BigInt(pot.amount) > 0n;
+    } catch {
+      return false;
+    }
+  });
+  if (hasAmount) return result;
+  const potResults = pots.flatMap((pot, potIndex) => {
+    let amount = 0n;
+    try {
+      amount = BigInt(pot.amount || '0');
+    } catch {
+      return [];
+    }
+    if (amount <= 0n) return [];
+    return [{ potIndex, amount: amount.toString(), winnerSeats: [] as number[] }];
+  });
+  if (potResults.length === 0) return result;
+  return { ...result, potResults };
+}
+
 function applyHandCompleteToSnapshot(
   snap: GameSnapshot,
   complete: HandCompleteMeta,
 ): GameSnapshot {
-  const boardRevealed = boardIndicesRevealedForUiPhase('Complete');
+  const foldFinish = complete.handResult.reason === 'fold';
+  const boardRevealed = foldFinish
+    ? complete.handResult.boardCards.filter((index) => index >= 20 && index <= 24)
+    : boardIndicesRevealedForUiPhase('Showdown');
   const zkCrypto = complete.zkCrypto
     ?? (complete.handResult.zkFinalDeck
       ? {
@@ -784,7 +937,7 @@ function applyHandCompleteToSnapshot(
   const zkReveal: ZkRevealSnapshot = complete.zkReveal ?? {
     revealedCardIndices: boardRevealed,
     newlyRevealed: [],
-    allPartialsPublic: true,
+    allPartialsPublic: !foldFinish,
     shareComplete: true,
     holePartialsUnlocked: true,
     entries: [],
@@ -802,7 +955,7 @@ function applyHandCompleteToSnapshot(
       complete.handResult.seatHands.map((s) => [s.seat, s.holeCards]),
     ),
     boardCards: complete.handResult.boardCards,
-    handResult: complete.handResult,
+    handResult: handResultWithChainPots(complete.handResult, snap.pots),
     zkCrypto: zkCrypto ?? snap.zkCrypto,
     zkReveal,
     bettingRoundOpen: false,

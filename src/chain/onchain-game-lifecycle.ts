@@ -12,6 +12,7 @@ import {
   revealCardCount,
 } from '../game-config';
 import { usedCardIndices } from '../backend/card-layout';
+import { logHandProgress } from '../hand-progress';
 import { mapPool, withRetry } from '../arcium/verify-chunk-parallel';
 import { LightProtocolStorageHelper } from './light-storage';
 import {
@@ -1606,7 +1607,11 @@ export class OnchainGameLifecycle {
 
   async initShowdownReceipt(playerIndex: number, authority?: web3.Keypair): Promise<void> {
     const proofReceipt = await this.deriveProofReceipt(3, playerIndex);
-    if (await this.provider.connection.getAccountInfo(proofReceipt)) return;
+    if (await this.provider.connection.getAccountInfo(proofReceipt)) {
+      logHandProgress(`Showdown tx: init_showdown_receipt already on chain (seat player ${playerIndex})`);
+      return;
+    }
+    logHandProgress(`Showdown tx: init_showdown_receipt sending (seat player ${playerIndex})`);
     const builder = (this.lightPokerProgram.methods as any)
       .initShowdownReceipt()
       .accounts({
@@ -1622,6 +1627,7 @@ export class OnchainGameLifecycle {
     } else {
       await builder.rpc({ commitment: 'confirmed', preflightCommitment: 'confirmed' });
     }
+    logHandProgress(`Showdown tx: init_showdown_receipt confirmed (seat player ${playerIndex})`);
   }
 
   async initActionReceipt(
@@ -2000,14 +2006,14 @@ export class OnchainGameLifecycle {
     }, commitment);
   }
 
-  /** Send a signed transaction without waiting for confirmation. */
+  /** Send a signed transaction without waiting for confirmation. Returns the signature. */
   private async submitPayers(
     instructions: web3.TransactionInstruction[],
     feePayer: web3.PublicKey,
     signers: web3.Keypair[],
     walletSigns: boolean,
     blockhash: { blockhash: string; lastValidBlockHeight: number },
-  ): Promise<void> {
+  ): Promise<string> {
     const transaction = new web3.Transaction({
       feePayer,
       blockhash: blockhash.blockhash,
@@ -2017,10 +2023,48 @@ export class OnchainGameLifecycle {
     const signed = walletSigns
       ? await this.provider.wallet.signTransaction(transaction)
       : transaction;
-    await this.provider.connection.sendRawTransaction(signed.serialize(), {
+    return this.provider.connection.sendRawTransaction(signed.serialize(), {
       skipPreflight: true,
       preflightCommitment: 'processed',
     });
+  }
+
+  /** Wait until each signature is at least processed. A dropped write must not be folded. */
+  private async confirmSubmitted(
+    signatures: string[],
+    lastValidBlockHeight: number,
+  ): Promise<void> {
+    if (signatures.length === 0) return;
+    const pending = new Set(signatures);
+    const deadline = Date.now() + 12_000;
+    while (pending.size > 0 && Date.now() < deadline) {
+      const list = [...pending];
+      let statuses: Awaited<ReturnType<web3.Connection['getSignatureStatuses']>> | null = null;
+      try {
+        statuses = await this.provider.connection.getSignatureStatuses(list);
+      } catch {
+        statuses = null;
+      }
+      statuses?.value.forEach((status, index) => {
+        if (!status) return;
+        if (status.err) {
+          throw new Error(`share upload failed: ${JSON.stringify(status.err)}`);
+        }
+        const conf = status.confirmationStatus;
+        if (conf === 'processed' || conf === 'confirmed' || conf === 'finalized') {
+          pending.delete(list[index]!);
+        }
+      });
+      if (pending.size === 0) return;
+      const height = await this.provider.connection.getBlockHeight('processed').catch(() => 0);
+      if (height > lastValidBlockHeight) {
+        throw new Error(`share upload expired before confirmation (${pending.size} left)`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (pending.size > 0) {
+      throw new Error(`share upload not confirmed (${pending.size} left)`);
+    }
   }
 
   /** Poll until each lane holds `amount`. One resend covers a dropped fund transaction. */
@@ -2838,8 +2882,12 @@ export class OnchainGameLifecycle {
         pending: number[],
         block?: { blockhash: string; lastValidBlockHeight: number },
       ) => {
+        if (pending.length === 0) return;
         const hash = block ?? await this.provider.connection.getLatestBlockhash('confirmed');
-        await Promise.all(pending.map((index) => writeChunk(chunks[index]!, lanes[index]!, hash)));
+        const signatures = await Promise.all(
+          pending.map((index) => writeChunk(chunks[index]!, lanes[index]!, hash)),
+        );
+        await this.confirmSubmitted(signatures, hash.lastValidBlockHeight);
       };
       const missing = () => this.missingShareChunks(chunks, generation, playerIndex);
       const latest = await this.provider.connection.getLatestBlockhash('confirmed');
@@ -2869,11 +2917,16 @@ export class OnchainGameLifecycle {
         latest.blockhash,
         [budget()],
       );
-      const sendFinish = (block: { blockhash: string; lastValidBlockHeight: number }) =>
-        Promise.all(finishGroups.map((group) =>
+      const sendFinish = async (block: { blockhash: string; lastValidBlockHeight: number }) => {
+        const signatures = await Promise.all(finishGroups.map((group) =>
           this.submitPayers([budget(), ...group], authority.publicKey, [authority], false, block),
         ));
-      await sendFinish(latest);
+        await this.confirmSubmitted(signatures, block.lastValidBlockHeight);
+      };
+      // Chunk writes were confirmed above. Finish with a fresh blockhash so the
+      // fold is of this upload, not the previous attempt's chunks.
+      const finishBlock = await this.provider.connection.getLatestBlockhash('confirmed');
+      await sendFinish(finishBlock);
       const streetsReady = async () => {
         const info = await this.provider.connection.getAccountInfo(receipt, 'processed');
         return !!info && info.data.length > 85 && info.data[85] === streets.length;
@@ -3680,6 +3733,7 @@ export class OnchainGameLifecycle {
   }
 
   async finalizeShowdown(playerIndex: number, authority?: web3.Keypair): Promise<void> {
+    logHandProgress(`Showdown tx: finalize_showdown sending (seat player ${playerIndex})`);
     const gameStatePDA = this.deriveLightPDA('game_state');
     const playerStatePDA = this.deriveLightPDA('player', Buffer.from([playerIndex]));
     const proofReceiptPDA = await this.deriveProofReceipt(3, playerIndex);
@@ -3697,6 +3751,7 @@ export class OnchainGameLifecycle {
         .remainingAccounts(leadingVaultMeta(this.authorityPubkey(authority))),
       authority,
     );
+    logHandProgress(`Showdown tx: finalize_showdown confirmed (seat player ${playerIndex})`);
   }
 
   /** Record action-derived blackjack hand layout before showdown verify. */
@@ -4004,6 +4059,7 @@ export class OnchainGameLifecycle {
     const verifyRemaining = isKeno
       ? prependVault(signer, remainingAccounts.slice(0, seated))
       : remainingAccounts;
+    logHandProgress(`Showdown tx: verify_showdown_receipt sending (seat player ${playerIndex})`);
     await this.rpcAsOrLookupTable(
       (this.lightPokerProgram.methods as any)
         .verifyShowdownReceipt(
@@ -4030,6 +4086,7 @@ export class OnchainGameLifecycle {
       verifyRemaining.map((account) => account.pubkey),
       `verify_showdown_receipt:p${playerIndex}`,
     );
+    logHandProgress(`Showdown tx: verify_showdown_receipt confirmed (seat player ${playerIndex})`);
   }
 
   /**

@@ -107,6 +107,34 @@ describe('eventsFromSnapshotDiff', () => {
     ]);
   });
 
+  it('does not start a hand when the first snapshot is already complete', () => {
+    const next = baseSnapshot({
+      phase: 'Complete',
+      handResult: {
+        handNumber: 1,
+        reason: 'showdown',
+        potResults: [{ potIndex: 0, amount: '80', winnerSeats: [0] }],
+        boardCards: [20, 21, 22, 23, 24],
+        seatHands: [],
+        actionOrder: [0, 1],
+      },
+      zkReveal: {
+        revealedCardIndices: [20, 21, 22, 23, 24],
+        newlyRevealed: [20, 21, 22, 23, 24],
+        allPartialsPublic: true,
+        shareComplete: true,
+        holePartialsUnlocked: true,
+        entries: [],
+      },
+    });
+    const messages = eventsFromSnapshotDiff(null, next, 1_000).events.map((event) => event.message);
+    expect(messages.some((message) => message.includes('started'))).toBe(false);
+    expect(messages.some((message) => message.startsWith('Phase:'))).toBe(false);
+    expect(messages.some((message) => message.startsWith('Revealed'))).toBe(false);
+    expect(messages.some((message) => message.includes('Hand complete'))).toBe(true);
+    expect(messages.some((message) => message.includes('Seat 0 wins 80'))).toBe(true);
+  });
+
   it('logs phase transitions and ZK milestones', () => {
     const register = baseSnapshot({
       phase: 'Register',

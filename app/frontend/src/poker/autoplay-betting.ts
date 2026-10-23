@@ -24,13 +24,9 @@ export function chooseAutoBetAction(snapshot: GameSnapshot, localSeat: number): 
   const myBet = BigInt(mine.bet ?? '0');
   const toCall = curBet > myBet ? curBet - myBet : 0n;
 
-  // 2p PreFlop: call to match; never check. Completing call advances on-chain.
-  // (Open-raise from behind the BB is rejected by validate_bet_v2 today.)
-  if (snapshot.phase === 'PreFlop') {
-    if (toCall > 0n) {
-      return { kind: 'act', action: 'call', toCall };
-    }
-    return { kind: 'wait', reason: 'preflop matched — await street advance' };
+  // Preflop facing a bet: call. A matched limp is the big blind's option to check.
+  if (snapshot.phase === 'PreFlop' && toCall > 0n) {
+    return { kind: 'act', action: 'call', toCall };
   }
 
   return {
@@ -38,6 +34,32 @@ export function chooseAutoBetAction(snapshot: GameSnapshot, localSeat: number): 
     action: toCall > 0n ? 'call' : 'check',
     toCall,
   };
+}
+
+/**
+ * Share is finished and PreFlop blinds have not been posted.
+ * Opening that street is separate from advancing a closed betting round.
+ */
+export function shouldOpenPreflop(snapshot: GameSnapshot): boolean {
+  if (snapshot.phase !== 'PreFlop' || snapshot.bettingRoundOpen) {
+    return false;
+  }
+  let currentBet = 0n;
+  try {
+    currentBet = BigInt(snapshot.currentBet || '0');
+  } catch {
+    return false;
+  }
+  if (currentBet !== 0n) {
+    return false;
+  }
+  return !snapshot.seats.some((seat) => {
+    try {
+      return BigInt(seat.bet || '0') > 0n;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export function shouldAutoAdvanceStreet(snapshot: GameSnapshot): boolean {

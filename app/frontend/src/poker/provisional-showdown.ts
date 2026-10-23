@@ -43,13 +43,20 @@ export function buildProvisionalShowdownResult(
   }
 
   const pots = state.pots.map((pot) => ({ amount: BigInt(pot.amount) }));
-  const potResults = computePlaintextShowdownPotResults(
+  const positivePots = pots.filter((pot) => pot.amount > 0n);
+  // Chain snapshots often carry a zero pot until settlement. Still name the
+  // best hand so the winning seat can prove before that pot amount lands.
+  const potsForRank = positivePots.length > 0 ? positivePots : [{ amount: 1n }];
+  const ranked = computePlaintextShowdownPotResults(
     handSeatOrder,
     foldedMask,
     holeCards,
     boardCards,
-    pots,
+    potsForRank,
   );
+  const potResults = positivePots.length > 0
+    ? ranked
+    : ranked.map((result) => ({ ...result, amount: '0' }));
 
   const seatHands = handSeatOrder
     .map((seat) => {

@@ -11,17 +11,32 @@ import { stableInstanceId } from './instance-id';
  */
 const SESSION_SECRET_STORAGE_KEY = 'poker-local-player-secret';
 
+function seatNumber(raw: string | number | null | undefined): number | null {
+  if (raw === null || raw === undefined || raw === '') {
+    return null;
+  }
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 9 ? n : null;
+}
+
 function e2eSeatFromUrl(): number | null {
   if (typeof window === 'undefined') {
     return null;
   }
   const params = new URLSearchParams(window.location.search);
-  const raw = params.get('e2eSeat') ?? params.get('seat');
-  if (raw === null || raw === '') {
+  return seatNumber(params.get('e2eSeat') ?? params.get('seat'));
+}
+
+function launchSeat(): number | null {
+  const fromUrl = e2eSeatFromUrl();
+  if (fromUrl !== null) {
+    return fromUrl;
+  }
+  if (typeof window === 'undefined') {
     return null;
   }
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= 0 && n <= 9 ? n : null;
+  const seat = (window as Window & { __ZK_LAUNCH_CONFIG?: { seat?: number } }).__ZK_LAUNCH_CONFIG?.seat;
+  return seatNumber(seat);
 }
 
 function isNativeE2e(): boolean {
@@ -64,8 +79,8 @@ function persistSession(keypair: Keypair): void {
  * host Bun ZK driver can register/shuffle/share when WKWebView App-Naps.
  */
 async function persistMeta(keypair: Keypair): Promise<void> {
-  const seat = e2eSeatFromUrl();
-  if (!isNativeE2e() || seat === null) {
+  const seat = launchSeat();
+  if (seat === null || typeof window === 'undefined' || typeof window.zero?.invoke !== 'function') {
     return;
   }
   try {
@@ -95,15 +110,58 @@ function keypairFromSecretJson(raw: string): Keypair | null {
   }
 }
 
+async function readPersistedSeatWallet(): Promise<Keypair | null> {
+  const seat = launchSeat();
+  if (seat === null || typeof window === 'undefined' || typeof window.zero?.invoke !== 'function') {
+    return null;
+  }
+  try {
+    const { installWebViewMetaStore } = await import('../backend/solana-meta-bridge');
+    const store = installWebViewMetaStore() as {
+      read(key: string): string | null;
+      refreshFromDisk?(keys?: string[]): Promise<void>;
+    };
+    const key = `e2e-wallet-seat${seat}`;
+    await store.refreshFromDisk?.([key]);
+    const raw = store.read(key);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as { secretKey?: number[] };
+    if (!Array.isArray(parsed.secretKey)) {
+      return null;
+    }
+    return Keypair.fromSecretKey(Uint8Array.from(parsed.secretKey));
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Formerly hydrated from solana.meta disk. Gameplay no longer uses file IPC —
- * sessionStorage (already loaded via getOrCreate) is enough for a process.
+ * Reuse this seat's already-whitelisted wallet. Session storage wins for the
+ * live process; a fresh process loads `.local/e2e-wallet-seatN` before minting.
  */
 export async function hydrateE2eWalletFromMeta(): Promise<string | null> {
   if (typeof window === 'undefined') {
     return null;
   }
-  // Ensure session wallet exists without touching solana.meta.
+  const stored = sessionStorage.getItem(walletStorageKey());
+  if (stored) {
+    const fromSession = keypairFromSecretJson(stored);
+    if (fromSession) {
+      cachedKeypair = fromSession;
+      cachedLocalPublicKey = fromSession.publicKey.toBase58();
+      return cachedLocalPublicKey;
+    }
+  }
+  const fromDisk = await readPersistedSeatWallet();
+  if (fromDisk) {
+    cachedKeypair = fromDisk;
+    cachedLocalPublicKey = fromDisk.publicKey.toBase58();
+    persistSession(fromDisk);
+    void persistMeta(fromDisk).catch(() => undefined);
+    return cachedLocalPublicKey;
+  }
   return getOrCreateLocalPublicKey();
 }
 

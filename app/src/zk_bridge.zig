@@ -1335,8 +1335,8 @@ const WarmZkeyJob = struct {
 };
 
 // macOS: zk.prove is synchronous (reliable bridge.dispatch). iOS keeps async prove.
-pub const zk_sync_handler_count = if (is_ios) 2 else 3;
-pub const zk_async_handler_count = if (is_ios) 2 else 1;
+pub const zk_sync_handler_count = 2;
+pub const zk_async_handler_count = 2;
 
 pub fn warmZkey(context: *anyopaque, invocation: zero_native.bridge.Invocation, output: []u8) anyerror![]const u8 {
     const self: *State = @ptrCast(@alignCast(context));
@@ -1432,8 +1432,8 @@ pub fn ping(context: *anyopaque, invocation: zero_native.bridge.Invocation, outp
     });
 }
 
-/// macOS desktop: synchronous prove (~70ms register) returns in bridge.dispatch like zk.ping.
-/// Avoids async _complete delivery which was failing to resolve window.zero.invoke.
+/// Synchronous prove. Not registered: Groth16 on the AppKit main thread stalls the table.
+/// `zk.prove` is an async handler on every platform.
 pub fn proveHandlerSync(context: *anyopaque, invocation: zero_native.bridge.Invocation, output: []u8) anyerror![]const u8 {
     if (is_ios) return error.UnsupportedOperation;
     agentDebugLog("H2", "zk_bridge.zig:proveHandlerSync", "entry", invocation.request.id);
@@ -1558,6 +1558,7 @@ const ProveJob = struct {
     responder: zero_native.bridge.AsyncResponder,
 
     fn worker(job: *ProveJob) void {
+        main_thread.setBackgroundComputeQos();
         const allocator = job.state.allocator();
         const responder = job.responder;
         const request_id = job.request_id;
@@ -1694,6 +1695,7 @@ const ProveOnlyJob = struct {
     responder: zero_native.bridge.AsyncResponder,
 
     fn worker(job: *ProveOnlyJob) void {
+        main_thread.setBackgroundComputeQos();
         const allocator = job.state.allocator();
         const responder = job.responder;
         const request_id = job.request_id;
@@ -1762,6 +1764,7 @@ const WitnessJob = struct {
     responder: zero_native.bridge.AsyncResponder,
 
     fn worker(job: *WitnessJob) void {
+        main_thread.setBackgroundComputeQos();
         const allocator = job.state.allocator();
         const responder = job.responder;
         const request_id = job.request_id;
@@ -2098,32 +2101,17 @@ pub fn witnessHandlerAsync(context: *anyopaque, invocation: zero_native.bridge.I
 }
 
 pub fn registerHandlers(state: *State, handlers: *[zk_sync_handler_count]zero_native.BridgeHandler) void {
-    if (comptime is_ios) {
-        handlers.* = .{
-            .{ .name = "zk.ping", .context = state, .invoke_fn = ping },
-            .{ .name = "zk.warmZkey", .context = state, .invoke_fn = warmZkey },
-        };
-    } else {
-        handlers.* = .{
-            .{ .name = "zk.ping", .context = state, .invoke_fn = ping },
-            .{ .name = "zk.warmZkey", .context = state, .invoke_fn = warmZkey },
-            // Sync prove on macOS — avoids async _complete races for register/shuffle.
-            .{ .name = "zk.prove", .context = state, .invoke_fn = proveHandlerSync },
-        };
-    }
+    handlers.* = .{
+        .{ .name = "zk.ping", .context = state, .invoke_fn = ping },
+        .{ .name = "zk.warmZkey", .context = state, .invoke_fn = warmZkey },
+    };
 }
 
 pub fn registerAsyncHandlers(state: *State, handlers: *[zk_async_handler_count]zero_native.bridge.AsyncHandler) void {
-    if (comptime is_ios) {
-        handlers.* = .{
-            .{ .name = "zk.prove", .context = state, .invoke_fn = proveHandlerAsync },
-            .{ .name = "zk.witness.generate", .context = state, .invoke_fn = witnessHandlerAsync },
-        };
-    } else {
-        handlers.* = .{
-            .{ .name = "zk.witness.generate", .context = state, .invoke_fn = witnessHandlerAsync },
-        };
-    }
+    handlers.* = .{
+        .{ .name = "zk.prove", .context = state, .invoke_fn = proveHandlerAsync },
+        .{ .name = "zk.witness.generate", .context = state, .invoke_fn = witnessHandlerAsync },
+    };
 }
 
 const bridge_origins = [_][]const u8{
