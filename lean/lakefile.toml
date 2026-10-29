@@ -1,0 +1,11 @@
+name = "zkcasino"
+version = "0.1.0"
+defaultTargets = ["ZkCasino"]
+
+[[require]]
+name = "dylean"
+git = "https://github.com/BobDyLean/dylean.git"
+rev = "cdf1401d5c245c1ac76778c3b5dbb2a7538abf29"
+
+[[lean_lib]]
+name = "ZkCasino"
