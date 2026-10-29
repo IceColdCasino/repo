@@ -1672,6 +1672,44 @@
       ]
     },
     {
+      "name": "close_table",
+      "docs": [
+        "Close an empty table and return its rent to the room operator.",
+        "The highest id shrinks table_count so the next open reuses it."
+      ],
+      "discriminator": [
+        149,
+        214,
+        44,
+        14,
+        190,
+        244,
+        132,
+        48
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "room",
+          "writable": true
+        },
+        {
+          "name": "table_state",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "table_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "credit_room_balance_callback",
       "discriminator": [
         187,
@@ -5657,11 +5695,21 @@
         },
         {
           "name": "total_action",
-          "type": "u64"
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         },
         {
           "name": "pool_gross_win",
-          "type": "u64"
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         },
         {
           "name": "player_payout",

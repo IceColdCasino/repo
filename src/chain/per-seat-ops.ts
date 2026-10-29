@@ -37,6 +37,7 @@ import {
   enrichSnapshotFromChain,
   enrichSnapshotFromHandComplete,
 } from './per-seat-chain-hand';
+import { remoteSeatSigner } from './seat-signer';
 import { getSharedMetaStore } from './shared-meta-store';
 import { listTableCatalog, selectSharedTable } from './table-catalog';
 import type { GameSnapshot } from '../backend/types';
@@ -96,6 +97,14 @@ export type PerSeatOpRequest = {
   roomIdHex?: string;
   tableId?: string;
 };
+
+function requireSeatKey(raw: number[] | string | undefined, label: string): Uint8Array | undefined {
+  if (raw !== undefined && raw !== null && !(Array.isArray(raw) && raw.length === 0) && raw !== '') {
+    return parseSecretKey(raw);
+  }
+  if (remoteSeatSigner()) return undefined;
+  throw new Error(`${label} requires a connected wallet`);
+}
 
 const PER_SEAT_READ_OPS = new Set([
   'snapshot',
@@ -175,24 +184,22 @@ export async function executePerSeatOp(req: PerSeatOpRequest): Promise<object> {
     return enrichGameSnapshot(snap, rpcUrl);
   }
   if (req.op === 'register' || req.op === 'registerHandKey') {
-    if (!req.secretKey) throw new Error('secretKey required for register');
     if (!req.proof || !req.publicSignals) {
       throw new Error('proof + publicSignals required for register');
     }
     return registerHandKeyPerSeat({
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'register'),
       proof: req.proof,
       publicSignals: req.publicSignals,
       rpcUrl,
     });
   }
   if (req.op === 'shuffle' || req.op === 'submitShuffle') {
-    if (!req.secretKey) throw new Error('secretKey required for shuffle');
     if (!req.proof || !req.publicSignals) {
       throw new Error('proof + publicSignals required for shuffle');
     }
     return shuffleHandKeyPerSeat({
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'shuffle'),
       proof: req.proof,
       publicSignals: req.publicSignals,
       shuffledDeck: req.shuffledDeck,
@@ -200,12 +207,11 @@ export async function executePerSeatOp(req: PerSeatOpRequest): Promise<object> {
     });
   }
   if (req.op === 'share' || req.op === 'submitShare') {
-    if (!req.secretKey) throw new Error('secretKey required for share');
     if (!req.proof || !req.publicSignals || !req.ciphertexts) {
       throw new Error('proof + publicSignals + ciphertexts required for share');
     }
     return shareHandKeyPerSeat({
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'share'),
       proof: req.proof,
       publicSignals: req.publicSignals,
       ciphertexts: req.ciphertexts,
@@ -213,27 +219,24 @@ export async function executePerSeatOp(req: PerSeatOpRequest): Promise<object> {
     });
   }
   if (req.op === 'showdownMaterials' || req.op === 'getShowdownMaterials') {
-    if (!req.secretKey) throw new Error('secretKey required for showdown materials');
     return getShowdownMaterialsPerSeat({
       seat: req.seat,
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'showdown materials'),
       rpcUrl,
     });
   }
   if (req.op === 'settleFold' || req.op === 'settleUncontestedFold') {
-    if (!req.secretKey) throw new Error('secretKey required for settleFold');
     return settleUncontestedFoldPerSeat({
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'settleFold'),
       rpcUrl,
     });
   }
   if (req.op === 'showdown' || req.op === 'submitShowdown') {
-    if (!req.secretKey) throw new Error('secretKey required for showdown');
     if (!req.proof || !req.publicSignals) {
       throw new Error('proof + publicSignals required for showdown');
     }
     return showdownHandKeyPerSeat({
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'showdown'),
       proof: req.proof,
       publicSignals: req.publicSignals,
       winnerMasks: req.winnerMasks,
@@ -257,57 +260,47 @@ export async function executePerSeatOp(req: PerSeatOpRequest): Promise<object> {
     return acknowledgeHolesPerSeat({ rpcUrl });
   }
   if (req.op === 'revealedPartials' || req.op === 'fetchRevealedPartials') {
-    if (!req.secretKey) throw new Error('secretKey required for fetchRevealedPartials');
     return fetchRevealedPartialsPerSeat({
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'fetchRevealedPartials'),
       seat: req.seat,
       rpcUrl,
     });
   }
   if (req.op === 'revealSealedPartials') {
-    if (!req.secretKey) throw new Error('secretKey required for reveal');
     const recipientIndex = req.recipientIndex ?? 0;
     const cardIndices = req.cardIndices ?? [];
     return revealSealedPartialsPerSeat({
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'reveal'),
       recipientIndex,
       cardIndices,
       rpcUrl,
     });
   }
   if (req.op === 'prepareShowdownMaterial') {
-    if (!req.secretKey) throw new Error('secretKey required for prepareShowdownMaterial');
     return prepareShowdownMaterialPerSeat({
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'prepareShowdownMaterial'),
       seat: req.seat,
       rpcUrl,
     });
   }
   if (req.op === 'expireBetTurn') {
-    if (!req.secretKey) throw new Error('secretKey required for expireBetTurn');
     return expireBettingTurnPerSeat({
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'expireBetTurn'),
       rpcUrl,
     });
   }
   if (req.op === 'action' || req.op === 'placeBet') {
-    if (!req.secretKey) throw new Error('secretKey required for placeBet');
     if (!req.action) throw new Error('action required');
     return placeBetPerSeat({
-      secretKey: parseSecretKey(req.secretKey),
+      secretKey: requireSeatKey(req.secretKey, 'placeBet'),
       action: req.action,
       amount: req.amount !== undefined ? BigInt(req.amount) : undefined,
       showOnFold: req.showOnFold,
       rpcUrl,
     });
   }
-  if (!req.secretKey && !PER_SEAT_READ_OPS.has(req.op)) {
-    throw new Error(
-      `op "${req.op}" requires secretKey (per-seat on-chain; no shared LocalnetTableSession)`,
-    );
-  }
   const client = await PerSeatClient.create(
-    parseSecretKey(req.secretKey ?? []),
+    requireSeatKey(req.secretKey, req.op),
     rpcUrl,
   );
   switch (req.op) {

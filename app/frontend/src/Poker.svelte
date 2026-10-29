@@ -120,6 +120,7 @@
     TABLE_BELOW_BAND_PX,
   } from './poker/card-hover-preview-layout';
   import { getActivePublicKey, getOrCreateLocalPublicKey, hydrateE2eWalletFromMeta, createNewLocalWallet, shortPublicKey } from './identity';
+  import { usesLocalSeatKey } from './identity/player-key';
   import { canBeginHand } from './poker/manual-start';
   import { MIN_SIT_CHIPS } from '@poker-src/chain/sit-minimum';
   import type { TableView, CardView } from './poker/view-model';
@@ -198,6 +199,10 @@
   let localSeat = $state<number | null>(null);
   let selectedSeat = $state('');
   let playerPublicKey = $state('');
+  let walletLabel = $state('');
+  let walletChoices = $state<{ name: string }[]>([]);
+  let walletMenuOpen = $state(false);
+  let stopWallets: (() => void) | undefined;
   let raiseAmount = $state(40);
   let addChipsAmount = $state(1000);
   let personalChips = $state(0);
@@ -2069,7 +2074,15 @@
         // plain text error
       }
       if (flow && activeSnapshot.phase === 'Share') {
-        if (
+        if (displayMessage.includes('last shuffle')) {
+          setTimeout(() => {
+            const latest = gameState;
+            if (latest?.phase === 'Share') {
+              void runZkHandIfMyTurn(latest);
+            }
+          }, 1000);
+          displayMessage = '';
+        } else if (
           displayMessage.includes('Partials already submitted')
           || displayMessage.includes('already submitted')
         ) {
@@ -3094,6 +3107,59 @@
     }
   }
 
+  function walletCluster(): 'devnet' | 'localnet' | 'any' {
+    if (backendKind === 'devnet') return 'devnet';
+    if (backendKind === 'solana') return 'localnet';
+    return 'any';
+  }
+
+  async function refreshConnectedWallet(): Promise<void> {
+    if (usesLocalSeatKey()) return;
+    const { connectedAddress, startWalletStandard } = await import('./identity/wallet-standard');
+    if (!stopWallets) {
+      stopWallets = startWalletStandard((next) => {
+        walletLabel = next.name;
+        playerPublicKey = next.address;
+      });
+    }
+    playerPublicKey = connectedAddress();
+  }
+
+  async function openWalletMenu(): Promise<void> {
+    const { listWalletChoices } = await import('./identity/wallet-standard');
+    const choices = listWalletChoices();
+    if (choices.length === 1 && choices[0]) {
+      await chooseWallet(choices[0].name);
+      return;
+    }
+    walletChoices = choices;
+    walletMenuOpen = true;
+    statusMessage = choices.length === 0
+      ? 'No Solana wallet is available in this browser.'
+      : '';
+  }
+
+  async function chooseWallet(name: string): Promise<void> {
+    const { connectWallet } = await import('./identity/wallet-standard');
+    try {
+      const next = await connectWallet(name, walletCluster());
+      playerPublicKey = next.address;
+      walletLabel = next.name;
+      walletMenuOpen = false;
+      statusMessage = '';
+    } catch (err) {
+      statusMessage = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function disconnectPlayerWallet(): Promise<void> {
+    const { disconnectWallet } = await import('./identity/wallet-standard');
+    await disconnectWallet();
+    playerPublicKey = '';
+    walletLabel = '';
+    walletMenuOpen = false;
+  }
+
   function switchBackend(kind: BackendKind) {
     disconnectTable();
     backendKind = kind;
@@ -3105,10 +3171,12 @@
     serverStatus = 'checking';
     refreshView();
     if (kind === 'local') {
-      playerPublicKey = getOrCreateLocalPublicKey();
+      if (usesLocalSeatKey()) playerPublicKey = getOrCreateLocalPublicKey();
+      else void refreshConnectedWallet();
       void connectServer();
     } else if (onChain(kind)) {
-      playerPublicKey = getOrCreateLocalPublicKey();
+      if (usesLocalSeatKey()) playerPublicKey = getOrCreateLocalPublicKey();
+      else void refreshConnectedWallet();
       void connectSolanaRpc();
     }
   }
@@ -3519,7 +3587,11 @@
     saveUiGameKind(gameKind);
     client = createClient(backendKind);
     if (backendKind === 'local' || onChain()) {
-      playerPublicKey = (await hydrateE2eWalletFromMeta()) || getOrCreateLocalPublicKey();
+      if (usesLocalSeatKey()) {
+        playerPublicKey = (await hydrateE2eWalletFromMeta()) || getOrCreateLocalPublicKey();
+      } else {
+        await refreshConnectedWallet();
+      }
     }
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -3707,6 +3779,7 @@
       void maybeAutoAdvanceStreet(gameState);
     }, 1000);
     return () => {
+      stopWallets?.();
       window.clearInterval(blindPostTimer);
       window.removeEventListener('resize', syncCompactNativeLayout);
       window.removeEventListener('e2e-sync-game', onE2eSyncGame);
@@ -3834,7 +3907,7 @@
         {/if}
       </button>
     {/if}
-    {#if backendKind === 'local' || onChain()}
+    {#if (backendKind === 'local' || onChain()) && usesLocalSeatKey()}
       <button
         type="button"
         data-testid="new-wallet"
@@ -3844,6 +3917,33 @@
       >
         New wallet
       </button>
+    {:else if backendKind === 'local' || onChain()}
+      {#if playerPublicKey}
+        <button
+          type="button"
+          data-testid="disconnect-wallet"
+          onclick={disconnectPlayerWallet}
+          disabled={busy || handInProgress}
+        >
+          Disconnect{walletLabel ? ` ${walletLabel}` : ''}
+        </button>
+      {:else}
+        <button
+          type="button"
+          data-testid="connect-wallet"
+          onclick={openWalletMenu}
+          disabled={busy}
+        >
+          Connect wallet
+        </button>
+      {/if}
+      {#if walletMenuOpen}
+        <div class="wallet-menu" data-testid="wallet-menu">
+          {#each walletChoices as choice (choice.name)}
+            <button type="button" onclick={() => chooseWallet(choice.name)}>{choice.name}</button>
+          {/each}
+        </div>
+      {/if}
     {/if}
     {#if playerPublicKey}
       <span class="player-id" data-testid="player-public-key" title={playerPublicKey}>
@@ -3940,7 +4040,7 @@
               fill="#4ade80"
               data-testid={`table-pot-${index}-winner-${payout.seat}`}
             >
-              → {payout.name} won {payout.amount}{payout.handDescription ? ` (${payout.handDescription})` : ''}
+              → {payout.name}{payout.handDescription ? ` (${payout.handDescription})` : ''}
             </text>
           {/each}
         {/if}
@@ -4299,6 +4399,12 @@
 
   .player-id {
     font-family: ui-monospace, monospace;
+  }
+
+  .wallet-menu {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .server-status {

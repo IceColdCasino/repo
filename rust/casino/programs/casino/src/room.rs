@@ -14,8 +14,8 @@ pub struct Room {
     pub vault: Pubkey,
     pub table_count: u64,
     pub small_blind_default: u64,
-    /// Poker flop rake in basis points. `0` takes nothing. `500` is 5%.
-    /// Applied only after a poker hand reaches the flop.
+    /// Poker rake in basis points. `0` takes nothing. `500` is 5%.
+    /// Charged on a post-flop fold to one player, or at showdown.
     pub rake_bps: u16,
     /// Whitelisted house that receives the rake into its own encrypted wallet.
     pub house: Pubkey,
@@ -213,6 +213,17 @@ pub fn table_bit(table_id: u64) -> Result<u64> {
     Ok(1u64 << table_id)
 }
 
+/// Closing the highest table id frees that slot for the next `create_table`.
+/// A hole below the highest id stays in `table_count` so a later open does not
+/// collide with a table that is still there.
+pub fn table_count_after_close(closed_id: u64, table_count: u64) -> u64 {
+    if closed_id.saturating_add(1) == table_count {
+        closed_id
+    } else {
+        table_count
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,5 +272,13 @@ mod tests {
             table.refresh_pending_order();
             assert!(table.snapshot_hand([3u8; 32]).is_ok());
         }
+    }
+
+    #[test]
+    fn closing_the_highest_table_reuses_its_id() {
+        assert_eq!(super::table_count_after_close(0, 1), 0);
+        assert_eq!(super::table_count_after_close(2, 3), 2);
+        assert_eq!(super::table_count_after_close(0, 3), 3);
+        assert_eq!(super::table_count_after_close(1, 3), 3);
     }
 }

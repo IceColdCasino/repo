@@ -36,6 +36,7 @@ import { assertRpcReady } from './localnet-ready';
 import { loadLightCasinoProgram, loadCasinoProgram } from './program-loader';
 import { loadWhitelistAdminProvider } from './admin-provider';
 import { KeypairWallet } from './keypair-wallet';
+import { resolveSeatAuthority, seatProvider, type SeatAuthority } from './seat-signer';
 import { getSharedMetaStore, readSharedMeta, writeSharedMeta } from './shared-meta-store';
 import { postPlayerShareStake, releasePlayerShareStake } from './share-stake';
 import {
@@ -1273,7 +1274,7 @@ export type PerSeatRegisterResult = {
 
 /** Submit client-proven register receipt; authority = seat keypair. */
 export async function registerHandKeyPerSeat(opts: {
-  secretKey: Uint8Array;
+  secretKey?: Uint8Array;
   proof: object;
   publicSignals: string[];
   rpcUrl?: string;
@@ -1286,7 +1287,7 @@ export async function registerHandKeyPerSeat(opts: {
       `Cannot register: on-chain phase=${hand.phase} (want Register=${PROOF_PHASE_REGISTER})`,
     );
   }
-  const keypair = web3.Keypair.fromSecretKey(opts.secretKey);
+  const keypair = resolveSeatAuthority(opts.secretKey);
   const playerIndex = hand.playerPubkeys.indexOf(keypair.publicKey.toBase58());
   if (playerIndex < 0) {
     throw new Error(
@@ -1299,9 +1300,7 @@ export async function registerHandKeyPerSeat(opts: {
   }
 
   const connection = new web3.Connection(rpcUrl, 'confirmed');
-  const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-    commitment: 'confirmed',
-  });
+  const provider = seatProvider(connection, keypair);
   const pokerProgram = loadCasinoProgram(provider);
   const lightPoker = loadLightCasinoProgram(provider);
   const lifecycle = new OnchainGameLifecycle(
@@ -1382,7 +1381,7 @@ export type PerSeatBetResult = {
 
 /** Rescue-encrypt + submit_bet signed by seat keypair; wait for turn advance. */
 export async function placeBetPerSeat(opts: {
-  secretKey: Uint8Array;
+  secretKey?: Uint8Array;
   action: string;
   amount?: bigint;
   showOnFold?: boolean;
@@ -1401,9 +1400,7 @@ export async function placeBetPerSeat(opts: {
   const tableKey = await requireTableKey(gameId);
 
   const connection = new web3.Connection(rpcUrl, 'confirmed');
-  const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-    commitment: 'confirmed',
-  });
+  const provider = seatProvider(connection, keypair);
   const pokerProgram = loadCasinoProgram(provider);
   const room = openPokerRoom(
     pokerProgram,
@@ -1595,15 +1592,13 @@ export async function placeBetPerSeat(opts: {
 
 /** Fold the player who missed the one-minute decision window. */
 export async function expireBettingTurnPerSeat(opts: {
-  secretKey: Uint8Array;
+  secretKey?: Uint8Array;
   rpcUrl?: string;
 }): Promise<{ expired: boolean }> {
   const rpcUrl = opts.rpcUrl ?? LOCALNET_RPC_URL;
   const { hand, keypair, gameId } = await seatContext(opts.secretKey, rpcUrl);
   const connection = new web3.Connection(rpcUrl, 'confirmed');
-  const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-    commitment: 'confirmed',
-  });
+  const provider = seatProvider(connection, keypair);
   const pokerProgram = loadCasinoProgram(provider);
   const gamePda = gameStatePda(pokerProgram.programId, gameId);
   const info = await connection.getAccountInfo(gamePda);
@@ -1678,16 +1673,16 @@ async function identityDeck(): Promise<bigint[][]> {
   }
 }
 
-async function seatContext(secretKey: Uint8Array, rpcUrl: string): Promise<{
+async function seatContext(secretKey: Uint8Array | undefined, rpcUrl: string): Promise<{
   hand: ActiveHandContext;
-  keypair: web3.Keypair;
+  keypair: SeatAuthority;
   playerIndex: number;
   gameId: Uint8Array;
   /** Optional legacy meta (tableKey / share-ct). May be null. */
   meta: SharedHandMeta | null;
 }> {
   const hand = await resolveActiveHandFromChain(rpcUrl);
-  const keypair = web3.Keypair.fromSecretKey(secretKey);
+  const keypair = resolveSeatAuthority(secretKey);
   const playerIndex = hand.playerPubkeys.indexOf(keypair.publicKey.toBase58());
   if (playerIndex < 0) {
     throw new Error(`Pubkey ${keypair.publicKey.toBase58()} not in on-chain hand`);
@@ -1781,7 +1776,7 @@ async function pokerShareFinalHash(
 
 /** Submit client-proven shuffle; seat keypair is the light-casino signer. */
 export async function shuffleHandKeyPerSeat(opts: {
-  secretKey: Uint8Array;
+  secretKey?: Uint8Array;
   proof: object;
   publicSignals: string[];
   /** Output deck from the shuffle proof. On-chain public inputs are this shoe. */
@@ -1819,9 +1814,7 @@ export async function shuffleHandKeyPerSeat(opts: {
     );
   });
   await stagePokerSeatFloat(connection, keypair.publicKey);
-  const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-    commitment: 'confirmed',
-  });
+  const provider = seatProvider(connection, keypair);
   const pokerProgram = loadCasinoProgram(provider);
   const lightPoker = loadLightCasinoProgram(provider);
   const lifecycle = new OnchainGameLifecycle(lightPoker, provider, gameId, pokerProgram);
@@ -1877,7 +1870,7 @@ export type PerSeatShareResult = {
  * Ciphertexts persisted under `.local/` for 2p reveal staging.
  */
 export async function shareHandKeyPerSeat(opts: {
-  secretKey: Uint8Array;
+  secretKey?: Uint8Array;
   proof: object;
   publicSignals: string[];
   /** Recipient-major ciphertexts as string[][][] (JSON) or bigint[][][]. */
@@ -1922,9 +1915,7 @@ export async function shareHandKeyPerSeat(opts: {
   shareStep('share bond posted');
   await stagePokerSeatFloat(connection, keypair.publicKey);
   shareStep('seat float staged');
-  const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-    commitment: 'confirmed',
-  });
+  const provider = seatProvider(connection, keypair);
   const pokerProgram = loadCasinoProgram(provider);
   const lightPoker = loadLightCasinoProgram(provider);
   const lifecycle = new OnchainGameLifecycle(lightPoker, provider, gameId, pokerProgram);
@@ -1939,7 +1930,7 @@ export async function shareHandKeyPerSeat(opts: {
   // Provider wallet is the seated player; tableState is required for writes.
   staging.writeAuth = {
     tableState: room.tablePDA(BigInt(hand.tableId)),
-    authority: keypair,
+    ...(keypair instanceof web3.Keypair ? { authority: keypair } : {}),
   };
   // Same random key the host minted at startHand (hydrated from mpc-table-key).
   const tableKey = await requireTableKey(gameId);
@@ -2261,10 +2252,7 @@ export async function getShowdownMaterialsPerSeat(opts: {
   const rpcUrl = opts.rpcUrl ?? LOCALNET_RPC_URL;
   const hand = await resolveActiveHandFromChain(rpcUrl);
   const n = hand.numPlayers;
-  if (!opts.secretKey) {
-    throw new Error('secretKey required for showdown materials');
-  }
-  const keypair = web3.Keypair.fromSecretKey(opts.secretKey);
+  const keypair = resolveSeatAuthority(opts.secretKey);
   const playerIndex = hand.playerPubkeys.indexOf(keypair.publicKey.toBase58());
   if (playerIndex < 0) {
     throw new Error('Showdown material signer is not in the active hand');
@@ -2282,9 +2270,7 @@ export async function getShowdownMaterialsPerSeat(opts: {
   const inflight = showdownPrepareInflight.get(prepareKey);
   if (inflight) {
     const connection = new web3.Connection(rpcUrl, 'confirmed');
-    const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-      commitment: 'confirmed',
-    });
+    const provider = seatProvider(connection, keypair);
     const materialComplete = await readShowdownMaterialComplete(
       connection,
       new ArciumMPCHelper(loadCasinoProgram(provider), provider),
@@ -2302,9 +2288,7 @@ export async function getShowdownMaterialsPerSeat(opts: {
     connection,
   });
   void sealPromise.catch(() => undefined);
-  const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-    commitment: 'confirmed',
-  });
+  const provider = seatProvider(connection, keypair);
   const pokerProgram = loadCasinoProgram(provider);
   const lightProgram = loadLightCasinoProgram(provider);
   const arcium = new ArciumMPCHelper(pokerProgram, provider);
@@ -2395,7 +2379,7 @@ function nonZeroCiphertexts(value: unknown): boolean {
 async function sealShowdownCoefficientsForPerSeat(opts: {
   gameId: Uint8Array;
   playerIndex: number;
-  authority: web3.Keypair;
+  authority: SeatAuthority;
   tableState: web3.PublicKey;
   provider: AnchorProvider;
   pokerProgram: Program;
@@ -2576,14 +2560,12 @@ function holdSealJob(owner: string): { finish: () => void } | null {
   return { finish };
 }
 
-function openPlayerChain(authority: web3.Keypair, connection: web3.Connection): {
+function openPlayerChain(authority: SeatAuthority, connection: web3.Connection): {
   provider: AnchorProvider;
   pokerProgram: Program;
   arcium: ArciumMPCHelper;
 } {
-  const provider = new AnchorProvider(connection, new KeypairWallet(authority), {
-    commitment: 'confirmed',
-  });
+  const provider = seatProvider(connection, authority);
   const pokerProgram = loadCasinoProgram(provider);
   return {
     provider,
@@ -2678,7 +2660,7 @@ async function handIsOpen(
 async function sealFreshShowdownCoefficients(opts: {
   hand: ActiveHandContext;
   playerIndex: number;
-  authority: web3.Keypair;
+  authority: SeatAuthority;
   connection: web3.Connection;
   bindToHand: boolean;
 }): Promise<void> {
@@ -2707,7 +2689,7 @@ async function sealFreshShowdownCoefficients(opts: {
 async function ensureShowdownSealForHand(opts: {
   hand: ActiveHandContext;
   playerIndex: number;
-  authority: web3.Keypair;
+  authority: SeatAuthority;
   connection: web3.Connection;
 }): Promise<string[]> {
   const owner = opts.authority.publicKey.toBase58();
@@ -2769,7 +2751,7 @@ async function ensureShowdownSealForHand(opts: {
 async function replenishConsumedShowdownSeal(opts: {
   hand: ActiveHandContext;
   playerIndex: number;
-  authority: web3.Keypair;
+  authority: SeatAuthority;
   connection: web3.Connection;
 }): Promise<void> {
   const owner = opts.authority.publicKey.toBase58();
@@ -3006,7 +2988,7 @@ function resolveWinnerMasksForComplete(
 async function closeRetainedRevealedCardsPerSeat(opts: {
   hand: ActiveHandContext;
   playerIndex: number;
-  authority: web3.Keypair;
+  authority: SeatAuthority;
   provider: AnchorProvider;
   pokerProgram: Program;
 }): Promise<void> {
@@ -3035,7 +3017,7 @@ async function closeRetainedRevealedCardsPerSeat(opts: {
 async function settleShowdownPotsPerSeat(opts: {
   hand: ActiveHandContext;
   playerIndex: number;
-  authority: web3.Keypair;
+  authority: SeatAuthority;
   provider: AnchorProvider;
   pokerProgram: Program;
   winnerMasks?: bigint[] | null;
@@ -3062,16 +3044,11 @@ async function settleShowdownPotsPerSeat(opts: {
   const sealKey = loadShowdownSealKey(hand.gameIdHex, playerIndex);
   if (!masks || !masks.some((mask) => mask !== 0n) || !sealKey) {
     console.warn(
-      `[per-seat] skip compute_pots p${playerIndex}: `
+      `[per-seat] skip distribute_and_settle p${playerIndex}: `
       + `masks=${Boolean(masks)} key=${Boolean(sealKey)}`,
     );
     return;
   }
-  const room = openPokerRoom(
-    pokerProgram,
-    provider,
-    hand.roomSeed || LOCALNET_SHARED_ROOM_SEED,
-  );
   const enc = await encryptWinnerMasksWithSealedKey(
     sealKey,
     provider,
@@ -3080,17 +3057,39 @@ async function settleShowdownPotsPerSeat(opts: {
   );
   const arcium = new ArciumMPCHelper(pokerProgram, provider);
   const polling = new ArciumPollingHelper(provider);
-  logHandProgress(`Showdown tx: compute_pots sending (seat player ${playerIndex})`);
-  await arcium.computePots(
-    hand.gameId,
-    nextOffset(),
-    enc.ciphertexts,
-    enc.encryptionPubkey,
-    enc.nonce,
-    room.tablePDA(hand.tableId),
-    authority.publicKey,
-  );
-  logHandProgress(`Showdown tx: compute_pots queued; waiting for callback (seat player ${playerIndex})`);
+  const folded = Number(state.foldedMask ?? state.folded_mask ?? 0);
+  const n = Number(state.numPlayers ?? state.num_players ?? hand.numPlayers);
+  const live: number[] = [];
+  for (let seat = 0; seat < n; seat += 1) {
+    if ((folded & (1 << seat)) === 0) live.push(seat);
+  }
+  live.sort((a, b) => {
+    const won = (seat: number) => masks.some((mask) => (mask & (1n << BigInt(seat))) !== 0n);
+    return Number(won(b)) - Number(won(a));
+  });
+  logHandProgress(`Showdown tx: distribute_and_settle sending (seat player ${playerIndex})`);
+  for (const seat of live) {
+    const current = await (pokerProgram.account as any).gameState.fetch(gamePda);
+    if (Number(current.phase ?? 0) >= 6) break;
+    try {
+      await arcium.distributeAndSettle(
+        hand.gameId,
+        nextOffset(),
+        enc.ciphertexts,
+        enc.encryptionPubkey,
+        enc.nonce,
+        seat,
+        authority.publicKey,
+      );
+    } catch (err) {
+      const after = await (pokerProgram.account as any).gameState.fetch(gamePda).catch(() => null);
+      if (Number(after?.phase ?? 0) >= 6) break;
+      const message = err instanceof Error ? err.message : String(err);
+      if (/consumed|InvalidSealed|InvalidGamePhase|already been processed/i.test(message)) break;
+      throw err;
+    }
+  }
+  logHandProgress(`Showdown tx: distribute_and_settle queued; waiting for callback (seat player ${playerIndex})`);
   // The queue instruction already marked this seal consumed. Stock the next
   // pair while the callback is in flight, before end_hand closes the hand.
   void replenishConsumedShowdownSeal({
@@ -3105,7 +3104,7 @@ async function settleShowdownPotsPerSeat(opts: {
     6,
     { timeout: 180_000, interval: 2_000 },
   );
-  logHandProgress(`Showdown tx: compute_pots callback landed (seat player ${playerIndex})`);
+  logHandProgress(`Showdown tx: distribute_and_settle callback landed (seat player ${playerIndex})`);
   await closeRetainedRevealedCardsPerSeat({
     hand,
     playerIndex,
@@ -3222,7 +3221,7 @@ async function payClosedUncontestedFold(opts: {
   room: PokerRoomLifecycle;
   pokerProgram: Program;
   tableId: bigint;
-  keypair: web3.Keypair;
+  keypair: SeatAuthority;
   playerIndex: number;
   rpcUrl: string;
 }): Promise<{ ok: true; settled: boolean; contested: boolean; phase?: 'Complete' }> {
@@ -3264,7 +3263,7 @@ async function payClosedUncontestedFold(opts: {
 }
 
 export async function settleUncontestedFoldPerSeat(opts: {
-  secretKey: Uint8Array;
+  secretKey?: Uint8Array;
   rpcUrl?: string;
 }): Promise<{ ok: true; settled: boolean; contested: boolean; phase?: 'Complete' }> {
   const rpcUrl = opts.rpcUrl ?? LOCALNET_RPC_URL;
@@ -3398,7 +3397,7 @@ export async function settleUncontestedFoldPerSeat(opts: {
 }
 
 export async function showdownHandKeyPerSeat(opts: {
-  secretKey: Uint8Array;
+  secretKey?: Uint8Array;
   proof: object;
   publicSignals: string[];
   winnerMasks?: Array<string | bigint | number>;
@@ -3457,9 +3456,7 @@ export async function showdownHandKeyPerSeat(opts: {
     );
   } else if (!alreadyFinalized) {
     const connection = new web3.Connection(rpcUrl, 'confirmed');
-    const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-      commitment: 'confirmed',
-    });
+    const provider = seatProvider(connection, keypair);
     const pokerProgram = loadCasinoProgram(provider);
     const lightPoker = loadLightCasinoProgram(provider);
     const lifecycle = new OnchainGameLifecycle(lightPoker, provider, gameId, pokerProgram);
@@ -3789,13 +3786,13 @@ async function buildRevealSnapshotFromRevealedCards(opts: {
  * from persisted share matrices when Arcis has not published those PDAs yet.
  */
 export async function fetchRevealedPartialsPerSeat(opts: {
-  secretKey: Uint8Array;
+  secretKey?: Uint8Array;
   seat?: number;
   rpcUrl?: string;
 }): Promise<ZkRevealSnapshot> {
   const rpcUrl = opts.rpcUrl ?? LOCALNET_RPC_URL;
   const hand = await resolveActiveHandFromChain(rpcUrl);
-  const keypair = web3.Keypair.fromSecretKey(opts.secretKey);
+  const keypair = resolveSeatAuthority(opts.secretKey);
   const viewerIndex = hand.playerPubkeys.indexOf(keypair.publicKey.toBase58());
   if (viewerIndex < 0) {
     throw new Error('Pubkey not in on-chain hand for fetchRevealedPartials');
@@ -3805,9 +3802,7 @@ export async function fetchRevealedPartialsPerSeat(opts: {
   }
 
   const connection = new web3.Connection(rpcUrl, 'confirmed');
-  const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-    commitment: 'confirmed',
-  });
+  const provider = seatProvider(connection, keypair);
   const pokerProgram = loadCasinoProgram(provider);
   const gameState = await (pokerProgram.account as any).gameState.fetch(
     gameStatePda(pokerProgram.programId, hand.gameId),
@@ -3850,7 +3845,7 @@ export async function fetchRevealedPartialsPerSeat(opts: {
 async function stageCardMajorRevealStagingPerSeat(opts: {
   hand: ActiveHandContext;
   gameId: Uint8Array;
-  keypair: web3.Keypair;
+  keypair: SeatAuthority;
   provider: AnchorProvider;
   pokerProgram: Program;
   tableKey: import('../bet-encryption').TableEncryptionKey;
@@ -3897,7 +3892,7 @@ async function stageCardMajorRevealStagingPerSeat(opts: {
   );
   staging.writeAuth = {
     tableState: room.tablePDA(hand.tableId),
-    authority: keypair,
+    ...(keypair instanceof web3.Keypair ? { authority: keypair } : {}),
   };
   const stagingPda = staging.derivePDA(gameId);
   const existingStaging = await provider.connection.getAccountInfo(stagingPda, 'confirmed');
@@ -3923,7 +3918,7 @@ async function stageCardMajorRevealStagingPerSeat(opts: {
  * reveal_card cannot decrypt empty staging.
  */
 export async function revealSealedPartialsPerSeat(opts: {
-  secretKey: Uint8Array;
+  secretKey?: Uint8Array;
   recipientIndex: number;
   cardIndices: number[];
   rpcUrl?: string;
@@ -3931,9 +3926,7 @@ export async function revealSealedPartialsPerSeat(opts: {
   const rpcUrl = opts.rpcUrl ?? LOCALNET_RPC_URL;
   const { hand, keypair, gameId, playerIndex } = await seatContext(opts.secretKey, rpcUrl);
   const connection = new web3.Connection(rpcUrl, 'confirmed');
-  const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-    commitment: 'confirmed',
-  });
+  const provider = seatProvider(connection, keypair);
   const pokerProgram = loadCasinoProgram(provider);
   const lightProgram = loadLightCasinoProgram(provider);
   const light = new LightProtocolStorageHelper(lightProgram, provider);
@@ -4045,7 +4038,7 @@ export async function revealSealedPartialsPerSeat(opts: {
  * `verifyShowdown`. Must not run in WKWebView (Arcis reveal_card).
  */
 export async function prepareShowdownMaterialPerSeat(opts: {
-  secretKey: Uint8Array;
+  secretKey?: Uint8Array;
   seat?: number;
   rpcUrl?: string;
 }): Promise<{ ok: true; playerIndex: number; cards: number[]; alreadyComplete: boolean }> {
@@ -4055,9 +4048,7 @@ export async function prepareShowdownMaterialPerSeat(opts: {
     throw new Error('prepareShowdownMaterial seat does not match signer');
   }
   const connection = new web3.Connection(rpcUrl, 'confirmed');
-  const provider = new AnchorProvider(connection, new KeypairWallet(keypair), {
-    commitment: 'confirmed',
-  });
+  const provider = seatProvider(connection, keypair);
   const pokerProgram = loadCasinoProgram(provider);
   const arcium = new ArciumMPCHelper(pokerProgram, provider);
   if (await readShowdownMaterialComplete(connection, arcium, gameId, playerIndex)) {

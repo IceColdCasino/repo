@@ -47,7 +47,7 @@ opened 20 this many times.”
 
 | Public | Private |
 |--------|---------|
-| `hash`, `(hitCount+1)·c0 + c1`, Groth16 proof | `sk`, 20 draws, chosen spots, 14 coefficients, seal commitment |
+| `hash`, `(hitCount+1)·c0 + c1`, Groth16 proof | `sk`, 20 draws, chosen spots, 2 coefficients, seal commitment |
 
 `hash` is `Poseidon(keys, playerIndex, ciphertextHash, betHash, nActualBets, sealCommitment)`. The showdown template checks that equality.
 

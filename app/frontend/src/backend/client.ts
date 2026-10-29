@@ -1,7 +1,7 @@
 export type BackendKind = 'local' | 'solana' | 'devnet';
 
 import { Connection } from '@solana/web3.js';
-import { getLocalSecretKeyBytes } from '../identity/player-key';
+import { getLocalSecretKeyBytes, usesLocalSeatKey } from '../identity/player-key';
 import { resolveApiBase } from '../server/runtime';
 import {
   ActionKind,
@@ -1282,9 +1282,15 @@ export class SolanaPokerClient implements PokerClient {
     http?: { method?: string; path: string; jsonBody?: unknown },
   ): Promise<T> {
     if (this.useBridge) {
-      const withKey = SEATING_OPS.has(op)
-        ? { ...body, secretKey: getLocalSecretKeyBytes() }
-        : body;
+      let withKey = body;
+      if (SEATING_OPS.has(op)) {
+        if (usesLocalSeatKey()) {
+          withKey = { ...body, secretKey: getLocalSecretKeyBytes() };
+        } else {
+          const { installConnectedSigner } = await import('../identity/wallet-standard');
+          installConnectedSigner();
+        }
+      }
       const { invokeSolanaOp } = await import('./solana-bridge');
       const result = await invokeSolanaOp<T>({ op, ...withKey });
       if (result && typeof result === 'object' && 'gameId' in result) {

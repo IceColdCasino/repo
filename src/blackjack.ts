@@ -270,23 +270,12 @@ export function flattenOutcomes(outcomes: HandOutcome[][]): HandOutcome[] {
   return flat;
 }
 
-/// h = sum((outcome[i] + 1) * coefficients[i]) — matches ShowdownHashOut in circom.
+/// `(outcome + 1) * c0 + c1`. Matches `SealedShowdownHash(2)` with the second limb held at 0.
 export function computeOutcomesPolynomialHash(
-  outcomes: HandOutcome[],
-  coefficients: bigint[],
+  outcome: HandOutcome | bigint,
+  coefficients: readonly bigint[],
 ): bigint {
-  if (outcomes.length !== OUTCOME_COUNT) {
-    throw new Error(`Expected ${OUTCOME_COUNT} outcomes, got ${outcomes.length}`);
-  }
-  if (coefficients.length !== OUTCOME_COUNT) {
-    throw new Error(`Expected ${OUTCOME_COUNT} coefficients, got ${coefficients.length}`);
-  }
-
-  let hash = 0n;
-  for (let i = 0; i < OUTCOME_COUNT; i++) {
-    hash += (BigInt(outcomes[i]!) + 1n) * coefficients[i]!;
-  }
-  return hash;
+  return showdownTwoCoeffHash(BigInt(outcome), coefficients);
 }
 
 export class Blackjack extends ZkCrypto {
@@ -489,12 +478,12 @@ export class Blackjack extends ZkCrypto {
     return this.share(ciphertext, publicKeys, privateKey, randomness);
   }
 
-  computeShowdownOutputHash(outcomes: HandOutcome[], coefficients: bigint[]): bigint {
-    return computeOutcomesPolynomialHash(outcomes, coefficients);
+  computeShowdownOutputHash(outcome: HandOutcome | bigint, coefficients: readonly bigint[]): bigint {
+    return computeOutcomesPolynomialHash(outcome, coefficients);
   }
 
   computePlayerShowdownOutputHash(outcome: HandOutcome, coefficients: readonly bigint[]): bigint {
-    return showdownTwoCoeffHash(BigInt(outcome), coefficients);
+    return computeOutcomesPolynomialHash(outcome, coefficients);
   }
 
   /**
@@ -522,10 +511,11 @@ export class Blackjack extends ZkCrypto {
   }
 
   generateShowdownCoefficients(): bigint[] {
+    const top = 1n << 127n;
     const coefficients: bigint[] = [];
-    for (let i = 0; i < OUTCOME_COUNT; i++) {
+    for (let i = 0; i < 2; i++) {
       let coeff = this.getRandom(128);
-      while (coeff === 0n) coeff = this.getRandom(128);
+      if (coeff < top) coeff |= top;
       coefficients.push(coeff);
     }
     return coefficients;

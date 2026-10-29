@@ -48,6 +48,8 @@ pub struct InitProtocolTreasury<'info> {
 pub struct CasinoSettlementEvent {
     pub room_id: [u8; 32],
     pub table_id: u64,
+    /// Always 0. The hand's protocol fee is not published.
     pub protocol_commission: u64,
+    /// Always 0. The action that produced the fee is not published.
     pub total_action: u64,
 }

@@ -176,8 +176,9 @@ pub const POKER_RAKE_BPS_DENOM: u128 = 10_000;
 
 /// Arcis `credit_poker_rake` uses this formula.
 ///
-/// Rake is `floor(pot_total * rake_bps / 10_000)` after the flop. A room rate
-/// of 0, or a hand that never reaches the flop, takes nothing.
+/// Rake is `floor(pot_total * rake_bps / 10_000)` once the hand is post-flop.
+/// The hand charges it when a fold leaves one player, or when showdown opens.
+/// A room rate of 0, or a hand that never reaches the flop, takes nothing.
 pub fn poker_rake_lamports(pot_total: u64, rake_bps: u16, reached_flop: bool) -> u64 {
     if !reached_flop || rake_bps == 0 || pot_total == 0 {
         return 0;
@@ -367,7 +368,7 @@ pub fn winner_masks_accepted(winner_masks: &[u64; 9], pot_eligible_masks: &[u16;
     })
 }
 
-/// Plaintext mirror of fused Arcis `compute_pots`: verify poly hash, then pay.
+/// Plaintext mirror of Arcis `settle_all_seats`: verify poly hash, then pay.
 ///
 /// On mismatch returns zero payouts and `false` (callback must reject).
 pub fn fused_verify_and_distribute_pots(

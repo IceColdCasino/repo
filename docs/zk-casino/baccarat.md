@@ -25,10 +25,12 @@ Share’s public output is `Poseidon(4)` of the player hand, the banker hand,
 the player third, and the banker third. Showdown decrypts six cards, applies
 the tableau, and publishes `(winner + 1) · c0 + c1`.
 
-There is no house seat. The bankroll is still the dealer pool: `start_hand`
-requires it, and coverage is `bet_unit × seats`. A pool win pays the 500 bps
-banker commission; action collection is 100 bps. See
-[on-chain](../on-chain.md#dealer-pool).
+The last seat of a full table (index 11) is the house. It shuffles and does
+not bet. The banker in the winner code is the card side. The bankroll is
+the dealer pool: `start_hand` requires it, and coverage is
+`bet_unit × seats`. A pool win debits the 500 bps banker commission inside
+the pool ciphertext; action collection is 100 bps. The fee is not written
+to `ProtocolTreasury`. See [on-chain](../on-chain.md#dealer-pool).
 
 ## Unique ZK
 
@@ -45,7 +47,7 @@ still encrypted positions in the deal window and must match `P(v)`).
 
 | Public | Private |
 |--------|---------|
-| `hash`, `(winner+1)·c0 + c1`, Groth16 proof | `sk`, six faces, tableau intermediates, 14 coefficients, seal commitment |
+| `hash`, `(winner+1)·c0 + c1`, Groth16 proof | `sk`, six faces, tableau intermediates, 2 coefficients, seal commitment |
 
 `hash` is `Poseidon(keys, playerIndex, ciphertextHash, sealCommitment)`. The showdown template checks that equality.
 

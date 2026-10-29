@@ -54,9 +54,9 @@ through even-money 1:1; `0` / `00` lose even-money bets.
 
 | Public | Private |
 |--------|---------|
-| `hash`, the 12-term sum, Groth16 proof | `sk`, winning pocket, bet types/modifiers, 14 coefficients, seal commitment |
+| `hash`, `(packed + 1) · c0 + c1`, Groth16 proof | `sk`, winning pocket, bet types/modifiers, 2 coefficients, seal commitment |
 
-`hash` is `Poseidon(keys, playerIndex, ciphertextHash, betHash, nActualBets, sealCommitment)`. The showdown template checks that equality. The last two sealed coefficients are not in the sum.
+`hash` is `Poseidon(keys, playerIndex, ciphertextHash, betHash, nActualBets, sealCommitment)`. The showdown template checks that equality. `packed` is `Σ code_i · 36^i` over the twelve bet classes. The second result is `0`.
 
 ## Entrypoints
 

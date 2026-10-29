@@ -253,9 +253,10 @@ mod circuits {
     /// that batch. A card row is still 36 limbs; the chain queues one job per
     /// 4-limb slice.
     ///
-    /// Returns `(values[4], dest_offset, count)` — first `count` entries are
-    /// BE commitment bytes, written by the callback into
-    /// `RevealedCard.partials[dest_offset..]`.
+    /// Returns `(values[4], dest_offset, count)`. The first `count` entries are
+    /// `to_le_bytes` of the opened limbs. Reversing them here is a general
+    /// circuit; `to_le_bytes` is one builtin. The callback stores the
+    /// big-endian commitment, which is what the street hash was computed on.
     ///
     /// Output is capped at 4 limbs so the on-chain callback stays under Arx's
     /// ~800k CU signature-verify budget.
@@ -273,12 +274,7 @@ mod circuits {
         let mut values = [[0u8; 32]; 4];
         for j in 0..4 {
             if j < n {
-                let le = decrypted[j].to_le_bytes();
-                let mut be = [0u8; 32];
-                for i in 0..32 {
-                    be[i] = le[31 - i];
-                }
-                values[j] = be;
+                values[j] = decrypted[j].to_le_bytes();
             }
         }
 
@@ -291,91 +287,69 @@ mod circuits {
         [c0, c1]
     }
 
-    /// Fused showdown verify + pot distribution (share-phase Arcis analog).
+    /// Groth16 `showdown_hash` over the sealed coefficients and winner masks.
     ///
-    /// Share opens staged ciphertexts (`verify_deck_hash_chunk`) before reveal.
-    /// Showdown has no later phase: after Groth16 latches `showdown_hash`, this
-    /// single MPC job both (1) recomputes the sealed-coeff poly hash over
-    /// Rescue-encrypted winner bitmasks and (2) distributes pots iff it matches.
-    ///
-    /// Do not split into a separate verify-only CompDef.
-    ///
-    /// Inputs (encrypted):
-    ///   - winner_masks: Rescue-encrypted [u64; 9] player-index bitmasks per pot
-    ///   - coeff0..coeff1: two Enc<Shared, u128> seal slots (on-chain, from
-    ///     the seal PDA). Each uses nonce + slot. The nine masks pack into coeff0.
-    ///
-    /// Inputs (public):
-    ///   - expected_hash_low / expected_hash_high: LE u128 halves of Groth16
-    ///     `showdown_hash` (BE field bytes reversed → LE limbs)
-    ///   - num_players: u8
-    ///   - pot_eligible_masks: [u16; 9] chain pot masks. Each winner mask
-    ///     must be a 10-bit subset of the matching mask.
-    ///   - pot_amounts: [u64; 9]
-    ///
-    /// Hash in BaseField25519: h = (packed + 1) * coeff0 + coeff1, where
+    /// h = (packed + 1) * coeff0 + coeff1 in BaseField25519, where
     /// packed = Σ active_mask[i] * 1024^i and active_mask keeps bits
-    /// `0..num_players` (NOT wrapping u128).
-    /// A mask that is not a 10-bit subset of its pot fails closed.
-    /// On hash mismatch: payouts are all-zero and `hash_matches` is false (callback rejects).
-    #[instruction]
-    pub fn compute_pots(
-        winner_masks: Enc<Shared, [u64; 9]>,
-        coeff0: Enc<Shared, u128>,
-        coeff1: Enc<Shared, u128>,
+    /// `0..num_players`. A mask that is not a 10-bit subset of its pot fails.
+    fn showdown_hash_matches(
+        masks: [u64; 9],
+        coeffs: [u128; 2],
         expected_hash_low: u128,
         expected_hash_high: u128,
         num_players: u8,
         pot_eligible_masks: [u16; 9],
+    ) -> bool {
+        winner_masks_accepted(masks, pot_eligible_masks)
+            && showdown_poly_hash_field(masks, coeffs, num_players)
+                == field_from_u128_halves(expected_hash_low, expected_hash_high)
+    }
+
+    /// Add each pot's share onto the encrypted seat balances.
+    ///
+    /// Odd chips go to the lowest seat index in that pot. Seats at or past
+    /// `num_players` stay unchanged. The amounts stay inside MPC.
+    fn credit_showdown_shares(
+        starting: [u64; 10],
+        masks: [u64; 9],
+        num_players: u8,
         pot_amounts: [u64; 9],
-    ) -> ([u64; 10], bool) {
-        let masks = winner_masks.to_arcis();
-        let coeffs = poker_sealed_coeffs(coeff0.to_arcis(), coeff1.to_arcis());
-        let pots = pot_amounts;
-
-        let recomputed = showdown_poly_hash_field(masks, coeffs, num_players);
-        let expected = field_from_u128_halves(expected_hash_low, expected_hash_high);
-        let hash_matches = winner_masks_accepted(masks, pot_eligible_masks)
-            && recomputed == expected;
-
-        let mut payouts = [0u64; 10];
-        if hash_matches {
-            for pot_idx in 0..9 {
-                let mask = active_winner_mask(masks[pot_idx], num_players);
-                let mut winner_count = 0u64;
+    ) -> [u64; 10] {
+        let mut balances = starting;
+        for pot_idx in 0..9 {
+            let mask = active_winner_mask(masks[pot_idx], num_players);
+            let mut winner_count = 0u64;
+            for player in 0..10 {
+                if player < num_players as usize {
+                    winner_count = winner_count + ((mask >> player) % 2);
+                }
+            }
+            if winner_count > 0 {
+                let share = pot_amounts[pot_idx] / winner_count;
+                let remainder = pot_amounts[pot_idx] % winner_count;
+                let mut winner_position = 0u64;
                 for player in 0..10 {
                     if player < num_players as usize {
-                        winner_count = winner_count + ((mask >> player) % 2);
-                    }
-                }
-                if winner_count > 0 {
-                    let share = pots[pot_idx] / winner_count;
-                    let remainder = pots[pot_idx] % winner_count;
-                    let mut winner_position = 0u64;
-                    for player in 0..10 {
-                        if player < num_players as usize {
-                            let won = (mask >> player) % 2;
-                            let extra = if won == 1 && winner_position < remainder { 1u64 } else { 0u64 };
-                            payouts[player] = payouts[player] + won * share + extra;
-                            winner_position = winner_position + won;
-                        }
+                        let won = (mask >> player) % 2;
+                        let extra = if won == 1 && winner_position < remainder { 1u64 } else { 0u64 };
+                        balances[player] = balances[player] + won * share + extra;
+                        winner_position = winner_position + won;
                     }
                 }
             }
         }
-
-        (payouts, hash_matches).reveal()
+        balances
     }
 
-    /// V2 canonical settlement.  Unlike `compute_pots` this never reveals
-    /// payouts and is deliberately a single all-seat operation: the encrypted
-    /// ledger has one slot for every possible seat and the callback applies all
-    /// active slots or none of them.
+    /// All-seat showdown settlement.
     ///
-    /// `settlement_ledger` is sealed to the table/settlement key and is written
-    /// to `EncryptedSettlementLedger`; it is not a client-visible payout list.
-    /// The boolean is public solely so the callback can fail closed before
-    /// mutating any `PlayerGameEscrow`.
+    /// After Groth16 latches `showdown_hash`, this one MPC job recomputes the
+    /// sealed-coeff poly hash and, when it matches, adds every seat's share
+    /// onto `settlement_ledger`. The ledger is encrypted. The only public
+    /// output is `hash_matches`, so the callback can fail closed before it
+    /// writes `EncryptedSettlementLedger`. A mismatch leaves the ledger unchanged.
+    ///
+    /// `distribute_and_settle` credits one escrow with the same share function.
     #[instruction]
     pub fn settle_all_seats(
         winner_masks: Enc<Shared, [u64; 9]>,
@@ -390,35 +364,20 @@ mod circuits {
     ) -> (Enc<Shared, [u64; 10]>, bool) {
         let masks = winner_masks.to_arcis();
         let coeffs = poker_sealed_coeffs(coeff0.to_arcis(), coeff1.to_arcis());
-        let expected = field_from_u128_halves(expected_hash_low, expected_hash_high);
-        let hash_matches = winner_masks_accepted(masks, pot_eligible_masks)
-            && showdown_poly_hash_field(masks, coeffs, num_players) == expected;
-        let mut balances = settlement_ledger.to_arcis();
-
-        if hash_matches {
-            for pot_idx in 0..9 {
-                let mask = active_winner_mask(masks[pot_idx], num_players);
-                let mut winner_count = 0u64;
-                for player in 0..10 {
-                    if player < num_players as usize {
-                        winner_count = winner_count + ((mask >> player) % 2);
-                    }
-                }
-                if winner_count > 0 {
-                    let share = pot_amounts[pot_idx] / winner_count;
-                    let remainder = pot_amounts[pot_idx] % winner_count;
-                    let mut winner_position = 0u64;
-                    for player in 0..10 {
-                        if player < num_players as usize {
-                            let won = (mask >> player) % 2;
-                            let extra = if won == 1 && winner_position < remainder { 1u64 } else { 0u64 };
-                            balances[player] = balances[player] + won * share + extra;
-                            winner_position = winner_position + won;
-                        }
-                    }
-                }
-            }
-        }
+        let hash_matches = showdown_hash_matches(
+            masks,
+            coeffs,
+            expected_hash_low,
+            expected_hash_high,
+            num_players,
+            pot_eligible_masks,
+        );
+        let starting = settlement_ledger.to_arcis();
+        let balances = if hash_matches {
+            credit_showdown_shares(starting, masks, num_players, pot_amounts)
+        } else {
+            starting
+        };
         (settlement_ledger.owner.from_arcis(balances), hash_matches.reveal())
     }
 
@@ -495,11 +454,11 @@ mod circuits {
         (player0.from_arcis(c0), player1.from_arcis(c1), revealed.reveal())
     }
 
-    /// Credit room wallet after SPL deposit.
+    /// Add an SPL deposit to the encrypted room wallet.
     ///
-    /// Poker flop rake uses this same add. The program passes
-    /// `pot::poker_rake_lamports` (5% is 500 bps of the gross pot after the flop)
-    /// and the house's already-initialized encrypted wallet.
+    /// The amount is the deposited chip count. Poker rake is computed on the
+    /// hand, when a post-flop fold leaves one player or when showdown opens,
+    /// and is credited later with that stored amount.
     #[instruction]
     pub fn credit_room_balance(
         balance: Enc<Shared, u64>,
@@ -763,12 +722,11 @@ mod circuits {
         )
     }
 
-    /// Fused showdown verify + per-player escrow credit (same contract as `compute_pots`).
+    /// Credit one escrow with that seat's share of `settle_all_seats`.
     ///
-    /// Recomputes h in BaseField25519 over Rescue-encrypted bitmasks and PDA sealed
-    /// coefficients; credits this player's escrow only when h matches the
-    /// Groth16-latched `showdown_hash` (LE halves). Callback hard-fails when
-    /// `hash_matches` is false — verify and settle are not separable.
+    /// Same hash check and the same share function. The payout amount stays
+    /// inside this seat's ciphertext. The callback rejects when `hash_matches`
+    /// is false.
     #[instruction]
     pub fn distribute_and_settle(
         winner_masks: Enc<Shared, [u64; 9]>,
@@ -784,34 +742,23 @@ mod circuits {
     ) -> (Enc<Shared, u64>, bool) {
         let masks = winner_masks.to_arcis();
         let coeffs = poker_sealed_coeffs(coeff0.to_arcis(), coeff1.to_arcis());
-        let recomputed = showdown_poly_hash_field(masks, coeffs, num_players);
-        let expected = field_from_u128_halves(expected_hash_low, expected_hash_high);
-        let hash_matches = winner_masks_accepted(masks, pot_eligible_masks) && recomputed == expected;
+        let hash_matches = showdown_hash_matches(
+            masks,
+            coeffs,
+            expected_hash_low,
+            expected_hash_high,
+            num_players,
+            pot_eligible_masks,
+        );
+        let shares = if hash_matches {
+            credit_showdown_shares([0u64; 10], masks, num_players, pot_amounts)
+        } else {
+            [0u64; 10]
+        };
         let mut payout = 0u64;
-        if hash_matches && player_index < num_players {
-            for pot_idx in 0..9 {
-                let mask = active_winner_mask(masks[pot_idx], num_players);
-                let mut winner_count = 0u64;
-                let mut winners_before = 0u64;
-                let mut player_won = 0u64;
-                for player in 0..10 {
-                    if player < num_players as usize {
-                        let won = (mask >> player) % 2;
-                        winner_count = winner_count + won;
-                        if player < player_index as usize {
-                            winners_before = winners_before + won;
-                        }
-                        if player == player_index as usize {
-                            player_won = won;
-                        }
-                    }
-                }
-                if winner_count > 0 && player_won == 1 {
-                    let share = pot_amounts[pot_idx] / winner_count;
-                    let remainder = pot_amounts[pot_idx] % winner_count;
-                    let extra = if winners_before < remainder { 1u64 } else { 0u64 };
-                    payout = payout + share + extra;
-                }
+        for player in 0..10 {
+            if player == player_index as usize && player < num_players as usize {
+                payout = shares[player];
             }
         }
         let pb = player_balance.to_arcis();
@@ -823,15 +770,17 @@ mod circuits {
 
     /// Settle a casino hand against the shared Dealer Pool (baccarat / war / blackjack).
     ///
-    /// ZK verifies outcome; this circuit applies transparent commissions on encrypted
-    /// pool balance. All fee rates are public basis-point inputs fixed at room setup.
+    /// ZK verifies outcome. Fee rates are public basis points fixed at room
+    /// setup. The hand's action and the pool's gross win are encrypted, and
+    /// the protocol fee computed from them is only used to debit the pool.
+    /// That amount is not an output.
     ///
     /// Inputs (encrypted):
     ///   - pool_balance: aggregate dealer pool bankroll
-    ///
-    /// Inputs (public, from ZK outcome summary):
     ///   - total_action: sum of player-side wagers
     ///   - pool_gross_win: dealer pool gross win before fees (0 if pool lost)
+    ///
+    /// Inputs (public, from ZK outcome summary):
     ///   - player_payout: total paid to winning players (deducted from pool)
     ///
     /// Fee params (public, fixed per game):
@@ -841,7 +790,7 @@ mod circuits {
     ///
     /// Outputs:
     ///   - updated encrypted pool balance
-    ///   - protocol_commission (plaintext audit)
+    ///   - a zero word. The fee is not revealed.
     ///   - ranges_ok: showdown terms are inside that game's range. The pool
     ///     is left unchanged when this is false.
     ///
@@ -850,8 +799,8 @@ mod circuits {
     #[instruction]
     pub fn settle_casino_hand(
         pool_balance: Enc<Shared, u64>,
-        total_action: u64,
-        pool_gross_win: u64,
+        total_action: Enc<Shared, u64>,
+        pool_gross_win: Enc<Shared, u64>,
         player_payout: u64,
         action_fee_bps: u16,
         pool_win_fee_bps: u16,
@@ -862,18 +811,19 @@ mod circuits {
         showdown_results: [u64; 14],
     ) -> (Enc<Shared, u64>, u64, bool) {
         let mut pb = pool_balance.to_arcis();
+        let action = total_action.to_arcis();
+        let gross_win = pool_gross_win.to_arcis();
         let ranges_ok =
             showdown_results_in_range(game_kind, variant, result_count, showdown_results);
-        let mut protocol_commission = 0u64;
 
         if ranges_ok {
-            let action_fee = (total_action as u128 * action_fee_bps as u128 / 10_000) as u64;
-            let pool_win_fee = (pool_gross_win as u128 * pool_win_fee_bps as u128 / 10_000) as u64;
+            let action_fee = (action as u128 * action_fee_bps as u128 / 10_000) as u64;
+            let pool_win_fee = (gross_win as u128 * pool_win_fee_bps as u128 / 10_000) as u64;
             let banker_fee =
-                (pool_gross_win as u128 * banker_commission_bps as u128 / 10_000) as u64;
-            protocol_commission = action_fee + pool_win_fee + banker_fee;
+                (gross_win as u128 * banker_commission_bps as u128 / 10_000) as u64;
+            let protocol_commission = action_fee + pool_win_fee + banker_fee;
 
-            pb = pb + pool_gross_win;
+            pb = pb + gross_win;
             if pb >= player_payout + protocol_commission {
                 pb = pb - player_payout - protocol_commission;
             } else {
@@ -883,7 +833,7 @@ mod circuits {
 
         (
             pool_balance.owner.from_arcis(pb),
-            protocol_commission.reveal(),
+            0u64.reveal(),
             ranges_ok.reveal(),
         )
     }

@@ -812,9 +812,9 @@ export class ContinuousKenoHand {
           totalAction,
           poolGrossWin,
           playerPayout,
-          encryptionPubkey: this.casinoTable.room.walletEncryptionKey(
+          encryptionKey: this.casinoTable.room.walletEncryptionKey(
             this.casinoTable.players[this.zkConfig.dealerIndex]!.publicKey,
-          ).publicKey,
+          ),
           nonce: this.casinoTable.room.walletEncryptionKey(
             this.casinoTable.players[this.zkConfig.dealerIndex]!.publicKey,
           ).nonceBase + 50n,

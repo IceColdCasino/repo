@@ -42,7 +42,7 @@ point roll.
 | `craps_eval.circom` | Come-out: natural 7/11, craps 2/3/12, or establish point 4–6/8–10. Point: pass, seven-out, or reroll |
 | `craps_bet.circom` | Encrypted bet objects |
 | `craps_bet_eval.circom` / `craps_bet_eval_main.circom` | Per-bet win/lose given action + point |
-| `craps_showdown.circom` | Decrypt 2 dice + up to 12 bets; emit 14 poly terms |
+| `craps_showdown.circom` | Decrypt 2 dice + up to 12 bets; pack bets into `c0` and action/point into `c1` |
 
 `action % 3` is the phase-local class: pass wins, don’t-pass wins, or
 continue. That is craps-specific; no other game has a multi-roll point
@@ -52,7 +52,7 @@ state inside Circom.
 
 | Public | Private |
 |--------|---------|
-| `hash`, the 14-term sum, Groth16 proof | `sk`, two faces, bet tickets, intermediate totals, 14 coefficients, seal commitment |
+| `hash`, `(bets + 1) · c0 + (table + 1) · c1`, Groth16 proof | `sk`, two faces, bet tickets, intermediate totals, 2 coefficients, seal commitment |
 
 `hash` is `Poseidon(keys, playerIndex, ciphertextHash, betHash, tableBind, sealCommitment)`. The showdown template checks that equality.
 

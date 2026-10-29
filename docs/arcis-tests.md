@@ -10,7 +10,8 @@ cluster that opens sealed shares, seals showdown coefficients, and moves
 encrypted chips. The host suite in [tests.md](./tests.md) stops before any
 of that.
 
-The nine files, and the runners they call:
+The cluster and the computation names are [arcium.md](./arcium.md). The nine
+files, and the runners they call:
 
 | File | Runner | Seats in the full hand |
 |------|--------|------------------------|
@@ -124,18 +125,20 @@ callback writes the new ciphertext. These tests queue:
 |-------------|---------------------------|
 | `verify_deck_hash_chunk` | Record the next chunk of the shared deck. The share proof, not this instruction, commits the partials |
 | `reveal_card` | Open sealed partials for one recipient and one card index. The chain stores the seal, not the face |
-| `seal_showdown_coefficients` | Seal 14 coefficients and reveal the four subset-sum rows. Each coefficient has bit 127 set |
+| `seal_showdown_pair` | Seal the two live coefficients and reveal the four subset-sum rows. Each coefficient has bit 127 set. The account keeps 14 ciphertext slots |
 | `validate_bet` | Poker streets only. Checks the encrypted stack and records the public bet delta |
-| `compute_pots` | Poker. Encrypts the winner masks and advances the hand to phase 6 |
+| `compute_pots` | Poker, testing builds only. Legacy queue. The callback discards the old payout vector and advances the hand to phase 6. Circuit source settles with `settle_all_seats` and `distribute_and_settle` |
 | `fund_player_game_escrow` | Move the hand stake from table escrow into that seat’s game escrow |
 | `apply_casino_player_net` | Add or subtract that seat’s net on the game escrow |
 | `return_player_game_escrow` | Move the remaining game escrow back to table escrow |
 | `settle_casino_hand` | House games. Update the dealer-pool ciphertext and end the hand |
 | `stake_dealer_pool` | Before the hand, for every kind except bingo. Covers `start_hand` |
 
-`distribute_and_settle` is on the poker computation list, so the cluster
-must have it finalized. The two-player test settles with `compute_pots`
-and does not call it.
+`distribute_and_settle` and `settle_all_seats` are on the poker computation
+list, so the cluster must have them finalized. The two-player test still
+settles with the legacy `compute_pots` queue and does not call
+`distribute_and_settle`. The Anchor program does not queue `settle_all_seats`
+yet. See [arcium.md](./arcium.md#poker-settlement-as-the-program-stands).
 
 Chip amounts in `settle_casino_hand` and `apply_casino_player_net` are
 chosen by the runner. Those instructions are compiled with the `testing`
@@ -159,7 +162,7 @@ The shoe is then:
 1. Every seat registers and shuffles.
 2. Share proofs land, and `verify_deck_hash_chunk` produces `deckHash`.
 3. `reveal_card` opens the cards that showdown needs, for the proving seat.
-4. `seal_showdown_coefficients` runs for that seat. The host decrypts the
+4. `seal_showdown_pair` runs for that seat. The host decrypts the
    coefficients with the MXE key.
 5. The proving seat submits the showdown proof. The runner recomputes the
    public field from the opened faces and the sealed coefficients.
@@ -191,22 +194,25 @@ poker street machine to 6.
 5. One seat proves `poker_showdown_hashout_main`.
 6. `compute_pots` waits until phase is 6.
 
-The test expects the nine-term winner-mask sum over the first nine of the
-14 sealed coefficients, the input hash including the seal commitment, and
-phase 6.
+The test expects `(packed + 1) · c0 + c1`, where `packed` is the nine
+winner masks as `Σ mask_i · 1024^i`, the input hash including the seal
+commitment, and phase 6. The seal is the two coefficients from
+`seal_showdown_pair`.
 
 ## Baccarat and war
 
 Both use `ContinuousCasinoHand`. Baccarat loads a 1-deck shoe and opens 6
 cards. War loads a 6-deck shoe and opens 4 cards. The last seat is the
-house player (`src/house/baccarat.ts` or `src/house/war.ts`). It registers,
-shuffles, and shares, and does not lock a stake. The earlier seats are the
-bettors. The chain dealer index stays 255: banker or dealer is still a
-card outcome, not a separate dealer hand.
+house player (`src/house/baccarat.ts` or `src/house/war.ts`). It sits in
+the reserved physical seat (`11` on a full table; the last player of a
+shorter hand is placed there). It registers, shuffles, and shares, and
+does not lock a stake. The earlier seats are the bettors. Banker or dealer
+in the showdown winner is the card outcome.
 
-The proving seat is seat 0. Showdown returns winner `0` (player), `1`
-(banker or dealer), or `2` (tie). The public field is
-`(winner + 1) · c0 + c1`.
+The proving seat is seat 0. The last seat is the house, and
+`initialize_game` sets `dealer_index` to that player index. Showdown
+returns winner `0` (player), `1` (banker or dealer), or `2` (tie). That
+winner is the card outcome. The public field is `(winner + 1) · c0 + c1`.
 
 Settlement locks `stakeAmount` (100 in the test) from each bettor. A player
 win pays that stake back to every bettor from the pool (`playerPayout = stake
@@ -250,23 +256,24 @@ exercises.
 
 ## Roulette
 
-European wheel, 37 pockets, dealer index 1, stake 100. The showdown sum
-uses the first twelve of the 14 sealed coefficients, one per bet class.
+European wheel, 37 pockets, dealer index 1, stake 100. The twelve bet
+classes are packed as `Σ code_i · 36^i` into the first of the two sealed
+coefficients.
 The bettor commits two tickets before the draw is opened: straight-up on
 17, and red. The dealer does not bet.
 
-Showdown opens one pocket. The public field is the twelve-term sum.
+Showdown opens one pocket. The public field is `(packed + 1) · c0 + c1`.
 Settlement pays the bettor from the dealer pool using that field. The test
 expects the hash match, seat 0 as the submitter, `handSettled`, and phase
 at least 3.
 
 ## Craps
 
-Dealer index 1, stake 100, two dice. The showdown sum uses all 14 sealed
-coefficients: 12 bet codes, the table action, and the point. The bettor
+Dealer index 1, stake 100, two dice. The twelve bet multipliers pack into
+the first coefficient and `action + pointOut · 6` is the second. The bettor
 commits pass and field before the dice are opened. The dealer does not bet.
 
-Showdown opens both faces. The public field is that 14-term sum. Settlement
+Showdown opens both faces. The public field is `(bets + 1) · c0 + (table + 1) · c1`. Settlement
 pays the bettor from the dealer pool. The test expects the hash match,
 `handSettled`, and phase at least 3.
 
@@ -304,7 +311,7 @@ plays chunk 0 only, so `nCalled` is 5.
 
 1. Register, then `bingo_card_75_main` for each seat.
 2. Shuffle `shuffle_1_deck_75_main`, share the first 5-ball window.
-3. Reveal those balls to seat 0, seal the 14 coefficients, prove
+3. Reveal those balls to seat 0, run `seal_showdown_pair`, prove
    `bingo_showdown_75_hashout_main`.
 4. The public field is `(packed + 1) · c0 + c1`, where `packed` is
    `won * 256 + completionIndex`.

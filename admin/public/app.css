@@ -1,0 +1,160 @@
+:root {
+  color-scheme: dark;
+  --bg: #121714;
+  --panel: #1b221d;
+  --line: #314038;
+  --text: #e7f0e8;
+  --muted: #9aafa0;
+  --accent: #d7e26a;
+  --accent-ink: #1a2008;
+  --danger: #ffb4a8;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+body {
+  margin: 0 auto;
+  max-width: 980px;
+  padding: 32px 20px 64px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header { margin-bottom: 24px; }
+
+.eyebrow {
+  margin: 0;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: var(--accent);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+h1 { margin: 4px 0 8px; font-weight: 600; font-size: 40px; }
+h2 { margin: 0 0 8px; font-size: 18px; font-family: ui-sans-serif, system-ui, sans-serif; }
+
+.lede { margin: 0; max-width: 62ch; color: var(--muted); line-height: 1.45; }
+
+.bar, fieldset, section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+form { display: grid; gap: 16px; }
+fieldset { margin: 0; }
+legend { padding: 0 6px; color: var(--accent); font-family: ui-sans-serif, system-ui, sans-serif; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+input, select, textarea, button {
+  font: 15px/1.3 ui-sans-serif, system-ui, sans-serif;
+  color: var(--text);
+  background: #101510;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+textarea { resize: vertical; min-height: 120px; }
+
+button {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+button:disabled { opacity: 0.45; cursor: wait; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.check { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.signer { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; color: var(--text); }
+.signer label { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.status { flex: 1; min-width: 220px; color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; }
+.hint { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+.section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.section-head h2 { margin: 0; }
+#rooms { display: grid; gap: 8px; }
+button.room {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  background: #101510;
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-weight: 500;
+  word-break: break-word;
+}
+button.room.selected { border-color: var(--accent); }
+button.room .title { font-weight: 700; }
+button.room .meta { color: var(--muted); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+#tables { display: grid; gap: 10px; }
+#rooms p, #tables p, #whitelist p { margin: 0; color: var(--muted); }
+.table-block { display: grid; gap: 0; }
+.seat-list { margin: 0 0 0 14px; }
+.seat-row {
+  margin: 0;
+  padding: 3px 0 3px 10px;
+  border-left: 1px solid var(--line);
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+}
+.table-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 8px;
+}
+.table-row span { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.table-row button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.table-row button:disabled { opacity: 0.45; }
+#wallet { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.bad { color: var(--danger); }

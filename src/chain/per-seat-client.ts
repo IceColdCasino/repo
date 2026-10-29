@@ -20,6 +20,7 @@ import { assertRpcReady } from './localnet-ready';
 import { loadCasinoProgram } from './program-loader';
 import { loadWhitelistAdminProvider } from './admin-provider';
 import { KeypairWallet } from './keypair-wallet';
+import { resolveSeatAuthority, seatProvider, type SeatAuthority } from './seat-signer';
 import { PokerRoomLifecycle } from './room/game-room-lifecycle';
 import { getSharedMetaStore, readSharedMeta, writeSharedMeta } from './shared-meta-store';
 import { isLocalCluster } from './fund-sol';
@@ -395,7 +396,7 @@ async function buildSnapshot(
 export class PerSeatClient {
   private constructor(
     readonly rpcUrl: string,
-    readonly keypair: web3.Keypair,
+    readonly keypair: SeatAuthority,
     readonly provider: AnchorProvider,
     readonly pokerProgram: Program,
     readonly room: PokerRoomLifecycle,
@@ -403,7 +404,7 @@ export class PerSeatClient {
   ) {}
 
   static async create(
-    secretKey: Uint8Array,
+    secretKey?: Uint8Array,
     rpcUrl = LOCALNET_RPC_URL,
   ): Promise<PerSeatClient> {
     await assertRpcReady(rpcUrl);
@@ -412,13 +413,9 @@ export class PerSeatClient {
     // wallets saw Ger/ET7 seats and Register stayed noSeat.
     const meta = requireSharedTableMeta();
     const connection = new web3.Connection(rpcUrl, 'confirmed');
-    const keypair = web3.Keypair.fromSecretKey(secretKey);
+    const keypair = resolveSeatAuthority(secretKey);
     await ensureAirdrop(connection, keypair.publicKey);
-    const provider = new AnchorProvider(
-      connection,
-      new KeypairWallet(keypair),
-      { commitment: 'confirmed' },
-    );
+    const provider = seatProvider(connection, keypair);
     const pokerProgram = loadCasinoProgram(provider);
     const room = openPokerRoom(pokerProgram, provider, meta.roomSeed);
     return new PerSeatClient(
@@ -433,6 +430,11 @@ export class PerSeatClient {
 
   get publicKey(): string {
     return this.keypair.publicKey.toBase58();
+  }
+
+  /** Keypair when this seat holds the secret. Public key when a wallet signs. */
+  private signerArg(): web3.Keypair | web3.PublicKey {
+    return this.keypair instanceof web3.Keypair ? this.keypair : this.keypair.publicKey;
   }
 
   async snapshot(): Promise<GameSnapshot> {
@@ -466,7 +468,7 @@ export class PerSeatClient {
     const pda = this.room.roomWalletPDA(this.keypair.publicKey);
     const info = await this.provider.connection.getAccountInfo(pda);
     if (info) return;
-    await this.room.initRoomWallet(this.keypair);
+    await this.room.initRoomWallet(this.signerArg());
   }
 
   /**
@@ -482,7 +484,7 @@ export class PerSeatClient {
     await this.ensureRoomWallet();
     await ensureSeatLamports(
       this.provider.connection,
-      this.keypair,
+      this.signerArg(),
       seatTableLamports(undefined, { tokenAccount: false, pendingDeposit: false }) + 50_000,
     );
 
@@ -511,7 +513,7 @@ export class PerSeatClient {
     }
 
     if (!occupied || occupied.equals(emptySeatPk())) {
-      await this.room.sitAtTable(this.tableId, seat, 0n, this.keypair);
+      await this.room.sitAtTable(this.tableId, seat, 0n, this.signerArg());
     }
 
     if (bring > 0n) {
@@ -527,7 +529,7 @@ export class PerSeatClient {
   async stand(): Promise<GameSnapshot> {
     const seatChips = await this.seatEscrowBalance();
     if (seatChips > 0n) {
-      await this.room.transferSeatToPersonal(this.tableId, seatChips, this.keypair);
+      await this.room.transferSeatToPersonal(this.tableId, seatChips, this.signerArg());
     }
     await this.room.leaveTable(this.tableId, this.keypair.publicKey);
     await releasePlayerShareStake(this.provider.connection, this.keypair).catch(() => undefined);
@@ -549,24 +551,24 @@ export class PerSeatClient {
 
   /** Keep the seat and chips, and drop the in-hand flag between hands. */
   async sitOut(): Promise<GameSnapshot> {
-    await this.room.sitOut(this.tableId, this.keypair);
+    await this.room.sitOut(this.tableId, this.signerArg());
     return this.snapshot();
   }
 
   async faucet(amount: bigint): Promise<GameSnapshot> {
     await this.ensureWhitelisted();
     await this.ensureRoomWallet();
-    await this.room.faucetCreditPersonal(this.keypair, amount);
+    await this.room.faucetCreditPersonal(this.signerArg(), amount);
     return this.snapshot();
   }
 
   async transferToSeat(amount: bigint): Promise<GameSnapshot> {
-    await this.room.transferPersonalToSeat(this.tableId, amount, this.keypair);
+    await this.room.transferPersonalToSeat(this.tableId, amount, this.signerArg());
     return this.snapshot();
   }
 
   async transferToPersonal(amount: bigint): Promise<GameSnapshot> {
-    await this.room.transferSeatToPersonal(this.tableId, amount, this.keypair);
+    await this.room.transferSeatToPersonal(this.tableId, amount, this.signerArg());
     return this.snapshot();
   }
 }

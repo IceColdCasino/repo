@@ -7,11 +7,13 @@
 Two Solana programs plus the Arcis instructions the casino program queues.
 The Groth16 circuits prove the shoe and the evaluation. These programs hold
 the accounts, move the chips, and accept a proof only when light-casino has
-verified it.
+verified it. The program references are [casino](./casino.md),
+[light-casino](./light-casino.md), and [arcium](./arcium.md). This page is
+the chip split: poker pots, the bingo card pot, and the dealer pool.
 
 | Piece | Path | Address |
 |-------|------|---------|
-| Casino (Anchor) | `rust/casino` | `CasinoXME8X5fZzMrcKT3Tu551ZaRxWofiEUWiVK2VFv` |
+| Casino (Anchor) | `rust/casino` | `4nPbWQkPAnSWMnSCAsuNicCGA86zrQKjzkZX7JFWRREY` |
 | Light-casino (pinocchio) | `rust/light-casino` | `CasinodrqvrdEqRYCMFfWGqQ1aD9mCcGDoWRQNPkWVtc` |
 | Arcis instructions | `rust/casino/encrypted-ixs` | Queued by casino; executed by the Arcium cluster |
 | Shared ids and `GameKind` | `rust/shared-zk-ids` | Both programs |
@@ -40,8 +42,9 @@ stored as Light Protocol compressed accounts.
 `encrypted-ixs/src/lib.rs` is the computation name (`validate_bet`,
 `settle_all_seats`, `stake_dealer_pool`, …). Casino binds the same string in
 `#[arcium_callback]`, the queue and callback account macros, and
-`comp_def_offset`. What the localnet hands actually queue and assert is in
-[arcis-tests.md](./arcis-tests.md).
+`comp_def_offset`. The queue, the callback rules, and the full computation
+list are in [arcium.md](./arcium.md). What the localnet hands actually queue
+and assert is in [arcis-tests.md](./arcis-tests.md).
 
 ## Chips, before the game matters
 
@@ -74,13 +77,15 @@ A hand:
 4. `pot.rs` rebuilds up to nine pots from each seat’s total commitment and
    the fold mask. Folded seats are out of a pot. All-in seats stay eligible
    for the levels they paid. Unmatched chips are refunds.
-5. Showdown is a Groth16 proof whose public field is the nine-term sum
-   `Σ (mask_i + 1) · coefficient_i`. Light-casino verifies it. Casino
-   latches `showdown_hash`.
-6. Settlement pays those pots. `settle_all_seats` checks the same hash and
-   adds each seat’s share to one encrypted ledger, all seats or none.
-   `distribute_and_settle` does the same check and credits one seat’s escrow.
-   A hash mismatch pays nothing.
+5. Showdown is a Groth16 proof. Light-casino verifies it. Casino latches
+   `showdown_hash`. The seal is two coefficients. Poker packs the nine
+   winner masks into the first. The cluster checks
+   `(packed + 1) · c0 + c1` against that hash.
+6. Settlement pays those pots. `distribute_and_settle` checks the hash and
+   credits one seat’s escrow. `settle_all_seats` is the all-seat circuit
+   and has no Anchor queue yet. A testing build can still queue the legacy
+   `compute_pots` artifact, whose callback discards the old payout vector
+   and closes the hand. A hash mismatch pays nothing.
 
 Nine pots and ten seats are the account width. The poker circuits use the
 same ten-seat committee.
@@ -116,7 +121,7 @@ Accounts, all in `dealer_pool.rs`:
 |---------|-------|----------------|
 | `DealerPool` | `dealer_pool`, room id, table id | Encrypted balance, plaintext share count, bet limits, reserved liability |
 | `PoolStakeAccount` | `pool_stake`, pool, staker | That staker’s shares and encrypted accrual |
-| `ProtocolTreasury` | `protocol_treasury`, room id | Plaintext commissions accrued and withdrawn |
+| `ProtocolTreasury` | `protocol_treasury`, room id | Legacy plaintext accrual. Current settlement does not add to it |
 
 `init_dealer_pool` requires the kind to match the table and refuses poker and bingo.
 It stores `min_bet`, `max_bet`, and `bet_unit`. `init_protocol_treasury`
@@ -145,18 +150,20 @@ A hand against the pool:
    `player_game_escrow`.
 2. The shoe runs as in the circuit docs. A house seat, when the kind has
    one, is a shuffle participant that does not place this bet. Baccarat and
-   war have no house seat; they still require the pool. Bingo does not use
-   this path.
-3. Light-casino verifies showdown. The public output is one field,
-   `Σ (result_i + 1) · coefficient_i`. Baccarat, war, blackjack, keno, and
-   slots use two terms, the result and a zero. Roulette uses twelve bet
-   codes. Craps uses fourteen. Bingo 75 uses two terms; bingo 90 uses
-   three. That field scores the dealer pool, or the card pot for bingo.
+   war have that seat and still require the pool. Bingo does not use this
+   path.
+3. Light-casino verifies showdown. Every game seals two coefficients.
+   Every game publishes `(result_0 + 1) · c0 + (result_1 + 1) · c1`.
+   Baccarat, war, blackjack, keno, slots, and bingo put the outcome in
+   `result_0` and leave `result_1` at 0. Roulette packs twelve bet codes
+   into `result_0`. Craps packs twelve bet multipliers into `result_0` and
+   `action + pointOut · 6` into `result_1`. That field scores the dealer
+   pool, or the card pot for bingo.
 4. `settle_casino_hand` applies that outcome to the pool. It adds the pool’s
-   gross win, then subtracts the player payout and the protocol commission.
-   The new balance stays encrypted. The commission is revealed and added to
-   `ProtocolTreasury`. The callback marks the hand settled and ends it. It
-   does not advance a poker street.
+   gross win, then subtracts the player payout and the protocol fee inside
+   the ciphertext. The callback stores the new ciphertext. The revealed fee
+   word is zero, and `ProtocolTreasury` is left unchanged. The callback
+   marks the hand settled and ends it. It does not advance a poker street.
 5. `apply_casino_player_net` adds or subtracts that seat’s net on
    `player_game_escrow`.
 6. `return_player_game_escrow` moves whatever remains back to table escrow.
@@ -183,13 +190,18 @@ coverage check are in every build.
 
 These are different jobs.
 
-`GameKind::needs_house_seat` is roulette, blackjack, craps, keno, and slots.
-That seat registers a key, shuffles, and does not place an economic bet. The
-circuit docs call this a table-layout concern because the encryption is the
-same either way.
+`GameKind::needs_house_seat` is baccarat, roulette, blackjack, war, craps,
+keno, and slots. The reserved physical seat is the last index of that
+kind’s cap: 11 for baccarat, war, roulette, craps, and keno, 7 for
+blackjack, and 1 for slots. That seat registers a key, shuffles, and does
+not place an economic bet. `initialize_game` requires `dealer_index` to be
+the last player in the hand. Poker and bingo pass 255. The circuit docs
+call the seat a table-layout concern because the encryption is the same
+either way. Baccarat’s banker and war’s dealer in the showdown winner code
+are card outcomes.
 
 The dealer pool is the bankroll for every kind except poker and bingo.
-Baccarat and war have no house seat and still cannot `start_hand` until the
+Baccarat and war have a house seat and still cannot `start_hand` until the
 pool exists and, when bet limits are set, `total_shares` covers the table
 above. Keno is house-funded the same way. Bingo’s prize is the card pot.
 

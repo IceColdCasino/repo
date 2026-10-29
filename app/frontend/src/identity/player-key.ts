@@ -1,6 +1,7 @@
 import { Keypair } from '@solana/web3.js';
 import type { BackendKind } from '../backend/client';
 import { stableInstanceId } from './instance-id';
+import { connectedAddress } from './wallet-standard';
 
 /**
  * Per-instance wallet.
@@ -245,7 +246,25 @@ export function getWalletPublicKey(): string | null {
   return provider?.publicKey?.toBase58() ?? null;
 }
 
+/** Automated seat runs keep a local key. A person connects a Wallet Standard wallet. */
+export function usesLocalSeatKey(): boolean {
+  if (typeof window === 'undefined') return true;
+  const params = new URLSearchParams(window.location.search);
+  if (
+    params.get('nativeE2e') === '1'
+    || params.get('e2eSeat') != null
+    || params.get('iosE2eFullGame') === '1'
+  ) {
+    return true;
+  }
+  const mode = (import.meta as { env?: { MODE?: string } }).env?.MODE;
+  return mode === 'test';
+}
+
 export function getActivePublicKey(_backend: BackendKind): string {
+  if (!usesLocalSeatKey()) {
+    return connectedAddress();
+  }
   return getOrCreateLocalPublicKey();
 }
 

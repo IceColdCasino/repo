@@ -6,6 +6,7 @@
 import { web3 } from '@coral-xyz/anchor';
 import { requiredShareStake } from '../poker-share-penalty';
 import { confirmOrResend } from './confirm-tx';
+import { remoteSeatSigner, type SeatAuthority } from './seat-signer';
 
 type Hold = {
   gameId: string;
@@ -98,19 +99,24 @@ async function transfer(
 }
 
 /** Top the seat up from the fee payer so it can open its room session. */
+function seatPubkey(seat: web3.PublicKey | { publicKey: web3.PublicKey }): web3.PublicKey {
+  return seat instanceof web3.PublicKey ? seat : seat.publicKey;
+}
+
 export async function ensureSeatLamports(
   connection: web3.Connection,
-  seat: web3.Keypair,
+  seat: web3.PublicKey | { publicKey: web3.PublicKey },
   lamports: number,
 ): Promise<void> {
-  const have = await connection.getBalance(seat.publicKey, 'confirmed');
+  const pubkey = seatPubkey(seat);
+  const have = await connection.getBalance(pubkey, 'confirmed');
   if (have >= lamports) return;
   const payer = await feePayer();
   const short = lamports - have;
-  if (payer.publicKey.equals(seat.publicKey)) {
+  if (payer.publicKey.equals(pubkey)) {
     throw new Error(`seat is short ${short} lamports for the room session`);
   }
-  await transfer(connection, payer, seat.publicKey, short);
+  await transfer(connection, payer, pubkey, short);
 }
 
 async function releaseHold(
@@ -130,9 +136,45 @@ async function releaseHold(
  * Lock this seat's share bond for `gameId`. A bond still held for an earlier
  * hand is returned first.
  */
+async function transferFromSeat(
+  connection: web3.Connection,
+  from: SeatAuthority,
+  to: web3.PublicKey,
+  lamports: number,
+): Promise<void> {
+  if (from instanceof web3.Keypair) {
+    await transfer(connection, from, to, lamports);
+    return;
+  }
+  const remote = remoteSeatSigner();
+  if (!remote || !remote.publicKey.equals(from.publicKey)) {
+    throw new Error('Connect a wallet to play.');
+  }
+  const payer = await feePayer().catch(() => null);
+  const feePayerKey = payer && !payer.publicKey.equals(from.publicKey) ? payer : null;
+  await confirmOrResend(connection, async (latest) => {
+    const tx = new web3.Transaction({
+      feePayer: feePayerKey?.publicKey ?? from.publicKey,
+      blockhash: latest.blockhash,
+      lastValidBlockHeight: latest.lastValidBlockHeight,
+    }).add(
+      web3.SystemProgram.transfer({
+        fromPubkey: from.publicKey,
+        toPubkey: to,
+        lamports,
+      }),
+    );
+    if (feePayerKey) tx.partialSign(feePayerKey);
+    const signed = await remote.signTransaction(tx);
+    return connection.sendRawTransaction(signed.serialize(), {
+      preflightCommitment: 'confirmed',
+    });
+  });
+}
+
 export async function postPlayerShareStake(args: {
   connection: web3.Connection;
-  player: web3.Keypair;
+  player: SeatAuthority;
   gameId: Uint8Array;
   playerCount: number;
 }): Promise<bigint> {
@@ -154,7 +196,7 @@ export async function postPlayerShareStake(args: {
   const need = Number(amount) - have;
   if (need > 0) {
     await ensureSeatLamports(args.connection, args.player, need + 20_000);
-    await transfer(args.connection, args.player, hold.keypair.publicKey, need);
+    await transferFromSeat(args.connection, args.player, hold.keypair.publicKey, need);
   }
   return amount;
 }
@@ -162,7 +204,7 @@ export async function postPlayerShareStake(args: {
 /** Return a posted bond to the seat. A missing bond is a no-op. */
 export async function releasePlayerShareStake(
   connection: web3.Connection,
-  player: web3.Keypair,
+  player: { publicKey: web3.PublicKey },
 ): Promise<void> {
   const hold = readHold(player.publicKey.toBase58());
   if (!hold) return;

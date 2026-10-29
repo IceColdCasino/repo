@@ -25,6 +25,7 @@ import {
   MAX_CPI_ALLOC,
 } from './shuffle-account';
 import { confirmOrResend, installDurableConfirm } from './confirm-tx';
+import { localKeypair, signAuthorityTransaction, type SeatAuthority } from './seat-signer';
 import {
   CLOSE_PLAYER_STATE,
   CLOSE_SEAT_RENT,
@@ -300,7 +301,7 @@ export class OnchainGameLifecycle {
   /** Lane dust returning to the seat vault. The next fund waits for it. */
   private pendingShuffleSweep: Promise<void> = Promise.resolve();
   /** Lookup tables opened for oversized transactions. Closed back into the float. */
-  private openLookupTables: { address: web3.PublicKey; authority?: web3.Keypair }[] = [];
+  private openLookupTables: { address: web3.PublicKey; authority?: SeatAuthority }[] = [];
 
   constructor(
     private lightPokerProgram: Program,
@@ -366,7 +367,7 @@ export class OnchainGameLifecycle {
 
   private async rpcAuthorityPaid(
     builder: any,
-    authority: web3.Keypair,
+    authority: SeatAuthority,
     sizeLabel?: string,
     mutate?: (transaction: web3.Transaction) => void,
     commitment: web3.Commitment = 'confirmed',
@@ -378,8 +379,8 @@ export class OnchainGameLifecycle {
       mutate?.(transaction);
       transaction.feePayer = authority.publicKey;
       transaction.recentBlockhash = latest.blockhash;
-      transaction.sign(authority);
-      const serialized = transaction.serialize();
+      const signed = await signAuthorityTransaction(this.provider, transaction, authority);
+      const serialized = signed.serialize();
       if (sizeLabel && attempt === 0) {
         console.log(`[tx-size] ${sizeLabel}: ${serialized.length} bytes`);
       }
@@ -559,14 +560,14 @@ export class OnchainGameLifecycle {
   }
 
   /** Signer for player_state.authority-gated IXs (defaults to provider wallet). */
-  private authorityPubkey(authority?: web3.Keypair): web3.PublicKey {
+  private authorityPubkey(authority?: SeatAuthority): web3.PublicKey {
     return authority?.publicKey ?? this.provider.wallet.publicKey;
   }
 
   /** Send with seat authority as fee payer when provided; else provider wallet. */
   private async rpcAs(
     builder: any,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
     sizeLabel?: string,
     commitment: web3.Commitment = 'confirmed',
   ): Promise<string> {
@@ -577,7 +578,7 @@ export class OnchainGameLifecycle {
   /** Several instructions, one signature. Used when they share one writable account. */
   private async rpcAuthorityInstructions(
     instructions: web3.TransactionInstruction[],
-    authority: web3.Keypair | undefined,
+    authority: SeatAuthority | undefined,
     commitment: web3.Commitment,
   ): Promise<string> {
     const signer = this.authorityPubkey(authority);
@@ -588,8 +589,8 @@ export class OnchainGameLifecycle {
           blockhash: latest.blockhash,
           lastValidBlockHeight: latest.lastValidBlockHeight,
         }).add(...instructions);
-        transaction.sign(authority);
-        return this.provider.connection.sendRawTransaction(transaction.serialize(), {
+        const signed = await signAuthorityTransaction(this.provider, transaction, authority);
+        return this.provider.connection.sendRawTransaction(signed.serialize(), {
           preflightCommitment: commitment,
         });
       }, commitment);
@@ -609,7 +610,7 @@ export class OnchainGameLifecycle {
    */
   private async rpcAsOrLookupTable(
     builder: any,
-    authority: web3.Keypair | undefined,
+    authority: SeatAuthority | undefined,
     lutAddresses: web3.PublicKey[],
     sizeLabel?: string,
     mutate?: (transaction: web3.Transaction) => void,
@@ -663,7 +664,7 @@ export class OnchainGameLifecycle {
       }).compileToV0Message([lut]);
       const vtx = new web3.VersionedTransaction(message);
       const signed = authority
-        ? (vtx.sign([authority]), vtx)
+        ? await signAuthorityTransaction(this.provider, vtx, authority)
         : await this.provider.wallet.signTransaction(vtx);
       return this.provider.connection.sendTransaction(signed, {
         preflightCommitment: 'confirmed',
@@ -675,7 +676,7 @@ export class OnchainGameLifecycle {
 
   private async createEphemeralLookupTable(
     addresses: web3.PublicKey[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<web3.AddressLookupTableAccount> {
     const payerKey = this.authorityPubkey(authority);
     const unique = [
@@ -686,7 +687,7 @@ export class OnchainGameLifecycle {
       payerKey,
       56 + 32 * unique.length,
       0,
-      authority,
+      authority instanceof web3.Keypair ? authority : undefined,
     );
     const sendPaid = async (ixs: web3.TransactionInstruction[]) => {
       await confirmOrResend(this.provider.connection, async (latest) => {
@@ -696,8 +697,8 @@ export class OnchainGameLifecycle {
           lastValidBlockHeight: latest.lastValidBlockHeight,
         }).add(...ixs);
         if (authority) {
-          tx.sign(authority);
-          return this.provider.connection.sendRawTransaction(tx.serialize(), {
+          const signed = await signAuthorityTransaction(this.provider, tx, authority);
+          return this.provider.connection.sendRawTransaction(signed.serialize(), {
             preflightCommitment: 'confirmed',
           });
         }
@@ -765,18 +766,19 @@ export class OnchainGameLifecycle {
 
   private async deactivateLookupTable(
     lookupTable: web3.PublicKey,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const authorityKey = this.authorityPubkey(authority);
     const ix = web3.AddressLookupTableProgram.deactivateLookupTable({
       authority: authorityKey,
       lookupTable,
     });
+    const local = localKeypair(authority);
     await this.sendPayers(
       [ix],
       authorityKey,
-      authority ? [authority] : [],
-      !authority,
+      local ? [local] : [],
+      !local,
       'processed',
     );
   }
@@ -803,8 +805,8 @@ export class OnchainGameLifecycle {
             }),
           ],
           authorityKey,
-          table.authority ? [table.authority] : [],
-          !table.authority,
+          localKeypair(table.authority) ? [localKeypair(table.authority)!] : [],
+          !localKeypair(table.authority),
           'processed',
         );
       } catch {
@@ -1115,7 +1117,7 @@ export class OnchainGameLifecycle {
     playerIndex: number,
     proof: any,
     publicSignals: string[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const gameStatePDA = this.deriveLightPDA('game_state');
     const playerStatePDA = this.deriveLightPDA('player', Buffer.from([playerIndex]));
@@ -1155,8 +1157,8 @@ export class OnchainGameLifecycle {
         const transaction = await builder.transaction();
         transaction.feePayer = authority.publicKey;
         transaction.recentBlockhash = latest.blockhash;
-        transaction.sign(authority);
-        const serialized = transaction.serialize();
+        const signed = await signAuthorityTransaction(this.provider, transaction, authority);
+        const serialized = signed.serialize();
         if (attempt === 0) {
           console.log(`[tx-size] register_player_receipt p${playerIndex}: ${serialized.length} bytes`);
         }
@@ -1332,7 +1334,7 @@ export class OnchainGameLifecycle {
    * Start the game shuffle buffer once every seat is registered and the phase
    * is Shuffle. The current shuffler is player 0.
    */
-  beginShuffleBufferWarm(playerIndex: number, authority?: web3.Keypair): void {
+  beginShuffleBufferWarm(playerIndex: number, authority?: SeatAuthority): void {
     if (this.shuffleWarm) return;
     this.shuffleWarm = this.warmShuffleBuffer(playerIndex, authority).catch((err) => {
       console.error('[shuffle] buffer warm failed', err);
@@ -1361,7 +1363,7 @@ export class OnchainGameLifecycle {
     );
   }
 
-  private async warmShuffleBuffer(playerIndex: number, authority?: web3.Keypair): Promise<void> {
+  private async warmShuffleBuffer(playerIndex: number, authority?: SeatAuthority): Promise<void> {
     const gameStatePDA = this.deriveLightPDA('game_state');
     const gameState = await this.fetchLightGameState(gameStatePDA);
     await this.ensureShufflePublicInputs(
@@ -1427,7 +1429,7 @@ export class OnchainGameLifecycle {
     playerStatePDA: web3.PublicKey,
     shufflePublicSignalsPDA: web3.PublicKey,
     callerInputs: number,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const signer = this.authorityPubkey(authority);
     const target = shuffleInputsAccountSize(callerInputs);
@@ -1436,7 +1438,7 @@ export class OnchainGameLifecycle {
       'processed',
     );
     if (!info) {
-      await frontFromVault(this.provider, signer, MAX_CPI_ALLOC, 0, authority);
+      await frontFromVault(this.provider, signer, MAX_CPI_ALLOC, 0, localKeypair(authority));
       await this.rpcAs(
         (this.lightPokerProgram.methods as any)
           .allocateShufflePublicInputs()
@@ -1470,7 +1472,7 @@ export class OnchainGameLifecycle {
         info.data.length,
         info.lamports,
         target,
-        authority,
+        localKeypair(authority),
       );
       await this.rpcAs(
         (this.lightPokerProgram.methods as any)
@@ -1510,7 +1512,7 @@ export class OnchainGameLifecycle {
   async initShareReceipt(
     playerIndex: number,
     mpcGeneration?: bigint | number | { toString(): string },
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
     confirm?: { commitment?: web3.Commitment; pollMs?: number },
   ): Promise<void> {
     let generation = mpcGeneration;
@@ -1560,7 +1562,7 @@ export class OnchainGameLifecycle {
   private async dispatchShareReceipt(
     playerIndex: number,
     generation: bigint | number | { toString(): string },
-    authority: web3.Keypair,
+    authority: SeatAuthority,
   ): Promise<void> {
     const proofReceipt = this.deriveShareProofReceipt(playerIndex, generation as any);
     const builder = (this.lightPokerProgram.methods as any)
@@ -1579,13 +1581,13 @@ export class OnchainGameLifecycle {
     transaction.feePayer = authority.publicKey;
     transaction.recentBlockhash = latest.blockhash;
     transaction.lastValidBlockHeight = latest.lastValidBlockHeight;
-    transaction.sign(authority);
-    await this.provider.connection.sendRawTransaction(transaction.serialize(), {
+    const signed = await signAuthorityTransaction(this.provider, transaction, authority);
+    await this.provider.connection.sendRawTransaction(signed.serialize(), {
       skipPreflight: true,
     });
   }
 
-  async initShuffleReceipt(playerIndex: number, authority?: web3.Keypair): Promise<void> {
+  async initShuffleReceipt(playerIndex: number, authority?: SeatAuthority): Promise<void> {
     const proofReceipt = await this.deriveProofReceipt(1, playerIndex);
     if (await this.provider.connection.getAccountInfo(proofReceipt)) return;
     const builder = (this.lightPokerProgram.methods as any)
@@ -1605,7 +1607,7 @@ export class OnchainGameLifecycle {
     }
   }
 
-  async initShowdownReceipt(playerIndex: number, authority?: web3.Keypair): Promise<void> {
+  async initShowdownReceipt(playerIndex: number, authority?: SeatAuthority): Promise<void> {
     const proofReceipt = await this.deriveProofReceipt(3, playerIndex);
     if (await this.provider.connection.getAccountInfo(proofReceipt)) {
       logHandProgress(`Showdown tx: init_showdown_receipt already on chain (seat player ${playerIndex})`);
@@ -1633,7 +1635,7 @@ export class OnchainGameLifecycle {
   async initActionReceipt(
     playerIndex: number,
     actionSeq: number,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const proofReceipt = await this.deriveActionProofReceipt(playerIndex, actionSeq);
     if (await this.provider.connection.getAccountInfo(proofReceipt)) return;
@@ -1659,7 +1661,7 @@ export class OnchainGameLifecycle {
   async recordBlackjackInsurance(
     playerIndex: number,
     opts: { taken: boolean; evenMoney: boolean },
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const gameState = await this.fetchLightGameState(this.deriveLightPDA('game_state'));
     const generationLe = new BN(gameState.generation).toArrayLike(Buffer, 'le', 8);
@@ -1715,7 +1717,7 @@ export class OnchainGameLifecycle {
       insuranceEligible: boolean;
       upcardHash: bigint;
     },
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     // Public signals: [statusHash, inputHash]
     if (publicSignals.length < 2) {
@@ -1797,7 +1799,7 @@ export class OnchainGameLifecycle {
   }
 
   /** Open the three-minute showdown-proof window. Blackjack and bingo call this; other games open it when share completes. */
-  async openShowdownWindow(playerIndex: number, authority?: web3.Keypair): Promise<void> {
+  async openShowdownWindow(playerIndex: number, authority?: SeatAuthority): Promise<void> {
     await this.rpcAs(
       (this.lightPokerProgram.methods as any)
         .openShowdownWindow()
@@ -1814,7 +1816,7 @@ export class OnchainGameLifecycle {
   async openBlackjackActionWindow(
     playerIndex: number,
     dealerIndex: number,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
     generation = 0n,
   ): Promise<void> {
     await this.rpcAs(
@@ -1839,7 +1841,7 @@ export class OnchainGameLifecycle {
   async standBlackjackSeat(
     playerIndex: number,
     dealerIndex: number,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
     generation = 0n,
   ): Promise<void> {
     await this.rpcAs(
@@ -1860,7 +1862,7 @@ export class OnchainGameLifecycle {
    * Dealer (or the game operator, when there is no house seat) closes an
    * unproven showdown as a player loss. Legal three minutes after the window opened.
    */
-  async forfeitShowdown(authorityIndex: number, authority?: web3.Keypair): Promise<void> {
+  async forfeitShowdown(authorityIndex: number, authority?: SeatAuthority): Promise<void> {
     await this.rpcAs(
       (this.lightPokerProgram.methods as any)
         .forfeitShowdown()
@@ -1919,7 +1921,7 @@ export class OnchainGameLifecycle {
     return parseDeckStateAccount(info.data, nCards);
   }
 
-  async finalizeShuffle(playerIndex: number, authority?: web3.Keypair): Promise<void> {
+  async finalizeShuffle(playerIndex: number, authority?: SeatAuthority): Promise<void> {
     const gameStatePDA = this.deriveLightPDA('game_state');
     const playerStatePDA = this.deriveLightPDA('player', Buffer.from([playerIndex]));
     const proofReceiptPDA = await this.deriveProofReceipt(1, playerIndex);
@@ -1954,10 +1956,12 @@ export class OnchainGameLifecycle {
    */
   private async operatorFundAuth(
     operator: web3.PublicKey,
-    seat: web3.Keypair | undefined,
+    seat: SeatAuthority | undefined,
   ): Promise<{ signers: web3.Keypair[]; walletSigns: boolean }> {
     if (seat?.publicKey.equals(operator)) {
-      return { signers: [seat], walletSigns: false };
+      const local = localKeypair(seat);
+      if (local) return { signers: [local], walletSigns: false };
+      return { signers: [], walletSigns: true };
     }
     if (operator.equals(this.provider.wallet.publicKey)) {
       return { signers: [], walletSigns: true };
@@ -2107,7 +2111,7 @@ export class OnchainGameLifecycle {
    */
   private async writeShuffleChunks(opts: {
     playerIndex: number;
-    authority?: web3.Keypair;
+    authority?: SeatAuthority;
     signer: web3.PublicKey;
     gameState: { operator: web3.PublicKey };
     gameStatePDA: web3.PublicKey;
@@ -2211,11 +2215,12 @@ export class OnchainGameLifecycle {
       ];
       await withRetry(async () => {
         try {
+          const seatKp = localKeypair(opts.authority);
           await this.submitPayers(
             [...budget, write],
             lane.publicKey,
-            opts.authority ? [lane, opts.authority] : [lane],
-            !opts.authority,
+            seatKp ? [lane, seatKp] : [lane],
+            !seatKp,
             latest,
           );
         } catch (error) {
@@ -2240,7 +2245,7 @@ export class OnchainGameLifecycle {
    * the seat vault inside the partial.
    */
   private async absorbShuffleChunks(opts: {
-    authority?: web3.Keypair;
+    authority?: SeatAuthority;
     signer: web3.PublicKey;
     gameStatePDA: web3.PublicKey;
     playerStatePDA: web3.PublicKey;
@@ -2284,8 +2289,9 @@ export class OnchainGameLifecycle {
           blockhash: latest.blockhash,
           lastValidBlockHeight: latest.lastValidBlockHeight,
         }).add(...budget, absorbBatch(group));
-        if (opts.authority) transaction.partialSign(opts.authority);
-        const signed = opts.authority
+        const seatKp = localKeypair(opts.authority);
+        if (seatKp) transaction.partialSign(seatKp);
+        const signed = seatKp
           ? transaction
           : await this.provider.wallet.signTransaction(transaction);
         const signature = await this.provider.connection.sendRawTransaction(signed.serialize(), {
@@ -2438,7 +2444,7 @@ export class OnchainGameLifecycle {
     publicSignals: bigint[],
     shoe: bigint[][],
     deckBeforeShuffle?: bigint[][],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const signer = this.authorityPubkey(authority);
     const gameStatePDA = this.deriveLightPDA('game_state');
@@ -2704,7 +2710,7 @@ export class OnchainGameLifecycle {
    * the seat with `begin_verify_share`, so they are submitted first and land
    * while that transaction confirms.
    */
-  prepareShareLanes(authority: web3.Keypair, chunkCount: number, playerIndex: number): {
+  prepareShareLanes(authority: SeatAuthority, chunkCount: number, playerIndex: number): {
     lanes: web3.Keypair[];
     submitted: Promise<void>;
     funded: Promise<void>;
@@ -2725,7 +2731,7 @@ export class OnchainGameLifecycle {
   }
 
   private async fundShareLanesFromVault(
-    authority: web3.Keypair,
+    authority: SeatAuthority,
     lanes: web3.Keypair[],
     playerIndex: number,
     vault: web3.PublicKey,
@@ -2770,7 +2776,7 @@ export class OnchainGameLifecycle {
   }
 
   private async fundShareLanes(
-    authority: web3.Keypair,
+    authority: SeatAuthority,
     lanes: web3.Keypair[],
     playerIndex: number,
     onSubmitted?: () => void,
@@ -2792,8 +2798,9 @@ export class OnchainGameLifecycle {
     );
     const latest = await this.provider.connection.getLatestBlockhash('processed');
     const groups = this.packInstructions(transfers, authority.publicKey, latest.blockhash);
+    const seatKp = localKeypair(authority);
     await Promise.all(groups.map((group) =>
-      this.submitPayers(group, authority.publicKey, [authority], false, latest),
+      this.submitPayers(group, authority.publicKey, seatKp ? [seatKp] : [], !seatKp, latest),
     ));
     onSubmitted?.();
     const deadline = Date.now() + 8_000;
@@ -2819,7 +2826,7 @@ export class OnchainGameLifecycle {
   private async absorbShareStreets(
     playerIndex: number,
     streets: readonly (readonly bigint[])[],
-    authority: web3.Keypair,
+    authority: SeatAuthority,
     gameState: web3.PublicKey,
     playerState: web3.PublicKey,
     receipt: web3.PublicKey,
@@ -2876,7 +2883,14 @@ export class OnchainGameLifecycle {
           ],
           data: Buffer.concat(parts),
         });
-        return this.submitPayers([budget(), write], lane.publicKey, [lane, authority], false, latest);
+        const seatKp = localKeypair(authority);
+        return this.submitPayers(
+          [budget(), write],
+          lane.publicKey,
+          seatKp ? [lane, seatKp] : [lane],
+          !seatKp,
+          latest,
+        );
       };
       const sendMissing = async (
         pending: number[],
@@ -2918,8 +2932,15 @@ export class OnchainGameLifecycle {
         [budget()],
       );
       const sendFinish = async (block: { blockhash: string; lastValidBlockHeight: number }) => {
+        const seatKp = localKeypair(authority);
         const signatures = await Promise.all(finishGroups.map((group) =>
-          this.submitPayers([budget(), ...group], authority.publicKey, [authority], false, block),
+          this.submitPayers(
+            [budget(), ...group],
+            authority.publicKey,
+            seatKp ? [seatKp] : [],
+            !seatKp,
+            block,
+          ),
         ));
         await this.confirmSubmitted(signatures, block.lastValidBlockHeight);
       };
@@ -3026,7 +3047,7 @@ export class OnchainGameLifecycle {
     proof: any,
     publicSignals: bigint[],
     chunkIndex = 0,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
     streets?: readonly (readonly bigint[])[],
     prepared?: { lanes: web3.Keypair[]; funded: Promise<void> },
   ): Promise<void> {
@@ -3104,7 +3125,7 @@ export class OnchainGameLifecycle {
     playerIndex: number,
     proof: any,
     publicSignals: bigint[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     if (publicSignals.length !== 10) {
       throw new Error(`slot share expects 10 public signals, got ${publicSignals.length}`);
@@ -3148,7 +3169,7 @@ export class OnchainGameLifecycle {
     playerIndex: number,
     proof: any,
     publicSignals: bigint[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const gameStatePDA = this.deriveLightPDA('game_state');
     const playerStatePDA = this.deriveLightPDA('player', Buffer.from([playerIndex]));
@@ -3256,7 +3277,7 @@ export class OnchainGameLifecycle {
     playerIndex: number,
     proof: any,
     publicSignals: bigint[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const gameStatePDA = this.deriveLightPDA('game_state');
     const playerStatePDA = this.deriveLightPDA('player', Buffer.from([playerIndex]));
@@ -3360,7 +3381,7 @@ export class OnchainGameLifecycle {
   }
 
   /** Refund `bet_inputs` rent after the hash is stored as a Light account. */
-  async closeBetPublicInputs(playerIndex: number, authority?: web3.Keypair): Promise<void> {
+  async closeBetPublicInputs(playerIndex: number, authority?: SeatAuthority): Promise<void> {
     const gameStatePDA = this.deriveLightPDA('game_state');
     const playerStatePDA = this.deriveLightPDA('player', Buffer.from([playerIndex]));
     const betInputsPDA = this.deriveLightPDA('bet_inputs', Buffer.from([playerIndex]));
@@ -3384,7 +3405,7 @@ export class OnchainGameLifecycle {
     );
   }
 
-  async extendShareChunks(authority?: web3.Keypair): Promise<void> {
+  async extendShareChunks(authority?: SeatAuthority): Promise<void> {
     const gameStatePDA = this.deriveLightPDA('game_state');
     await timed('tx:extend_share_chunks', () =>
       this.rpcAs(
@@ -3403,7 +3424,7 @@ export class OnchainGameLifecycle {
     gameStatePDA: web3.PublicKey,
     playerStatePDA: web3.PublicKey,
     sharePublicInputsPDA: web3.PublicKey,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const signer = this.authorityPubkey(authority);
     let info = await this.provider.connection.getAccountInfo(
@@ -3411,7 +3432,7 @@ export class OnchainGameLifecycle {
       'confirmed',
     );
     if (!info) {
-      await frontFromVault(this.provider, signer, MAX_CPI_ALLOC, 0, authority);
+      await frontFromVault(this.provider, signer, MAX_CPI_ALLOC, 0, localKeypair(authority));
       await this.rpcAs(
         (this.lightPokerProgram.methods as any)
           .allocateSharePublicInputs()
@@ -3443,7 +3464,7 @@ export class OnchainGameLifecycle {
         info.data.length,
         info.lamports,
         SHARE_STAGING_ACCOUNT_SIZE,
-        authority,
+        localKeypair(authority),
       );
       await this.rpcAs(
         (this.lightPokerProgram.methods as any)
@@ -3486,7 +3507,7 @@ export class OnchainGameLifecycle {
     playerIndex: number,
     proof: any,
     publicSignals: bigint[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     if (publicSignals.length < ROULETTE_SHARE_PUBLIC_INPUTS) {
       throw new Error(
@@ -3667,7 +3688,7 @@ export class OnchainGameLifecycle {
   async storeRouletteBets(
     playerIndex: number,
     publicSignals: bigint[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const gameStatePDA = this.deriveLightPDA('game_state');
     const playerStatePDA = this.deriveLightPDA('player', Buffer.from([playerIndex]));
@@ -3725,14 +3746,14 @@ export class OnchainGameLifecycle {
         const after = await this.provider.connection.getBalance(player, 'confirmed');
         const vault = rentVaultFor(player);
         if (vault && after + 20_000 >= before + refund) {
-          await depositRentVault(this.provider, vault, refund, authority);
+          await depositRentVault(this.provider, vault, refund, localKeypair(authority));
         }
       }
       chunkIndex += 1;
     }
   }
 
-  async finalizeShowdown(playerIndex: number, authority?: web3.Keypair): Promise<void> {
+  async finalizeShowdown(playerIndex: number, authority?: SeatAuthority): Promise<void> {
     logHandProgress(`Showdown tx: finalize_showdown sending (seat player ${playerIndex})`);
     const gameStatePDA = this.deriveLightPDA('game_state');
     const playerStatePDA = this.deriveLightPDA('player', Buffer.from([playerIndex]));
@@ -3761,7 +3782,7 @@ export class OnchainGameLifecycle {
     playerCardCount: number,
     dealerCardCount: number,
     sourceIndices: number[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     if (sourceIndices.length !== 24) {
       throw new Error(`blackjack sourceIndices length ${sourceIndices.length}, expected 24`);
@@ -3802,7 +3823,7 @@ export class OnchainGameLifecycle {
     deckState: web3.PublicKey,
     showdownMaterial: web3.PublicKey,
     remainingAccounts: web3.AccountMeta[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const existing = await this.provider.connection.getAccountInfo(bingoShowdownRows);
     if (!existing) {
@@ -3855,7 +3876,7 @@ export class OnchainGameLifecycle {
     showdownMaterial: web3.PublicKey,
     numPlayers: number,
     cardAccounts: web3.AccountMeta[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const signer = this.authorityPubkey(authority);
     const existing = await this.provider.connection.getAccountInfo(kenoShowdownRows);
@@ -3916,7 +3937,7 @@ export class OnchainGameLifecycle {
     playerIndex: number,
     proof: any,
     publicSignals: bigint[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
     handIndex = 0,
   ): Promise<void> {
     if (!this.pokerProgram) throw new Error('ShowdownMaterialsNotVerified');

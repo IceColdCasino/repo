@@ -9,8 +9,9 @@
 > documentation is prohibited without written permission.
 
 This folder documents the **Groth16 / Circom** mental-poker protocol. The
-Solana programs, Arcis chip movement, and the poker-pot versus dealer-pool
-split are in [on-chain](../on-chain.md). The Zig prover, the proving keys,
+poker-pot versus dealer-pool split is in [on-chain](../on-chain.md). The
+programs are [casino](../casino.md), [light-casino](../light-casino.md), and
+[arcium](../arcium.md). The Zig prover, the proving keys,
 and the TypeScript host tests are documented separately:
 [libzkcasino](../libzkcasino.md), [zkeys](../zkeys.md), [tests](../tests.md).
 The localnet hands that run those proofs through Arcis are in
@@ -22,7 +23,8 @@ Every game is a parameterized instance of one protocol:
 2. **Shuffle** an encrypted shoe (cards, dice, reels, or balls).
 3. **Share** threshold partial decryptions, sealed to every other player.
 4. **Showdown** reconstruct plaintext, evaluate the game, and publish
-   `Σ (result_i + 1) · coefficient_i` under the Arcium seal.
+   `(result_0 + 1) · c0 + (result_1 + 1) · c1` under the two-coefficient
+   Arcium seal. Wider statements are packed into those two results first.
 
 What changes per game is the **shoe layout**, the **number of revealed
 outcomes**, and the **evaluation / bet circuits**. The encryption is the same.
@@ -178,7 +180,7 @@ preferred embodiment in this repo is **hashout** ([0139]–[0144],
 |--------|------|
 | **Input (Poseidon)** | Public `hash`. The template checks `hash === HashMain.out`. Showdown’s last hashed input is the Arcium seal commitment. |
 | **Share output** | Public `out`: a Poseidon of the sealed partials, grouped so one card, street, or ball can be opened on its own. |
-| **Showdown output** | Public `out = Σ (result_i + 1) · coefficient_i` over the first `nTerms` of the 14 sealed coefficients. |
+| **Showdown output** | Public `out = (result_0 + 1) · c0 + (result_1 + 1) · c1`. The seal is two coefficients. |
 
 The sealed partials and the coefficients stay private witnesses. Public
 signals of a hashout main are `[out, hash]`.
@@ -352,33 +354,35 @@ A showdown circuit:
 1. Takes the public input `hash` and checks `hash === HashMain.out` inside
    the showdown template. The template does not output that hash.
 2. `HashMain`’s last input is `sealCommitment`, the Poseidon of the four
-   subset-sum rows Arcis revealed for the 14 sealed coefficients.
+   subset-sum rows Arcis revealed for the two sealed coefficients.
 3. Decrypts partials sealed to the prover, builds the prover’s own partials,
    aggregates, and checks decrypted points equal `P(plaintext)`.
 4. Runs the game evaluator.
-5. Publishes `out = Σ (result_i + 1) · coefficient_i` over the first
-   `nTerms` coefficients (`SealedShowdownHash`).
+5. Packs that evaluation into two results and publishes
+   `out = (result_0 + 1) · c0 + (result_1 + 1) · c1`
+   (`SealedShowdownHash(2)`).
 
 Each coefficient is 128 bits with bit 127 set. `Num2BitsStrict(128)` runs
-once, inside `SealCommitment`. A one-result game still uses two terms,
-`[result, 0]`, so the field is `(result + 1) · c0 + c1`. The other twelve
-coefficients stay in the seal and are not multiplied into `out`.
+once per coefficient, inside `SealCommitment`. A one-result game uses
+`[result, 0]`, so the field is `(result + 1) · c0 + c1`. The seal account
+still has 14 ciphertext slots. Slots past the pair are not weighted and are
+not inputs to the circuit.
 
 Public signals are `[out, hash]`. Faces, bets, coefficients, and the seal
 commitment are private. The commitment is bound because it is an input of
 `hash`.
 
-| Game | `HashMain` inputs, seal last | Terms |
-|------|------------------------------|-------|
-| Poker | pots, player, keys, ciphertext hash, seal | `nPlayers − 1` winner masks (9 at 10 seats) |
-| War, baccarat | keys, player, ciphertext hash, seal | 2: `[winner, 0]` |
-| Blackjack | player count, dealer count, keys, player, ciphertext hash, seal | 2: `[settlement, 0]` |
-| Roulette | keys, player, ciphertext hash, bet hash, `nActualBets`, seal | 12 bet codes |
-| Craps | keys, player, ciphertext hash, bet hash, `Poseidon(nBets, phase, point)`, seal | 14: 12 bets, action, point |
-| Keno | keys, player, ciphertext hash, bet hash, `nActualBets`, seal | 2: `[hitCount, 0]` |
-| Slots | keys, player, ciphertext hash, bet hash, seal | 2: `[award, 0]` |
-| Bingo 75 | keys, player, ciphertext hash, card hash, `patternId`, `nCalled`, seal | 2: `[packed, 0]` |
-| Bingo 90 | keys, player, ciphertext hash, card hash, `nCalled`, seal | 3 pattern limbs |
+| Game | `HashMain` inputs, seal last | Packed into the two results |
+|------|------------------------------|------------------------------|
+| Poker | pots, player, keys, ciphertext hash, seal | `Σ mask_i · 1024^i`, then `0` |
+| War, baccarat | keys, player, ciphertext hash, seal | `[winner, 0]` |
+| Blackjack | player count, dealer count, keys, player, ciphertext hash, seal | `[settlement, 0]` |
+| Roulette | keys, player, ciphertext hash, bet hash, `nActualBets`, seal | `Σ code_i · 36^i`, then `0` |
+| Craps | keys, player, ciphertext hash, bet hash, `Poseidon(nBets, phase, point)`, seal | `Σ bet_i · 1024^i`, then `action + pointOut · 6` |
+| Keno | keys, player, ciphertext hash, bet hash, `nActualBets`, seal | `[hitCount, 0]` |
+| Slots | keys, player, ciphertext hash, bet hash, seal | `[award, 0]` |
+| Bingo 75 | keys, player, ciphertext hash, card hash, `patternId`, `nCalled`, seal | `[packed, 0]` |
+| Bingo 90 | keys, player, ciphertext hash, card hash, `nCalled`, seal | `line + twoLines · 512 + fullHouse · 512²`, then `0` |
 
 ### Two hashes
 
@@ -386,7 +390,7 @@ commitment are private. The commitment is bound because it is an input of
 |------|--------|------|
 | **Input (Poseidon)** | Register, shuffle, share, showdown | Public `hash`. Share and showdown check it inside the template that owns the witness. Showdown appends `sealCommitment` last. |
 | **Share output** | `*_share_hashout_main` | Poseidon of the sealed partials, grouped per game. Not a coefficient polynomial. |
-| **Showdown output** | `*_showdown_hashout_main` | `(result + 1) · coefficient` over the live terms of the Arcium seal. |
+| **Showdown output** | `*_showdown_hashout_main` | `(result_0 + 1) · c0 + (result_1 + 1) · c1` after the packing above. |
 
 ---
 
@@ -401,7 +405,7 @@ These files are shared. Game docs do not re-list them unless a game wraps them.
 | `shuffle.circom` + `shuffle_*_main.circom` | Parameterized shuffle mains |
 | `share.circom` | Threshold partials. `Share` checks `hash`; `ShareHashOut` Poseidon-commits the seals |
 | `showdown.circom` | Shared showdown Poseidon (`sealCommitment` last), deck verify, `(result+1)·c` sum |
-| `showdown_seal.circom` | One strict 128-bit check of the 14 coefficients; Poseidon of the four rows |
+| `showdown_seal.circom` | Strict 128-bit check of the two live coefficients; Poseidon of the four rows |
 | `partials.circom` | Decrypt / create / aggregate partials |
 | `deck.circom` | `P(v) = BabyPbk(v+1)` with range check |
 | `hash.circom` | Poseidon over ciphertext arrays and public-key lists |
@@ -421,24 +425,25 @@ The unique work is always: **how the opened values are interpreted**, and
 
 | Game | Shoe (shuffle main) | Opened values | Unique ZK | Public showdown field |
 |------|---------------------|---------------|---------------|-----------------------------|
-| Poker | 52 cards, 1 deck | 25 (20 holes + 5 board) | Hand eval, compare, pot-mask showdown | 9 winner masks |
+| Poker | 52 cards, 1 deck | 25 (20 holes + 5 board) | Hand eval, compare, pot-mask showdown | 9 masks packed into `c0` |
 | Blackjack | 52 × {1,6,8} decks | Up to 24 used slots | Ace/soft totals, H17/S17, hit/stand/split **action** circuit | `(settlement+1)·c0 + c1` |
 | Baccarat | 52 × {1,6,8} decks | 6 (P2, B2, P3, B3) | Tableau third-card rules, mod-10 | `(winner+1)·c0 + c1` |
 | War | 52 × {1,6,8} decks | 4 (two ups + war pair) | Rank compare + war tie-break | `(winner+1)·c0 + c1` |
-| Roulette | 37 or 38 pockets | 1 winning pocket | Encrypted bets + EU/US payout table | 12 bet codes |
-| Craps | 2 dice × 6 faces | 2 die faces | Come-out / point, encrypted table bets | 12 bet codes + action + point |
+| Roulette | 37 or 38 pockets | 1 winning pocket | Encrypted bets + EU/US payout table | 12 codes packed into `c0` |
+| Craps | 2 dice × 6 faces | 2 die faces | Come-out / point, encrypted table bets | 12 bets in `c0`, action and point in `c1` |
 | Keno | 80 numbers | 20 drawn | Encrypted spot ticket + hit count | `(hits+1)·c0 + c1` |
 | Slots | 3 or 5 reels × 22 stops | 1 center stop / reel | Strip windows, paytable, coin bet | `(award+1)·c0 + c1` |
-| Bingo | 75 or 90 balls | Called balls | Encrypted card, pattern, completion index | 75: `(packed+1)·c0 + c1`. 90: 3 limbs |
+| Bingo | 75 or 90 balls | Called balls | Encrypted card, pattern, completion index | 75 and 90 both `(packed+1)·c0 + c1` |
 
 A house seat (must shuffle, does not place an economic player bet) is a
-**table-layout** concern, not a different encryption scheme: blackjack,
-roulette, craps, keno, and slots. The bankroll is separate. Poker pays winners
-from the pots those players committed. Bingo pays from the card buy-ins:
-the earliest pattern splits that pot. Every other game pays from the table’s
-dealer pool, including baccarat and war, which have no house seat. Keno’s
-hit-count paytable stays on that pool. That split is in
-[on-chain](../on-chain.md).
+**table-layout** concern, not a different encryption scheme. Every game
+except poker and bingo has one, on the last index of that game’s seat cap.
+Baccarat’s banker and war’s dealer in the showdown winner code are card
+outcomes, separate from that seat. The bankroll is separate. Poker pays
+winners from the pots those players committed. Bingo pays from the card
+buy-ins: the earliest pattern splits that pot. Every other game pays from
+the table’s dealer pool. Keno’s hit-count paytable stays on that pool.
+That split is in [on-chain](../on-chain.md).
 
 ---
 

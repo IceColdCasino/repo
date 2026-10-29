@@ -55,7 +55,7 @@ constraint is **hand composition**, not betting order.
 
 | Public | Private |
 |--------|---------|
-| `hash`, the seal polynomial, Groth16 proof | `sk`, used faces, unused shoe, action flags, 14 coefficients, seal commitment |
+| `hash`, the seal polynomial, Groth16 proof | `sk`, used faces, unused shoe, action flags, 2 coefficients, seal commitment |
 
 Showdown `hash` is `Poseidon(playerCardCount, dealerCardCount, keys, playerIndex, ciphertextHash, sealCommitment)`. The template checks that equality. The seal commitment is the last hashed input.
 

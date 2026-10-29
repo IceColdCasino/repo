@@ -11,14 +11,14 @@ the casino program.
 - **Light Protocol:** compressed accounts for shuffle and share artifacts.
   The system programs loaded at localnet genesis are separate from this
   program.
-
-Casino owns the chips. This program owns the proof. How a verified showdown
-becomes a poker pot payout or a dealer-pool settlement is in
-[docs/on-chain.md](../../docs/on-chain.md).
+- **Docs:** [docs/light-casino.md](../../docs/light-casino.md). How a
+  verified showdown becomes a poker pot payout or a dealer-pool settlement
+  is in [docs/on-chain.md](../../docs/on-chain.md). Casino’s accounts are
+  [docs/casino.md](../../docs/casino.md).
 
 ```bash
 ./scripts/build.sh
 ```
 
 The build writes a throwaway keypair. Deploy fetches the vanity keypair from
-1Password.
+1Password. That key matches the address above.

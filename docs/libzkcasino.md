@@ -158,10 +158,11 @@ the table. That is what keeps the TypeScript game state on the same hashes
 as the circuit.
 
 Showdown and action coefficients are inputs to `calc` and to the prove
-operation. The library does not sample them. They are the 14 values Arcis
-sealed for that seat. The public showdown field is
-`Σ (result_i + 1) · coefficient_i` over the live terms. The input hash is
-the Poseidon that ends with the seal commitment.
+operation. The library does not sample them. Arcis seals two coefficients
+for that seat (`seal_showdown_pair`). The public showdown field is
+`(result_0 + 1) · c0 + (result_1 + 1) · c1` after the game packs its
+statement into those two results. The input hash is the Poseidon that ends
+with the seal commitment.
 
 ## Paths
 

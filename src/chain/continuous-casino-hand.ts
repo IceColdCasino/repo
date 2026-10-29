@@ -790,7 +790,7 @@ export class ContinuousCasinoHand {
           totalAction,
           poolGrossWin,
           playerPayout,
-          encryptionPubkey: settleKey.publicKey,
+          encryptionKey: settleKey,
           nonce: settleKey.nonceBase + 50n,
           showdownResults: [winner],
         },

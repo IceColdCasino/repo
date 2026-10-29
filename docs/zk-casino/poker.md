@@ -29,8 +29,9 @@ and `settle_all_seats` / `distribute_and_settle` are in
    cards. The public output is `Poseidon(2)` of the ten hole-card hashes
    and `Poseidon(flop, turn, river)`. Street hashes stay inside the proof.
 4. **Showdown** — one proving player decrypts the deal, evaluates every
-   active 7-card hand, and publishes the winner masks as
-   `Σ (mask_i + 1) · coefficient_i`. Ranks and faces stay private.
+   active 7-card hand, and packs the nine winner masks as
+   `Σ mask_i · 1024^i`. The public field is `(packed + 1) · c0 + c1`.
+   Ranks and faces stay private.
 
 ## Unique ZK
 
@@ -39,7 +40,7 @@ and `settle_all_seats` / `distribute_and_settle` are in
 | `poker_card.circom` | Rank / suit from a 0..51 index |
 | `poker_hand_eval.circom` | Best 5-card rank from 5–7 cards (category + kickers) |
 | `poker_compare_hands.circom` | Pairwise comparison of evaluated hands |
-| `poker_showdown.circom` | Decrypt 25 cards; apply pot masks; sum the 9 mask terms |
+| `poker_showdown.circom` | Decrypt 25 cards; apply pot masks; pack the 9 masks into `c0` |
 
 Showdown checks `hash === HashMain.out` inside the template. `HashMain` is
 `Poseidon(potMaskHash, playerIndex, keyHash, ciphertextHash, sealCommitment)`.
@@ -55,10 +56,10 @@ witness.
 
 | Public | Private |
 |--------|---------|
-| `hash`, the winner-mask sum, Groth16 proof | `sk`, 25 faces, pot masks, sealed partials, 14 coefficients, seal commitment |
+| `hash`, `(packed + 1) · c0 + c1`, Groth16 proof | `sk`, 25 faces, pot masks, sealed partials, 2 coefficients, seal commitment |
 
-The public field is `Σ (winner_mask[i] + 1) · coefficient[i]` over the first
-nine of the 14 sealed coefficients. Settlement consumes that one field.
+`packed` is `Σ winner_mask[i] · 1024^i`. The second result is `0`.
+Settlement consumes that one field.
 
 ## Entrypoints
 

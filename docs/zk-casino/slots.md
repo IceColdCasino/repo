@@ -53,7 +53,7 @@ the painted symbols. The strip mapping is a circuit constant.
 
 | Public | Private |
 |--------|---------|
-| `hash`, `(award+1)·c0 + c1`, Groth16 proof | `sk`, center indices, coin amount, window symbols, 14 coefficients, seal commitment |
+| `hash`, `(award+1)·c0 + c1`, Groth16 proof | `sk`, center indices, coin amount, window symbols, 2 coefficients, seal commitment |
 
 `hash` is `Poseidon(keys, playerIndex, ciphertextHash, betHash, sealCommitment)`. The showdown template checks that equality. Share also publishes the encrypted coin bets.
 

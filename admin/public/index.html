@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ice Cold admin</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">Localhost</p>
+      <h1>Room admin</h1>
+    </div>
+    <p class="lede">Create a room and its first tables, whitelist player addresses, and pre-fund each SOL float. Program deploys stay outside this page.</p>
+  </header>
+
+  <section class="bar">
+    <label>Cluster
+      <select id="cluster">
+        <option value="localnet">Localnet</option>
+        <option value="devnet">Devnet</option>
+      </select>
+    </label>
+    <div class="status" id="status">Checking the cluster…</div>
+    <div class="signer">
+      <label><input type="radio" name="signer" value="local" checked> Local admin key</label>
+      <label><input type="radio" name="signer" value="wallet"> Wallet</label>
+      <button type="button" id="connect" hidden>Connect wallet</button>
+      <span id="wallet"></span>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Rooms on this cluster</h2>
+      <button type="button" id="refresh-rooms" class="ghost">Refresh</button>
+    </div>
+    <div id="rooms">Loading rooms…</div>
+  </section>
+
+  <section id="tables-panel" hidden>
+    <div class="section-head">
+      <h2>Tables in this room</h2>
+      <button type="button" id="open-table-btn">Open table</button>
+    </div>
+    <p class="hint" id="tables-hint"></p>
+    <div id="tables"></div>
+  </section>
+
+  <section id="whitelist-panel" hidden>
+    <div class="section-head">
+      <h2>Whitelisted players</h2>
+    </div>
+    <p class="hint" id="whitelist-hint"></p>
+    <div id="whitelist"></div>
+  </section>
+
+  <form id="form">
+    <fieldset>
+      <legend>Room</legend>
+      <div class="grid">
+        <label>Game
+          <select id="game"></select>
+        </label>
+        <label>Room seed
+          <input id="seed" name="seed" autocomplete="off" spellcheck="false" placeholder="table name">
+        </label>
+        <input id="room-id" type="hidden">
+        <label>Small blind
+          <input id="blind" type="number" min="0" step="1" value="10">
+        </label>
+        <label id="shoe-label">Shoe
+          <select id="shoe">
+            <option value="1">1 deck</option>
+            <option value="6">6 decks</option>
+            <option value="8">8 decks</option>
+          </select>
+        </label>
+        <label id="variant-label">Variant
+          <select id="variant"></select>
+        </label>
+      </div>
+      <label class="check"><input id="open-table" type="checkbox" checked> Open a new table</label>
+      <button type="button" id="new-seed" class="ghost">New seed</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Players</legend>
+      <label>Addresses, one per line
+        <textarea id="players" rows="5" spellcheck="false" placeholder="Pubkey"></textarea>
+      </label>
+      <label>SOL float per seat
+        <input id="float" type="number" min="0" max="20" step="0.000001">
+      </label>
+      <p class="hint" id="float-hint"></p>
+    </fieldset>
+
+    <div class="actions">
+      <button type="button" id="lookup" class="ghost">Look up</button>
+      <button type="button" id="create" data-mode="create">Create room and table</button>
+      <button type="button" id="list" data-mode="list">Whitelist and fund</button>
+      <button type="button" id="all" data-mode="all">Create, whitelist, and fund</button>
+    </div>
+  </form>
+
+  <section>
+    <h2>Result</h2>
+    <pre id="log">Ready.</pre>
+  </section>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

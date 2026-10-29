@@ -177,7 +177,7 @@ export class Player {
     return this.#session !== undefined;
   }
 
-  /** Host-sealed showdown coefficients (all 14 seal slots). The polynomial uses the first two. */
+  /** The two host-sealed showdown coefficients. */
   setSealedCoefficients(coeffs: bigint[]): void {
     this.#sealedCoefficients = requireHostShowdownCoefficients(coeffs);
     this.#showdownParams = undefined;

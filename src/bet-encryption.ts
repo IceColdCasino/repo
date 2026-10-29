@@ -72,6 +72,23 @@ export async function encryptBetFields(
   return { ciphertexts, encryptionPubkey: tableKey.publicKey, nonce };
 }
 
+/** Encrypt fields under an existing nonce. Each field is its own ciphertext. */
+export async function encryptBetFieldsAtNonce(
+  tableKey: TableEncryptionKey,
+  provider: AnchorProvider,
+  programId: PublicKey,
+  fields: bigint[],
+  nonce: bigint,
+): Promise<Uint8Array[]> {
+  const mxePublicKey = await getMXEPublicKeyWithRetry(provider, programId);
+  const nonceBytes = serializeLE(nonce, 16);
+  const cipher = sharedCipher(tableKey, mxePublicKey);
+  return fields.map((field) => {
+    const enc = cipher.encrypt([field], nonceBytes)[0]!;
+    return enc instanceof Uint8Array ? enc : new Uint8Array(enc as ArrayLike<number>);
+  });
+}
+
 export async function encryptBetAmount(
   tableKey: TableEncryptionKey,
   provider: AnchorProvider,

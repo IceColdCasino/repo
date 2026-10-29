@@ -6,9 +6,11 @@
 Player vs dealer, 1/6/8-deck shoe. Four cards: each side’s up-card, then a
 war pair if ranks tie. Circom compares ranks only (suits do not matter).
 
-The dealer side is a card outcome, not a house seat. Wins are paid from the
-dealer pool. Coverage before `start_hand` is `bet_unit × seats`. Action
-collection and the pool-win edge are each 250 bps. See
+The dealer side of a hand is a card outcome. The table still reserves
+physical seat 11 as the house: that seat shuffles and does not bet. Wins
+are paid from the dealer pool. Coverage before `start_hand` is
+`bet_unit × seats`. Action collection and the pool-win edge are each
+250 bps, debited inside the pool ciphertext. See
 [on-chain](../on-chain.md#dealer-pool).
 
 ## Shoe
@@ -46,7 +48,7 @@ fewer opened indices).
 
 | Public | Private |
 |--------|---------|
-| `hash`, `(winner+1)·c0 + c1`, Groth16 proof | `sk`, four faces, 14 coefficients, seal commitment |
+| `hash`, `(winner+1)·c0 + c1`, Groth16 proof | `sk`, four faces, 2 coefficients, seal commitment |
 
 `hash` is `Poseidon(keys, playerIndex, ciphertextHash, sealCommitment)`. The showdown template checks that equality.
 

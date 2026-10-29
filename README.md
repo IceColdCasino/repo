@@ -31,7 +31,10 @@ Presence of source here does not waive those rights.
 ├── calc.sh                Compile a main and run its trusted setup
 └── docs/
     ├── zk-casino/         Protocol and per-game circuit documentation
-    ├── on-chain.md        Casino and light-casino; poker pots vs dealer pool
+    ├── on-chain.md        Poker pots, the bingo card pot, and the dealer pool
+    ├── casino.md          Anchor program: rooms, wallets, pots, callbacks
+    ├── light-casino.md    Pinocchio Groth16 verifier and proof receipts
+    ├── arcium.md          Encrypted instructions and the MXE cluster
     ├── sol-cost.md        Vault float in bytes; lamports follow the rent rate
     ├── arcis-tests.md     What the localnet Arcis hands actually run
     ├── libzkcasino.md
@@ -50,20 +53,23 @@ Presence of source here does not waive those rights.
 - **`docs/zk-casino/`** — how the four-phase protocol works, how USPTO
   **19/811,546** maps onto these circuits, and the shoe / evaluator interface
   for each game.
-- **`docs/on-chain.md`** — the casino and light-casino programs, and how
-  poker and bingo settle from player pots while every other game, including
-  keno, settles against a dealer pool.
+- **`docs/on-chain.md`** — how poker and bingo settle from player pots while
+  every other game, including keno, settles against a dealer pool.
+- **`docs/casino.md`**, **`docs/light-casino.md`**, and **`docs/arcium.md`** —
+  the two programs and the encrypted-instruction cluster.
 - **`rust/casino`** — the Anchor program: rooms, encrypted wallets, poker
-  pots, and the dealer pool. Its address is
-  `CasinoXME8X5fZzMrcKT3Tu551ZaRxWofiEUWiVK2VFv` on localnet, devnet, and mainnet.
+  pots, and the dealer pool. Its declared address is
+  `4nPbWQkPAnSWMnSCAsuNicCGA86zrQKjzkZX7JFWRREY`.
   Confidential transitions live in `rust/casino/encrypted-ixs` and run on the
   Arcium cluster.
 - **`rust/light-casino`** — the pinocchio program that verifies Groth16
   proofs and can CPI the receipt into casino. Its address is
   `CasinodrqvrdEqRYCMFfWGqQ1aD9mCcGDoWRQNPkWVtc`.
   Builds write a throwaway keypair (`scripts/write-build-keypairs.sh`) so CI
-  can compile without secrets. Deploy fetches the vanity keypairs from the
-  IceColdCasino vault in 1Password. They are not stored in the repo.
+  can compile without secrets. The light-casino key in the IceColdCasino
+  1Password vault matches `Casinodr…`. The casino fetch in
+  `scripts/fetch-program-keypairs.sh` still names `CasinoX…`, which is not
+  the id this source declares. Neither secret is stored in the repo.
   `rust/shared-zk-ids` is the shared program-id, `GameKind`, and receipt layout.
 
 How poker pots and the bingo card pot differ from the dealer pool is in
@@ -80,8 +86,10 @@ That page covers encryption, the shared register → shuffle → share → showd
 pipeline, the patent-to-circuit map, and links to each game. The game pages
 document shoe layout, opened indices, and evaluation.
 
-**[docs/on-chain.md](docs/on-chain.md)** is the program doc: casino, light-casino,
-Arcis, poker pots, the bingo card pot, and the dealer pool.
+**[docs/on-chain.md](docs/on-chain.md)** is the chip split: poker pots, the
+bingo card pot, and the dealer pool. **[docs/casino.md](docs/casino.md)**,
+**[docs/light-casino.md](docs/light-casino.md)**, and
+**[docs/arcium.md](docs/arcium.md)** are the program references.
 
 The implementation docs are separate:
 
@@ -91,6 +99,12 @@ The implementation docs are separate:
   `./calc.sh`.
 - **[docs/tests.md](docs/tests.md)** — what `bun run test:games` actually
   checks.
+- **[docs/casino.md](docs/casino.md)** — rooms, accounts, and the Anchor
+  instruction groups.
+- **[docs/light-casino.md](docs/light-casino.md)** — Groth16 verify, receipts,
+  and the Light artifact accounts.
+- **[docs/arcium.md](docs/arcium.md)** — the MXE cluster and every encrypted
+  instruction.
 - **[docs/arcis-tests.md](docs/arcis-tests.md)** — what the nine localnet
   Arcis hands actually run and assert.
 - **[docs/sol-cost.md](docs/sol-cost.md)** — vault float in bytes. Lamports

@@ -71,6 +71,25 @@ pub struct CreateTable<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(table_id: u64)]
+pub struct CloseTable<'info> {
+    /// CAdmin, or a delegated admin of this room's casino. Receives the table rent.
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(mut, seeds = [b"room", &room.room_id[..]], bump)]
+    pub room: Account<'info, Room>,
+    #[account(
+        mut,
+        close = authority,
+        seeds = [b"table", &room.room_id[..], &table_id.to_le_bytes()],
+        bump,
+        constraint = table_state.room_id == room.room_id @ ErrorCode::InvalidTableId,
+        constraint = table_state.table_id == table_id @ ErrorCode::InvalidTableId,
+    )]
+    pub table_state: Account<'info, TableState>,
+}
+
+#[derive(Accounts)]
 #[instruction(room_id: [u8; 32])]
 pub struct AddToWhitelist<'info> {
     /// CAdmin, or a delegated admin of this room's casino.

@@ -16,7 +16,7 @@ import {
   ROULETTE_FEES,
   type CasinoGame,
 } from '../casino-fees';
-import { generateTableEncryptionKey } from '../bet-encryption';
+import { encryptBetFieldsAtNonce, generateTableEncryptionKey, type TableEncryptionKey } from '../bet-encryption';
 import { ArciumPollingHelper } from '../arcium/polling';
 import { ArciumMPCHelper } from '../arcium/mpc';
 
@@ -29,7 +29,8 @@ export interface CasinoSettlementParams {
   totalAction: bigint;
   poolGrossWin: bigint;
   playerPayout: bigint;
-  encryptionPubkey: Uint8Array;
+  /** Key that decrypts the dealer pool. The action and pool win are sealed with it. */
+  encryptionKey: TableEncryptionKey;
   nonce: bigint;
   /** Polynomial terms Arcis range-checks. Unused slots stay 0. */
   showdownResults: readonly (number | bigint)[];
@@ -400,17 +401,24 @@ export class CasinoSettlementHelper {
     const gameStatePda = this.gameStatePDA(params.gameId);
 
     const offsetBn = new BN(computationOffset);
+    const [totalAction, poolGrossWin] = await encryptBetFieldsAtNonce(
+      params.encryptionKey,
+      this.provider,
+      this.program.programId,
+      [params.totalAction, params.poolGrossWin],
+      params.nonce,
+    );
     await this.arcium.payComputationFromFloat(offsetBn, () =>
       (this.program.methods as any)
       .settleCasinoHand(
         offsetBn,
-        new BN(params.totalAction.toString()),
-        new BN(params.poolGrossWin.toString()),
+        Array.from(totalAction),
+        Array.from(poolGrossWin),
         new BN(params.playerPayout.toString()),
         fees.actionFeeBps,
         fees.poolWinFeeBps,
         fees.bankerCommissionBps,
-        Array.from(params.encryptionPubkey),
+        Array.from(params.encryptionKey.publicKey),
         new BN(params.nonce.toString()),
         showdownResultWords(params.showdownResults),
         params.resultCount ?? 0,

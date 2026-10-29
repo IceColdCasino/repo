@@ -1,0 +1,8 @@
+{
+  "name": "icecold-admin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun server.ts"
+  }
+}

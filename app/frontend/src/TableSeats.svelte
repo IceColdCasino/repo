@@ -43,9 +43,6 @@
           info.bet > 0
             ? { key: 'bet', testId: `seat-bet-${seat}`, text: `bet ${formatChipBalance(info.bet)}`, fill: '#c8d4ff', weight: '400' }
             : null,
-          info.wonAmount !== undefined && info.wonAmount > 0
-            ? { key: 'won', testId: `seat-won-${seat}`, text: `won ${formatChipBalance(info.wonAmount)}`, fill: '#4ade80', weight: '700' }
-            : null,
           info.handDescription
             ? { key: 'hand', testId: `seat-hand-${seat}`, text: info.handDescription, fill: '#fbbf24', weight: '400' }
             : null,

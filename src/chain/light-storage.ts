@@ -2,6 +2,7 @@ import { Program, type AnchorProvider, web3 } from '@coral-xyz/anchor';
 import { mapPool, withRetry } from '../arcium/verify-chunk-parallel';
 import { fieldToBytesBE } from '../groth16-convert';
 import { prependVault } from './rent-vault';
+import { localKeypair, signAuthorityTransaction, type SeatAuthority } from './seat-signer';
 import {
   LIGHT_INDEXER_URL,
   LIGHT_PROVER_URL,
@@ -186,7 +187,7 @@ export class LightProtocolStorageHelper {
       betPublicInputs: web3.PublicKey;
       rouletteBetCommitment: web3.PublicKey;
     },
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const addressProof = await this.proveBetCommitment(gameId, playerIndex);
     const signer = authority?.publicKey ?? this.provider.wallet.publicKey;
@@ -212,9 +213,9 @@ export class LightProtocolStorageHelper {
       const transaction = await builder.transaction();
       transaction.feePayer = authority.publicKey;
       transaction.recentBlockhash = latest.blockhash;
-      transaction.sign(authority);
+      const signed = await signAuthorityTransaction(this.provider, transaction, authority);
       const signature = await this.provider.connection.sendRawTransaction(
-        transaction.serialize(),
+        signed.serialize(),
         { preflightCommitment: 'confirmed' },
       );
       await this.provider.connection.confirmTransaction(
@@ -349,7 +350,7 @@ export class LightProtocolStorageHelper {
     startIndex: number,
     count: number,
     commitments: Uint8Array[],
-    recipient: web3.Keypair,
+    recipient: SeatAuthority,
   ): Promise<void> {
     if (count < 1 || count > 8 || commitments.length !== count) {
       throw new Error('Revealed partial count must match 1..8 commitments');
@@ -394,7 +395,12 @@ export class LightProtocolStorageHelper {
       .preInstructions([
         web3.ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
       ])
-      .signers([recipient])
+      .signers((() => {
+        const recipientKp = localKeypair(recipient);
+        return recipientKp && !recipientKp.publicKey.equals(this.provider.wallet.publicKey)
+          ? [recipientKp]
+          : [];
+      })())
       .rpc();
   }
 
@@ -415,7 +421,7 @@ export class LightProtocolStorageHelper {
       sharePublicInputs: web3.PublicKey;
       rouletteBetCommitment: web3.PublicKey;
     },
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     if (count < 1 || count > 8 || commitments.length !== count) {
       throw new Error('Roulette bet chunk count must match 1..8 commitments');
@@ -467,9 +473,9 @@ export class LightProtocolStorageHelper {
       const transaction = await builder.transaction();
       transaction.feePayer = authority.publicKey;
       transaction.recentBlockhash = latest.blockhash;
-      transaction.sign(authority);
+      const signed = await signAuthorityTransaction(this.provider, transaction, authority);
       const signature = await this.provider.connection.sendRawTransaction(
-        transaction.serialize(),
+        signed.serialize(),
         { preflightCommitment: 'confirmed' },
       );
       await this.provider.connection.confirmTransaction(
@@ -494,7 +500,7 @@ export class LightProtocolStorageHelper {
     gameId: Uint8Array,
     playerIndex: number,
     fields: Uint8Array[],
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     if (fields.length === 0) return;
     const lightUp = process.env.LIGHT_E2E === '1' || (await isLightAvailable());
@@ -542,9 +548,9 @@ export class LightProtocolStorageHelper {
             const transaction = await builder.transaction();
             transaction.feePayer = authority.publicKey;
             transaction.recentBlockhash = latest.blockhash;
-            transaction.sign(authority);
+            const signed = await signAuthorityTransaction(this.provider, transaction, authority);
             const signature = await this.provider.connection.sendRawTransaction(
-              transaction.serialize(),
+              signed.serialize(),
               { preflightCommitment: 'confirmed' },
             );
             await this.provider.connection.confirmTransaction(

@@ -1267,6 +1267,61 @@ describe('prove once per statement', () => {
     expect(shareProve.mock.calls[0]?.[0]).toEqual([[9n, 8n, 7n, 6n]]);
   });
 
+  it('waits until the last shuffle replaces the shoe this seat published', async () => {
+    const stale = ['1', '2', '3', '4'];
+    const finalShoe = ['9', '8', '7', '6'];
+    const zk = {
+      phase: 'Share' as const,
+      shuffleOrder: [0, 1],
+      shuffleStep: 2,
+      shuffleInputHash: null,
+      currentShufflerIndex: null,
+      currentShufflerSeat: null,
+      registeredCount: 2,
+      shuffledCount: 2,
+      sharedCount: 0,
+      requiredShares: 2,
+      hasSharedPartial: [false, false] as boolean[],
+      elGamalPublicKeys: [['1', '2'], ['3', '4']] as Array<[string, string]>,
+      cardsDealtFaceDown: true,
+      currentDeck: [stale],
+      shareDeck: [stale],
+    };
+    let reads = 0;
+    const shareProve = vi.fn(async () => ({
+      proof: { pi_a: ['1'] },
+      publicSignals: ['9'],
+      ciphertexts: [[[1n, 2n, 3n, 4n]]],
+    }));
+    const client = {
+      getGame: vi.fn(async () => {
+        reads += 1;
+        const deck = reads < 3 ? [stale] : [finalShoe];
+        return shareSnapshot({ zk: { ...zk, currentDeck: deck, shareDeck: deck } });
+      }),
+      registerHandKey: vi.fn(),
+      submitShuffle: vi.fn(),
+      submitShare: vi.fn(async () => shareSnapshot()),
+      getShowdownMaterials: vi.fn(),
+      submitShowdown: vi.fn(),
+    } satisfies ZkHandClient;
+    const state = flowState();
+    state.game = null;
+    state.publishedShuffleDeck = [[1n, 2n, 3n, 4n]];
+    state.player = {
+      publicKey: [1n, 2n],
+      padding: [0n, 0n, 0n, 0n],
+      ensureNativeCircuitsForPhase: vi.fn(async () => undefined),
+      preloadShare: vi.fn(),
+      shareProve,
+    } as unknown as ZkHandFlowState['player'];
+
+    await submitSharePartials(client, 'game-1', 0, state, shareSnapshot());
+
+    expect(shareProve).toHaveBeenCalledOnce();
+    expect(shareProve.mock.calls[0]?.[0]).toEqual([[9n, 8n, 7n, 6n]]);
+  });
+
   it('proves share against the on-chain shoe when the remembered deck is from an earlier hand', async () => {
     const chain = ['5', '6', '7', '8'];
     const snapshot = shareSnapshot({

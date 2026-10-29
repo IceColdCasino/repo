@@ -70,7 +70,7 @@ pub struct PoolStakeAccount {
 #[derive(InitSpace)]
 pub struct ProtocolTreasury {
     pub room_id: [u8; 32],
-    /// Cumulative transparent commission accrual (plaintext audit trail).
+    /// Legacy plaintext accrual. Settlement no longer adds to this.
     pub total_commissions: u64,
     /// SPL already transferred out of the vault to the protocol.
     pub total_withdrawn: u64,

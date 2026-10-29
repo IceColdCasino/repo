@@ -46,9 +46,6 @@
               {#each pot.winners as winner (winner.seat)}
                 <div class="winner" data-testid={`hand-result-winner-${winner.seat}`}>
                   <span>{winner.name} (seat {winner.seat})</span>
-                  {#if winner.wonAmount > 0}
-                    <span class="won"> — won {winner.wonAmount}</span>
-                  {/if}
                   {#if winner.handDescription}
                     <span class="hand"> — {winner.handDescription}</span>
                   {/if}
@@ -72,9 +69,6 @@
             <span>{seat.name} (seat {seat.seat})</span>
             {#if seat.folded}
               <span class="folded"> — folded</span>
-            {/if}
-            {#if seat.wonAmount > 0}
-              <span class="won"> — won {seat.wonAmount}</span>
             {/if}
             {#if seat.handDescription}
               <span class="hand"> — {seat.handDescription}</span>
@@ -167,10 +161,5 @@
 
   .folded {
     color: #64748b;
-  }
-
-  .won {
-    color: #4ade80;
-    font-weight: 600;
   }
 </style>

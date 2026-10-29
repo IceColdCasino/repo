@@ -31,6 +31,7 @@ import { casinoVaultRemaining, frontExtendFromVault, frontFromVault } from "./re
 import { isLocalCluster } from "./fund-sol";
 import { MAX_CPI_ALLOC } from "./shuffle-account";
 import { KeypairWallet } from "./keypair-wallet";
+import { localKeypair, type SeatAuthority } from "./seat-signer";
 import {
   REVEAL_ABSORB_PER_TX,
   REVEAL_CHUNK_ACCOUNT_SIZE,
@@ -773,29 +774,26 @@ export class DeckStagingHelper {
   async closeShare(
     gameId: Uint8Array,
     playerIndex: number,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const pda = this.deriveSharePDA(gameId, playerIndex);
     const auth = this.resolveWriteAuth();
     const gameStatePDA = new GameStateHelper(this.program, this.provider).derivePDA(gameId);
+    const signer = authority?.publicKey ?? auth.authority;
+    const local = localKeypair(authority);
 
     await (this.program.methods as any)
       .closeShareDeckStaging(playerIndex)
       .accounts({
-        authority: authority
-          ? authority.publicKey
-          : auth.authority,
+        authority: signer,
         gameState: gameStatePDA,
         tableState: auth.tableState,
         shareDeckStaging: pda,
       })
       .remainingAccounts(
-        casinoVaultRemaining(
-          authority ? authority.publicKey : auth.authority,
-          this.program.programId,
-        ),
+        casinoVaultRemaining(signer, this.program.programId),
       )
-      .signers(authority ? [authority] : auth.signers)
+      .signers(local ? [local] : auth.signers)
       .rpc();
   }
 }
@@ -834,11 +832,12 @@ export class RevealedCardsHelper {
     cardIndex: number,
     gameState: web3.PublicKey,
     tableState: web3.PublicKey,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
   ): Promise<void> {
     const pda = this.derivePDA(gameId, recipientIndex, cardIndex);
     const revealed = await (this.program.account as any).revealedCard.fetch(pda);
     const refundTo = revealed.refundTo ?? revealed.refund_to;
+    const local = localKeypair(authority);
 
     await (this.program.methods as any)
       .closeRevealedCard()
@@ -851,7 +850,7 @@ export class RevealedCardsHelper {
         tableState,
         revealedCard: pda,
       } as any)
-      .signers(authority ? [authority] : [])
+      .signers(local ? [local] : [])
       .rpc();
   }
 }

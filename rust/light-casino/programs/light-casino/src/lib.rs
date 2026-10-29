@@ -3675,8 +3675,8 @@ pub struct GameState {
     pub game_kind: u8,
     pub shoe_decks: u8,
     pub roulette_variant: u8,
-    /// House/dealer seat (`255` = none). Required for roulette, blackjack, craps, keno, slots.
-    /// Bingo is PvP and always uses `255`.
+    /// House seat (`255` = none). Poker and bingo use `255`.
+    /// Every other kind requires the last player index.
     pub dealer_index: u8,
     /// Blackjack / bingo share chunk rounds; `1` for other games.
     pub n_share_chunks: u8,

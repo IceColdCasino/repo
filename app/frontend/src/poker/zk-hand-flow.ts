@@ -98,6 +98,11 @@ export interface ZkHandFlowState {
   finalShuffleDeck?: Ciphertext[] | null;
   /** First 25 cards of the shoe this seat shuffled. Identifies a stale snapshot. */
   preShareDeck?: Ciphertext[] | null;
+  /**
+   * Shoe this seat published while Shuffle was still open. A Share read in the
+   * same moment can still be that shoe, before the last shuffle lands.
+   */
+  publishedShuffleDeck?: Ciphertext[] | null;
   shareSubmitted: boolean;
   showdownSubmitted: boolean;
   inFlight: boolean;
@@ -269,6 +274,7 @@ export async function createFreshZkHandFlow(
       currentDeck: null,
       finalShuffleDeck: null,
       preShareDeck: null,
+      publishedShuffleDeck: null,
       shareSubmitted: false,
       showdownSubmitted: false,
       inFlight: false,
@@ -306,6 +312,7 @@ export async function createNativeHandFlow(
       currentDeck: null,
       finalShuffleDeck: null,
       preShareDeck: null,
+      publishedShuffleDeck: null,
       shareSubmitted: false,
       showdownSubmitted: false,
       inFlight: false,
@@ -497,6 +504,7 @@ export async function syncGameFromSnapshot(state: ZkHandFlowState, snapshot: Gam
   if (snapshot.phase !== 'Shuffle' && snapshot.phase !== 'Share') {
     state.finalShuffleDeck = null;
     state.preShareDeck = null;
+    state.publishedShuffleDeck = null;
   }
   state.currentDeck = deckFromSnapshot(snapshot);
 }
@@ -1092,31 +1100,32 @@ export async function submitShuffle(
     }
     if (fresh.phase !== 'Shuffle') {
       if ((fresh.zk?.shuffledCount ?? 0) > shuffledBefore) {
-        rememberFinalShuffleDeck(state, fresh, proved.deck);
+        rememberShuffleResult(state, fresh, proved.deck);
       }
       await syncGameFromSnapshot(state, fresh);
       return fresh;
     }
     const actorAfter = shuffleActorIndex(fresh);
     if (actorAfter !== null && actorAfter !== playerIndex) {
+      rememberShuffleResult(state, fresh, proved.deck);
       await syncGameFromSnapshot(state, fresh);
       return fresh;
     }
     if ((fresh.zk?.shuffledCount ?? 0) > shuffledBefore) {
-      rememberFinalShuffleDeck(state, fresh, proved.deck);
+      rememberShuffleResult(state, fresh, proved.deck);
       await syncGameFromSnapshot(state, fresh);
       return fresh;
     }
 
     try {
       const next = await client.submitShuffle(gameId, localSeat, proof, publicSignals, shuffledDeck);
-      rememberFinalShuffleDeck(state, next, proved.deck);
+      rememberShuffleResult(state, next, proved.deck);
       await syncGameFromSnapshot(state, next);
       return next;
     } catch (err) {
       const after = await client.getGame(gameId);
       if ((after.zk?.shuffledCount ?? 0) > shuffledBefore) {
-        rememberFinalShuffleDeck(state, after, proved.deck);
+        rememberShuffleResult(state, after, proved.deck);
         await syncGameFromSnapshot(state, after);
         return after;
       }
@@ -1152,6 +1161,29 @@ function rememberFinalShuffleDeck(
     return;
   }
   state.finalShuffleDeck = copyDeck(deck);
+  state.publishedShuffleDeck = null;
+}
+
+/** Remember this seat's output. Share reads can lag one confirmation behind it. */
+function rememberShuffleResult(
+  state: ZkHandFlowState,
+  snapshot: GameSnapshot,
+  deck: Ciphertext[],
+): void {
+  if (snapshot.phase === 'Share') {
+    rememberFinalShuffleDeck(state, snapshot, deck);
+    return;
+  }
+  if (snapshot.phase === 'Shuffle' && deck.length > 0) {
+    state.publishedShuffleDeck = copyDeck(deck);
+  }
+}
+
+function shareReadIsStale(state: ZkHandFlowState, snapshot: GameSnapshot): boolean {
+  const published = state.publishedShuffleDeck;
+  if (!published || published.length === 0 || state.finalShuffleDeck?.length) return false;
+  const chain = chainShareDeck(snapshot);
+  return chain !== null && decksEqual(chain, published);
 }
 
 function chainShareDeck(snapshot: GameSnapshot): Ciphertext[] | null {
@@ -1220,6 +1252,27 @@ export async function submitSharePartials(
     await assertElGamalKeyMatchesSnapshot(state, state.player, fresh, localSeat);
 
     fresh = await client.getGame(gameId);
+    const shoeDeadline = Date.now() + 8_000;
+    let announcedStaleShoe = false;
+    while (shareReadIsStale(state, fresh) && Date.now() < shoeDeadline) {
+      if (!announcedStaleShoe) {
+        announcedStaleShoe = true;
+        logHandProgress(
+          `Waiting for the last shuffle to land before proving (seat ${localSeat})`,
+          'info',
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      fresh = await client.getGame(gameId);
+      if (fresh.phase !== 'Share') {
+        markShareSubmittedFromServer(state, fresh, localSeat);
+        await syncGameFromSnapshot(state, fresh);
+        return fresh;
+      }
+    }
+    if (shareReadIsStale(state, fresh)) {
+      throw new Error('Share shoe is still this seat\'s shuffle. Waiting for the last shuffle.');
+    }
     if (fresh.playerIndexBySeat?.[localSeat] === undefined) {
       throw new Error(`No player index for seat ${localSeat}`);
     }

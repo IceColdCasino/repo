@@ -35,7 +35,11 @@ export function sealAccountSlots(coeffs: readonly bigint[]): bigint[] {
  * coefficients are weighted.
  */
 export function sealCommitment(coeffs: readonly bigint[]): bigint {
-  return casinoFr(0, 'sealCommitment', { coefficients: sealAccountSlots(coeffs) });
+  // The library pads the twelve unused slots. Sending those pads overflows the
+  // two-coefficient list the commitment hash reads.
+  return casinoFr(0, 'sealCommitment', {
+    coefficients: requireHostShowdownCoefficients(coeffs),
+  });
 }
 
 /**

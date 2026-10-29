@@ -787,9 +787,8 @@ fn is_betting_round_authority(authority: &Pubkey) -> bool {
 /// Emits `StreetAdvancedEvent` + `PhaseAdvancedEvent` (+ action required).
 fn advance_betting_street_on_chain(game_state: &mut GameState) -> Result<()> {
     let from = game_state.betting_phase;
-    let already_on_flop = game_state.reached_flop;
     // One player left: no showdown. The pot (and any uncalled refund) is theirs.
-    // A preflop fold never sets `reached_flop`, so the pot is not raked.
+    // A preflop fold never sets `reached_flop`, so that pot is not raked.
     if active_player_count(game_state) == 1 {
         return close_uncontested_hand(game_state, from);
     }
@@ -806,6 +805,7 @@ fn advance_betting_street_on_chain(game_state: &mut GameState) -> Result<()> {
         game_state.hand_commits = [0u64; 10];
         game_state.current_player = 0;
         note_betting_turn(game_state);
+        charge_poker_rake(game_state)?;
         emit_street_advanced(game_state, from);
         emit_phase_advanced(game_state);
         emit_player_action_required(game_state);
@@ -831,6 +831,7 @@ fn advance_betting_street_on_chain(game_state: &mut GameState) -> Result<()> {
             open_next_hand_on_showdown(game_state);
             game_state.current_player = 0;
             note_betting_turn(game_state);
+            charge_poker_rake(game_state)?;
             emit_street_advanced(game_state, from);
             emit_phase_advanced(game_state);
             emit_player_action_required(game_state);
@@ -851,10 +852,19 @@ fn advance_betting_street_on_chain(game_state: &mut GameState) -> Result<()> {
         }
         cursor = next;
     }
-    if !already_on_flop && game_state.reached_flop {
-        take_flop_rake(game_state)?;
-    }
     Ok(())
+}
+
+/// Seats still in the hand. Folded seats are not owed a showdown credit.
+fn unsettled_showdown_seats(game_state: &GameState) -> u16 {
+    let mut mask = 0u16;
+    let n = game_state.num_players.min(10);
+    for i in 0..n {
+        if game_state.folded_mask & (1u16 << i) == 0 {
+            mask |= 1u16 << i;
+        }
+    }
+    mask
 }
 
 /// Fold left a single player. Credit that player and finish the hand.
@@ -868,19 +878,12 @@ fn close_uncontested_hand(game_state: &mut GameState, from: u8) -> Result<()> {
         }
     }
     let winner = winner.unwrap_or(0);
-    let mut payouts = [0u64; 10];
-    let n = (game_state.num_players as usize).min(payouts.len());
-    for i in 0..n {
-        payouts[i] = game_state.refunds[i];
-    }
-    let mut pot_total = 0u64;
-    for amount in game_state.pots {
-        pot_total = pot_total.saturating_add(amount);
-    }
-    if (winner as usize) < payouts.len() {
-        payouts[winner as usize] = payouts[winner as usize].saturating_add(pot_total);
-    }
-    game_state.payouts = payouts;
+    // Post-flop, the house's share comes out of the pot before it is awarded.
+    // A preflop fold leaves `reached_flop` clear and `charge_poker_rake` is a no-op.
+    charge_poker_rake(game_state)?;
+    // The pot is distributed to the remaining seat. The payout vector stays
+    // zero so the amount is not published on the hand account.
+    game_state.payouts = [0u64; 10];
     game_state.phase = 6;
     // Stay on the street that was open. Flop, turn, and river reveals key off
     // `betting_phase`, so jumping to 6 would publish streets that were never dealt.
@@ -944,29 +947,24 @@ fn apply_timeout_action(game_state: &mut GameState) -> Result<u8> {
 }
 
 /// After a validated bet: close street when matched+acted (or nobody can act), else next player.
+///
+/// Pots stay gross while betting is open. Rake is charged later, once: a
+/// post-flop fold that leaves one player, or the opening of showdown.
 fn store_raked_pots(game_state: &mut GameState, canonical: pot::CanonicalPots) -> Result<()> {
-    let raked = apply_poker_rake(
-        &canonical.amounts,
-        game_state.rake_bps,
-        game_state.reached_flop,
-    )
-    .map_err(|_| error!(ErrorCode::InvalidCanonicalPot))?;
-    game_state.pots = raked.amounts;
-    game_state.rake_amount = raked.rake;
+    game_state.pots = canonical.amounts;
     game_state.pot_eligible_masks = canonical.eligible_masks;
     game_state.refunds = canonical.refunds;
     game_state.pot_count = canonical.pot_count;
     Ok(())
 }
 
-/// First time the board is dealt, the pots on the account are still gross.
-fn take_flop_rake(game_state: &mut GameState) -> Result<()> {
-    let raked = apply_poker_rake(
-        &game_state.pots,
-        game_state.rake_bps,
-        game_state.reached_flop,
-    )
-    .map_err(|_| error!(ErrorCode::InvalidCanonicalPot))?;
+/// Take the room rake out of the gross pots. A second call leaves them alone.
+fn charge_poker_rake(game_state: &mut GameState) -> Result<()> {
+    if !game_state.reached_flop || game_state.rake_bps == 0 || game_state.rake_amount != 0 {
+        return Ok(());
+    }
+    let raked = apply_poker_rake(&game_state.pots, game_state.rake_bps, true)
+        .map_err(|_| error!(ErrorCode::InvalidCanonicalPot))?;
     game_state.pots = raked.amounts;
     game_state.rake_amount = raked.rake;
     Ok(())
@@ -1118,6 +1116,13 @@ fn u128_halves_from_le_bytes(bytes: &[u8; 32]) -> (u128, u128) {
     low_b.copy_from_slice(&bytes[..16]);
     high_b.copy_from_slice(&bytes[16..]);
     (u128::from_le_bytes(low_b), u128::from_le_bytes(high_b))
+}
+
+/// `reveal_card` returns `to_le_bytes`. Street hashes are Poseidon of the
+/// big-endian commitment, so the callback stores that encoding.
+fn be_commitment_from_le(mut le: [u8; 32]) -> [u8; 32] {
+    le.reverse();
+    le
 }
 
 /// Groth16 `showdown_hash` is BE field encoding; Arcis expects LE u128 halves.
@@ -2023,6 +2028,17 @@ mod reveal_policy_tests {
     }
 
     #[test]
+    fn revealed_limb_matches_the_street_commitment() {
+        let mut committed = [0u8; 32];
+        committed[0] = 0x11;
+        committed[30] = 0x22;
+        committed[31] = 0x33;
+        let mut opened = committed;
+        opened.reverse();
+        assert_eq!(be_commitment_from_le(opened), committed);
+    }
+
+    #[test]
     fn showdown_hash_be_to_le_halves_roundtrip() {
         // BE encoding of 9 << 128 (high limb = 9, low = 0)
         let mut be = [0u8; 32];
@@ -2404,10 +2420,11 @@ fn mark_showdown_receipt(
     game_state.showdown_hash = output_hash;
     game_state.showdown_finalized = true;
     // Bind settlement to the sealed coefficients of the player who proved the
-    // showdown hash. `compute_pots` / `distribute_and_settle` load the
+    // showdown hash. `settle_all_seats` / `distribute_and_settle` load the
     // `SealedShowdownCoefficients` PDA seeded by this index.
     game_state.showdown_hash_player = player_index;
     game_state.phase = 5; // Showdown
+    charge_poker_rake(game_state)?;
     open_next_hand_on_showdown(game_state);
     // A verified showdown receipt is the sole transition into settlement.
     game_state.settlement_status = SETTLEMENT_PROOF_ACCEPTED;
@@ -2822,7 +2839,7 @@ mod showdown_receipt_tests {
 
     #[test]
     fn records_showdown_submitter_for_coefficient_binding() {
-        // Settlement (`compute_pots` / `distribute_and_settle`) loads the
+        // Settlement (`settle_all_seats` / `distribute_and_settle`) loads the
         // SealedShowdownCoefficients PDA seeded by `showdown_hash_player`. That
         // index MUST be the player whose proof set `showdown_hash` — otherwise a
         // caller could point settlement at their own self-chosen coefficients.
@@ -2930,7 +2947,7 @@ mod street_closure_tests {
     }
 
     #[test]
-    fn five_percent_rake_is_taken_when_the_flop_is_dealt() {
+    fn rake_is_charged_on_a_postflop_fold_or_at_showdown() {
         let mut state = GameState {
             num_players: 2,
             betting_phase: 1,
@@ -2955,6 +2972,13 @@ mod street_closure_tests {
         assert!(!state.reached_flop);
         after_bet_update_turn(&mut state, 1, 1, false).unwrap();
         assert!(state.reached_flop);
+        assert_eq!(state.betting_phase, 2);
+        assert_eq!(state.rake_amount, 0);
+        assert_eq!(state.pots[0], 200);
+
+        state.folded_mask = 1 << 1;
+        after_bet_update_turn(&mut state, 1, 0, false).unwrap();
+        assert_eq!(state.phase, 6);
         assert_eq!(state.rake_amount, 10);
         assert_eq!(state.pots[0], 190);
 
@@ -2973,10 +2997,37 @@ mod street_closure_tests {
         after_bet_update_turn(&mut folded, 1, 0, false).unwrap();
         assert_eq!(folded.phase, 6);
         assert_ne!(folded.betting_phase, 5);
-        assert_eq!(folded.payouts[0], 200);
+        assert_eq!(folded.payouts[0], 0);
         assert!(!folded.reached_flop);
         assert_eq!(folded.rake_amount, 0);
         assert_eq!(folded.pots[0], 200);
+
+        let mut showdown = GameState {
+            num_players: 2,
+            phase: 3,
+            betting_phase: 4,
+            reached_flop: true,
+            rake_bps: 500,
+            current_bet: 20,
+            acted_mask: 0b10,
+            pots: {
+                let mut pots = [0u64; 9];
+                pots[0] = 400;
+                pots
+            },
+            pot_count: 1,
+            hand_commits: {
+                let mut commits = [0u64; 10];
+                commits[0] = 20;
+                commits[1] = 20;
+                commits
+            },
+            ..Default::default()
+        };
+        after_bet_update_turn(&mut showdown, 0, 2, false).unwrap();
+        assert_eq!(showdown.phase, 5);
+        assert_eq!(showdown.rake_amount, 20);
+        assert_eq!(showdown.pots[0], 380);
     }
 
     /// The last fold pays the remaining player. Showdown does not open.
@@ -3004,10 +3055,10 @@ mod street_closure_tests {
         assert_eq!(state.phase, 6);
         assert_eq!(state.betting_phase, 1);
         assert_eq!(state.act_deadline_unix, 0);
+        assert_eq!(state.payouts[0], 0);
+        assert_eq!(state.payouts[1], 0);
         assert!(require_card_reveal_allowed(20, 2, state.betting_phase, true, 1, state.folded_mask, 0).is_err());
         assert!(require_card_reveal_allowed(24, 2, state.betting_phase, true, 1, state.folded_mask, 0).is_err());
-        assert_eq!(state.payouts[0], 0);
-        assert_eq!(state.payouts[1], 30);
         assert_eq!(state.next_hand_phase, 0);
     }
 
@@ -3205,7 +3256,7 @@ mod street_closure_tests {
         assert_eq!(state.folded_mask, 0b10);
         assert_eq!(state.phase, 6);
         assert_ne!(state.betting_phase, 5);
-        assert_eq!(state.payouts[0], 40);
+        assert_eq!(state.payouts[0], 0);
     }
 
     /// Three players remain. Folding the actor passes the turn and stays on the street.
@@ -4395,7 +4446,7 @@ pub mod casino {
         let before_complete = reveal_prefix_complete(revealed.filled_bits, revealed.count);
         for j in 0..n as usize {
             let index = dest_offset as usize + j;
-            revealed.partials[index] = values[j];
+            revealed.partials[index] = be_commitment_from_le(values[j]);
             revealed.filled_bits |= 1u64 << index;
         }
         revealed.filled = revealed.filled_bits.count_ones().min(u8::MAX as u32) as u8;
@@ -4932,7 +4983,8 @@ pub mod casino {
         Ok(())
     }
 
-    /// Room authority sets the poker flop rake. `0` is the default and takes nothing.
+    /// Room authority sets the poker rake. `0` is the default and takes nothing.
+    /// The rate is charged on a post-flop fold to one player, or at showdown.
     /// A non-zero rate records the whitelisted house that must later open its own
     /// encrypted room wallet and SPL token account.
     pub fn set_room_rake(ctx: Context<SetRoomRake>, rake_bps: u16) -> Result<()> {
@@ -5024,6 +5076,28 @@ pub mod casino {
             config.shoe_decks,
             config.roulette_variant,
         ));
+        Ok(())
+    }
+
+    /// Close an empty table and return its rent to the room operator.
+    /// The highest id shrinks `table_count`, so the next open reuses it.
+    pub fn close_table(ctx: Context<CloseTable>, table_id: u64) -> Result<()> {
+        authorize_room_operator(
+            &ctx.accounts.authority.key(),
+            &ctx.accounts.room.authority,
+            ctx.remaining_accounts,
+        )?;
+        let table = &ctx.accounts.table_state;
+        require!(table_id < ctx.accounts.room.table_count, ErrorCode::InvalidTableId);
+        require!(!table.hand_in_progress, ErrorCode::HandInProgress);
+        require!(
+            table.seats.iter().all(|seat| *seat == Pubkey::default()),
+            ErrorCode::AlreadySeated
+        );
+        ctx.accounts.room.table_count = room::table_count_after_close(
+            table_id,
+            ctx.accounts.room.table_count,
+        );
         Ok(())
     }
 
@@ -5320,12 +5394,12 @@ pub mod casino {
         Ok(())
     }
 
-    /// Move the flop rake into the house's encrypted wallet.
+    /// Move an already charged rake into the house's encrypted wallet.
     ///
-    /// The house must already have called `init_room_wallet`, bound an encryption
-    /// key, and created an SPL token account for the room mint. The circuit
-    /// recomputes `floor(gross * rake_bps / 10_000)` and the callback rejects
-    /// any other amount.
+    /// The amount is fixed when a post-flop fold leaves one player, or when
+    /// showdown opens. An SPL deposit does not compute it. The house must
+    /// already have called `init_room_wallet`, bound an encryption key, and
+    /// created an SPL token account for the room mint.
     pub fn credit_poker_rake<'a>(
         ctx: Context<'a, CreditPokerRake<'a>>,
         computation_offset: u64,
@@ -5337,6 +5411,10 @@ pub mod casino {
         let rake_amount = ctx.accounts.game_state.rake_amount;
         let pots = ctx.accounts.game_state.pots;
         require!(reached_flop, ErrorCode::InvalidGamePhase);
+        require!(
+            ctx.accounts.game_state.phase == 5 || ctx.accounts.game_state.phase == 6,
+            ErrorCode::InvalidGamePhase
+        );
         require!(rake_bps > 0, ErrorCode::InvalidAmount);
         require!(rake_amount > 0, ErrorCode::InvalidAmount);
         let house = ctx.accounts.room.house;
@@ -6590,12 +6668,13 @@ pub mod casino {
 
     /// Disabled in release: caller-selected outcomes/fees; Arcis updates pool only.
     /// Arcis rejects the job when `showdown_results` is outside that game's range.
+    /// The protocol fee is debited inside MPC and is not an output.
     #[cfg(feature = "testing")]
     pub fn settle_casino_hand(
         ctx: Context<SettleCasinoHand>,
         computation_offset: u64,
-        total_action: u64,
-        pool_gross_win: u64,
+        total_action: [u8; 32],
+        pool_gross_win: [u8; 32],
         player_payout: u64,
         action_fee_bps: u16,
         pool_win_fee_bps: u16,
@@ -6606,7 +6685,7 @@ pub mod casino {
         result_count: u8,
     ) -> Result<()> {
         ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
-        ctx.accounts.dealer_pool.pending_total_action = total_action;
+        ctx.accounts.dealer_pool.pending_total_action = 0;
         let game_kind = ctx.accounts.table_state.game_kind;
         let variant = ctx.accounts.table_state.roulette_variant;
 
@@ -6614,8 +6693,12 @@ pub mod casino {
             .x25519_pubkey(encryption_pubkey)
             .plaintext_u128(nonce)
             .encrypted_u64(ctx.accounts.dealer_pool.balance_ciphertext)
-            .plaintext_u64(total_action)
-            .plaintext_u64(pool_gross_win)
+            .x25519_pubkey(encryption_pubkey)
+            .plaintext_u128(nonce)
+            .encrypted_u64(total_action)
+            .x25519_pubkey(encryption_pubkey)
+            .plaintext_u128(nonce)
+            .encrypted_u64(pool_gross_win)
             .plaintext_u64(player_payout)
             .plaintext_u16(action_fee_bps)
             .plaintext_u16(pool_win_fee_bps)
@@ -6676,17 +6759,13 @@ pub mod casino {
             Err(_) => return Err(error!(ArciumError::AbortedComputation)),
         };
         require!(o.field_2, ErrorCode::InvalidProof);
+        // `field_1` is a zero word. The fee was debited from the pool inside
+        // MPC and is not written to the treasury or the event.
+        let _unpublished = o.field_1;
 
         let pool = &mut ctx.accounts.dealer_pool;
         pool.balance_ciphertext = o.field_0.ciphertexts[0];
         pool.nonce = o.field_0.nonce;
-
-        let commission = o.field_1;
-        let treasury = &mut ctx.accounts.protocol_treasury;
-        treasury.total_commissions = treasury
-            .total_commissions
-            .checked_add(commission)
-            .ok_or(error!(ErrorCode::InvalidAmount))?;
 
         // Mark casino settle complete without advancing poker phase to 6.
         ctx.accounts.game_state.settlement_status = SETTLEMENT_SETTLED;
@@ -6695,15 +6774,14 @@ pub mod casino {
         let table = &mut ctx.accounts.table_state;
         let room_id = pool.room_id;
         let table_id = pool.table_id;
-        let total_action = pool.pending_total_action;
         pool.pending_total_action = 0;
         table.end_hand();
 
         emit!(CasinoSettlementEvent {
             room_id,
             table_id,
-            protocol_commission: commission,
-            total_action,
+            protocol_commission: 0,
+            total_action: 0,
         });
         Ok(())
     }
@@ -7723,10 +7801,8 @@ pub mod casino {
         nonce: u128,
         player_index: u8,
     ) -> Result<()> {
-        // V2 settles every active seat in one callback.  Retain this entrypoint
-        // only for local fixtures compiled with `--features testing`.
-        require!(cfg!(feature = "testing"), ErrorCode::LegacySettlementDisabled);
-        let game_state = &ctx.accounts.game_state;
+        // Credits one encrypted seat escrow. The payout amount stays inside MPC.
+        let game_state = &mut ctx.accounts.game_state;
         require!(game_state.phase == 5, ErrorCode::InvalidGamePhase);
         require!(game_state.showdown_hash != [0u8; 32], ErrorCode::InvalidProof);
         require!(game_state.showdown_finalized, ErrorCode::InvalidProof);
@@ -7745,9 +7821,11 @@ pub mod casino {
                 && ctx.accounts.table_state.hand_num_players == game_state.num_players,
             ErrorCode::InvalidGamePhase
         );
-
-        // Fused Arcis verify+settle: PDA sealed coeffs + Enc masks vs showdown_hash.
-        // Groth16 must already have latched showdown_finalized / showdown_hash.
+        let targets = unsettled_showdown_seats(game_state);
+        let seat_bit = 1u16 << player_index;
+        require!(targets & seat_bit != 0, ErrorCode::InvalidGamePhase);
+        let queued = game_state.acted_mask | seat_bit;
+        game_state.acted_mask = queued;
         {
             let sealed = &mut ctx.accounts.sealed_showdown_coefficients;
             require!(
@@ -7761,11 +7839,13 @@ pub mod casino {
                     && seal_rows_revealed(&sealed.coefficient_rows),
                 ErrorCode::InvalidSealedCoefficients
             );
-            mark_seal_consumed(
-                sealed,
-                &ctx.accounts.table_state,
-                game_state.showdown_hash_player,
-            )?;
+            if queued == targets {
+                mark_seal_consumed(
+                    sealed,
+                    &ctx.accounts.table_state,
+                    game_state.showdown_hash_player,
+                )?;
+            }
         }
         let sealed = &ctx.accounts.sealed_showdown_coefficients;
         ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
@@ -7848,11 +7928,14 @@ pub mod casino {
         escrow.nonce = o.field_0.nonce;
 
         let game_state = &mut ctx.accounts.game_state;
-        game_state.phase = 6;
-        snapshot_next_hand_seats(game_state, &ctx.accounts.table_state);
-
-        let table = &mut ctx.accounts.table_state;
-        table.end_hand();
+        game_state.acted_mask |= 1u16 << escrow.player_index;
+        let targets = unsettled_showdown_seats(game_state);
+        if targets == 0 || game_state.acted_mask & targets == targets {
+            game_state.phase = 6;
+            game_state.settlement_status = SETTLEMENT_SETTLED;
+            snapshot_next_hand_seats(game_state, &ctx.accounts.table_state);
+            ctx.accounts.table_state.end_hand();
+        }
 
         emit!(PotDistributionEvent {
             game_id: game_state.game_id,
@@ -7873,7 +7956,9 @@ pub mod casino {
         encryption_pubkey: [u8; 32],
         nonce: u128,
     ) -> Result<()> {
-        // This produces plaintext payouts and cannot be the production V2 path.
+        // Legacy testing queue for the previously built `compute_pots` artifact.
+        // Circuit source settles through `settle_all_seats` and does not reveal
+        // a payout vector. This instruction stays until that artifact is rebuilt.
         require!(cfg!(feature = "testing"), ErrorCode::LegacySettlementDisabled);
         let game_state = &ctx.accounts.game_state;
 
@@ -7982,20 +8067,16 @@ pub mod casino {
         require!(result.field_1, ErrorCode::InvalidProof);
 
         let game_state = &mut ctx.accounts.game_state;
-
-        // Store payouts per player
-        for (slot, payout) in game_state.payouts.iter_mut().zip(result.field_0.iter()) {
-            *slot = *payout;
-        }
-        let total_payout = result.field_0.iter().sum();
+        // `field_0` is the payout vector from the previously built artifact.
+        // Discard it. Seat credits are `settle_all_seats` and `distribute_and_settle`.
+        game_state.payouts = [0u64; 10];
         let game_id = game_state.game_id;
 
-        // Accepted payouts close the table. A rejected proof never reaches here.
         close_hand_after_pot_settlement(game_state, &mut ctx.accounts.table_state)?;
 
         emit!(PotDistributionEvent {
             game_id,
-            total_payout,
+            total_payout: 0,
         });
 
         Ok(())
@@ -11285,7 +11366,7 @@ pub struct ShowdownMaterialCommitment {
 /// Arcis-sealed showdown poly-hash coefficients for one proving player.
 ///
 /// Produced by the pair seal and consumed by
-/// `compute_pots` / `distribute_and_settle`. Seeds:
+/// `settle_all_seats` / `distribute_and_settle`. Seeds:
 /// `[b"sealed_showdown_coeffs", owner]`.
 #[account]
 #[derive(Default, InitSpace)]
@@ -11527,7 +11608,7 @@ pub struct GameState {
     /// Raises clear peers so action re-opens; street closes when all can-act bits are set and totals match.
     pub acted_mask: u16,
     /// Player index whose Groth16 showdown proof produced `showdown_hash`.
-    /// Settlement (`compute_pots` / `distribute_and_settle`) MUST consume the
+    /// Settlement (`settle_all_seats` / `distribute_and_settle`) MUST consume the
     /// `SealedShowdownCoefficients` PDA seeded by this index — the sealed coeffs
     /// used to build `showdown_hash` belong to this player only.
     pub showdown_hash_player: u8,
@@ -11548,7 +11629,8 @@ pub struct GameState {
     /// First slot at which the authority may refund a stalled settlement.
     pub settlement_expiry_slot: u64,
     /// Poker: the board was dealt (flop, turn, river, or an all-in runout).
-    /// A preflop fold leaves this false and the pot is not raked.
+    /// A preflop fold leaves this false and the pot is not raked. The rake
+    /// itself is charged on a post-flop fold to one player, or at showdown.
     pub reached_flop: bool,
     /// Room rake snapshotted at `start_hand`. `0` takes nothing. Basis points.
     pub rake_bps: u16,

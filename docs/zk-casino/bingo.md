@@ -22,7 +22,7 @@ and two-lines stay in the proof. Keno stays house-funded. See
 | Encoding | Ball `0..74` or `0..89` → `BabyPbk(v+1)` |
 | Shuffle mains | `shuffle_1_deck_75_main`, `shuffle_1_deck_90_main` |
 | Opened at showdown | Called prefix (`nCalled` ≤ variant size) |
-| Showdown terms | 75-ball: `[packed, 0]`. 90-ball: 3 pattern limbs |
+| Showdown terms | 75-ball: `[won·256 + completion, 0]`. 90-ball: the three pattern limbs packed into `c0`, then `0` |
 | Card cells | 25 (75-ball) or 27 (90-ball) |
 | Share chunks | 15 × 5 balls (75) or 18 × 5 balls (90) |
 
@@ -35,8 +35,8 @@ and two-lines stay in the proof. Keno stays house-funded. See
    output is `Poseidon(5)` of the five ball hashes. The chain recomputes
    one ball from that ball’s partials.
 4. **Showdown** — `VerifyCalledBalls` only forces decrypt≡plaintext for
-   `i < nCalled`. 75-ball publishes `(packed + 1) · c0 + c1`. 90-ball
-   sums three pattern limbs.
+   `i < nCalled`. Both variants publish `(packed + 1) · c0 + c1`. 90-ball
+   packs `line + twoLines·512 + fullHouse·512²` into `packed`.
 
 ## Unique ZK
 
@@ -47,7 +47,8 @@ and two-lines stay in the proof. Keno stays house-funded. See
 | `bingo_showdown.circom` | Decrypt called prefix + card cells; bind `patternId` and `nCalled` |
 
 75-ball uses a single packed term `won * 256 + completionIndex`. 90-ball
-emits three limbs (more pattern groups). Unused future calls are **not**
+scores three pattern groups and packs them into that same coefficient.
+Unused future calls are **not**
 required to match `P(v)` — same “used prefix” idea as blackjack’s
 `nUsedCards`.
 
@@ -58,7 +59,7 @@ scalars; the game logic is bingo patterns, not a keno hit count.
 
 | Public | Private |
 |--------|---------|
-| `hash`, the seal polynomial, Groth16 proof | `sk`, called balls, card cells, completion index, 14 coefficients, seal commitment |
+| `hash`, the seal polynomial, Groth16 proof | `sk`, called balls, card cells, completion index, 2 coefficients, seal commitment |
 
 75-ball `hash` is `Poseidon(keys, playerIndex, ciphertextHash, cardHash, patternId, nCalled, sealCommitment)`. 90-ball drops `patternId`. The showdown template checks that equality.
 

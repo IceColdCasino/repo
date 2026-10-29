@@ -1816,7 +1816,42 @@ export class ContinuousZkArcisHand {
     await this.sealShowdownForPlayer(submitterPlayerIndex);
     const { winnerMasks, publicSignals, proveMs } =
       await this.showdownOnChain(submitterPlayerIndex);
-    await this.computePots(winnerMasks, submitterPlayerIndex);
+    const seal = this.showdownSeals.get(submitterPlayerIndex);
+    if (!seal) throw new Error(`Missing showdown seal for p${submitterPlayerIndex}`);
+    const enc = await encryptWinnerMasksWithSealedKey(
+      seal.key,
+      this.provider,
+      this.pokerProgram.programId,
+      winnerMasks,
+    );
+    const submitter = this.bettingTable.players[submitterPlayerIndex]!.publicKey;
+    for (let seat = 0; seat < this.numPlayers; seat += 1) {
+      const phase = Number((await this.arcium.fetchGameState(this.gameId)).phase ?? 0);
+      if (phase >= 6) break;
+      try {
+        await this.arcium.distributeAndSettle(
+          this.gameId,
+          this.nextOffset(),
+          enc.ciphertexts,
+          enc.encryptionPubkey,
+          enc.nonce,
+          seat,
+          submitter,
+        );
+      } catch (err) {
+        const phaseNow = Number((await this.arcium.fetchGameState(this.gameId)).phase ?? 0);
+        if (phaseNow >= 6) break;
+        throw err;
+      }
+    }
+    await this.polling.waitForPhase(
+      this.gameStatePda(),
+      (pda) => (this.pokerProgram.account as any).gameState.fetch(pda),
+      6,
+      { timeout: 180_000, interval: 2_000 },
+    );
+    await this.closeRetainedRevealedCards();
+    await this.arcium.reclaimFinalizedComputations();
     await Promise.all(
       [...this.sealJobs.values()].map((job) =>
         job.catch((err) => {

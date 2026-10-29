@@ -1391,7 +1391,7 @@ export class ContinuousBlackjackHand {
           totalAction,
           poolGrossWin,
           playerPayout,
-          encryptionPubkey: poolKey.publicKey,
+          encryptionKey: poolKey,
           nonce: poolKey.nonceBase + 50n,
           showdownResults: outcomes,
           resultCount: outcomes.length,

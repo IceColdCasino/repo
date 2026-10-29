@@ -18,6 +18,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { loadWhitelistAdminProvider } from '../chain/admin-provider';
 import { isLocalCluster, rentExemptLamports } from '../chain/fund-sol';
 import { KeypairWallet } from '../chain/keypair-wallet';
+import { localKeypair, signAuthorityTransaction, type SeatAuthority } from '../chain/seat-signer';
 import { installDurableConfirm } from '../chain/confirm-tx';
 import { ComputationRentLedger } from './claim-computation-rent';
 import { casinoVaultRemaining, clusterRentLamportsPerByte, drawStagedRent, withComputationFloat } from '../chain/rent-vault';
@@ -51,6 +52,17 @@ const COMP_DEF_TTL_SLOTS = 180;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimit(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /429|Too Many Requests|rate limit/i.test(msg);
+}
+
+function redactRpc(text: string): string {
+  return text
+    .replace(/api-key=[A-Za-z0-9-]+/gi, 'api-key=<redacted>')
+    .replace(/https?:\/\/[^\s"']+/g, '<rpc>');
 }
 
 async function timed<T>(label: string, work: () => Promise<T>): Promise<T> {
@@ -455,10 +467,64 @@ export class ArciumMPCHelper {
   }
 
   /**
+   * Chunk indexes whose on-chain bytes differ from `part`.
+   * A grown account is still zeros, so length alone is not "already written".
+   */
+  private missingCircuitChunks(
+    info: web3.AccountInfo<Buffer> | null,
+    part: Buffer,
+  ): number[] {
+    const txs = Math.ceil(part.length / MAX_UPLOAD_PER_TX_BYTES);
+    const payload = info && info.data.length > RAW_CIRCUIT_HEADER
+      ? info.data.subarray(RAW_CIRCUIT_HEADER)
+      : Buffer.alloc(0);
+    const missing: number[] = [];
+    for (let index = 0; index < txs; index++) {
+      const off = MAX_UPLOAD_PER_TX_BYTES * index;
+      const expected = part.subarray(off, Math.min(part.length, off + MAX_UPLOAD_PER_TX_BYTES));
+      const actual = payload.subarray(off, off + expected.length);
+      if (actual.length !== expected.length || !actual.equals(expected)) missing.push(index);
+    }
+    return missing;
+  }
+
+  /** One sendTransaction at a time when `COMP_DEF_UPLOAD_GAP_MS` or `COMP_DEF_UPLOAD_BATCH` is set. */
+  private pacedUpload(): boolean {
+    return this.uploadGapMs() > 0 || this.uploadBatchCap() > 0;
+  }
+
+  private uploadGapMs(): number {
+    const n = Number(process.env.COMP_DEF_UPLOAD_GAP_MS || 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  private uploadBatchCap(): number {
+    const n = Number(process.env.COMP_DEF_UPLOAD_BATCH || 0);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  private async rpcBackoff<T>(label: string, work: () => Promise<T>): Promise<T> {
+    let wait = Math.max(this.uploadGapMs(), 2_000);
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        return await work();
+      } catch (error) {
+        if (!isRateLimit(error) || attempt === 9) throw error;
+        console.warn(`[comp-def] ${label} rate limited, waiting ${wait}ms`);
+        await sleep(wait);
+        wait = Math.min(wait * 2, 30_000);
+      }
+    }
+    throw new Error(`${label} failed`);
+  }
+
+  /**
    * Write every upload transaction for one raw account in a single wave.
    * The bytes land in one circuit account, so extra fee payers would not make
    * the writes concurrent. The previous batches of 20 waited for confirmation
-   * before the next group was sent.
+   * before the next group was sent. A positive `COMP_DEF_UPLOAD_GAP_MS` sends
+   * one small batch at a time instead, so a public devnet RPC stays under its
+   * per-method limit.
    */
   private async sendCircuitUploadWave(
     arciumProgram: ReturnType<typeof getArciumProgram>,
@@ -466,34 +532,30 @@ export class ArciumMPCHelper {
     programId: web3.PublicKey,
     rawIndex: number,
     part: Buffer,
+    indexes?: number[],
   ): Promise<void> {
     const txs = Math.ceil(part.length / MAX_UPLOAD_PER_TX_BYTES);
-    console.log(`[comp-def] sending ${txs} upload txs in one wave`);
+    const pendingIndexes = indexes ?? Array.from({ length: txs }, (_, index) => index);
+    if (pendingIndexes.length === 0) return;
+    if (this.pacedUpload()) {
+      await this.sendCircuitUploadPaced(arciumProgram, offset, programId, rawIndex, part, pendingIndexes);
+      return;
+    }
+    console.log(`[comp-def] sending ${pendingIndexes.length} upload txs in one wave`);
     const signer = this.provider.wallet.publicKey;
-    let pending = Array.from({ length: txs }, (_, index) => index);
-    const rounds = Math.max(8, Math.ceil(txs / 16) + 4);
+    let pending = pendingIndexes.slice();
+    const rounds = Math.max(8, Math.ceil(pending.length / 16) + 4);
     for (let round = 0; round < rounds && pending.length > 0; round++) {
       const block = await this.provider.connection.getLatestBlockhash('processed');
       const signatures = new Map<number, string>();
       await Promise.all(pending.map(async (index) => {
         try {
-          const off = MAX_UPLOAD_PER_TX_BYTES * index;
-          const padded = Buffer.alloc(MAX_UPLOAD_PER_TX_BYTES);
-          padded.set(part.subarray(off, Math.min(part.length, off + MAX_UPLOAD_PER_TX_BYTES)));
-          const tx = await (arciumProgram.methods as any)
-            .uploadCircuit(offset, programId, rawIndex, Array.from(padded), off)
-            .accounts({ signer })
-            .transaction();
-          tx.recentBlockhash = block.blockhash;
-          tx.feePayer = signer;
-          const signed = await this.provider.wallet.signTransaction(tx);
-          const signature = await this.provider.connection.sendRawTransaction(signed.serialize(), {
-            skipPreflight: true,
-            preflightCommitment: 'processed',
-          });
+          const signature = await this.submitCircuitChunk(
+            arciumProgram, offset, programId, rawIndex, part, index, signer, block.blockhash,
+          );
           signatures.set(index, signature);
         } catch (error) {
-          console.warn(`[comp-def] upload tx ${index} was not accepted: ${error instanceof Error ? error.message : error}`);
+          console.warn(`[comp-def] upload tx ${index} was not accepted: ${redactRpc(error instanceof Error ? error.message : String(error))}`);
         }
       }));
       const failed = await this.unconfirmedUploads(signatures);
@@ -506,6 +568,102 @@ export class ArciumMPCHelper {
     if (pending.length > 0) {
       throw new Error(`${pending.length} circuit upload txs did not land`);
     }
+  }
+
+  private async sendCircuitUploadPaced(
+    arciumProgram: ReturnType<typeof getArciumProgram>,
+    offset: number,
+    programId: web3.PublicKey,
+    rawIndex: number,
+    part: Buffer,
+    indexes: number[],
+  ): Promise<void> {
+    const gap = this.uploadGapMs() || 2_000;
+    const batch = this.uploadBatchCap() || 1;
+    let pending = indexes.slice();
+    const total = indexes.length;
+    console.log(`[comp-def] sending ${total} upload txs in batches of ${batch}, ${gap}ms apart`);
+    let spins = 0;
+    const spinLimit = total * 8 + 4;
+    while (pending.length > 0) {
+      if (++spins > spinLimit) {
+        throw new Error(`${pending.length} circuit upload txs did not land`);
+      }
+      const wave = pending.slice(0, batch);
+      const block = await this.rpcBackoff('blockhash', () =>
+        this.provider.connection.getLatestBlockhash('confirmed'));
+      const signer = this.provider.wallet.publicKey;
+      const signatures = new Map<number, string>();
+      await Promise.all(wave.map(async (index) => {
+        const signature = await this.rpcBackoff(`upload ${index}`, () =>
+          this.submitCircuitChunk(
+            arciumProgram, offset, programId, rawIndex, part, index, signer, block.blockhash,
+          ));
+        signatures.set(index, signature);
+      }));
+      const failed = await this.waitUploadWave(signatures, gap);
+      pending = [...new Set([...pending.slice(wave.length), ...failed])];
+      const done = total - pending.length;
+      if (done === total || done % 20 === 0 || failed.length > 0) {
+        console.log(`[comp-def] ${done}/${total} chunks confirmed, ${pending.length} left`);
+      }
+      if (failed.length > 0) await sleep(Math.min(gap * 4, 20_000));
+    }
+  }
+
+  private async submitCircuitChunk(
+    arciumProgram: ReturnType<typeof getArciumProgram>,
+    offset: number,
+    programId: web3.PublicKey,
+    rawIndex: number,
+    part: Buffer,
+    index: number,
+    signer: web3.PublicKey,
+    blockhash: string,
+  ): Promise<string> {
+    const off = MAX_UPLOAD_PER_TX_BYTES * index;
+    const padded = Buffer.alloc(MAX_UPLOAD_PER_TX_BYTES);
+    padded.set(part.subarray(off, Math.min(part.length, off + MAX_UPLOAD_PER_TX_BYTES)));
+    const tx = await (arciumProgram.methods as any)
+      .uploadCircuit(offset, programId, rawIndex, Array.from(padded), off)
+      .accounts({ signer })
+      .transaction();
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = signer;
+    const signed = await this.provider.wallet.signTransaction(tx);
+    return this.provider.connection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: true,
+      preflightCommitment: 'processed',
+    });
+  }
+
+  private async waitUploadWave(signatures: Map<number, string>, gap: number): Promise<number[]> {
+    const open = new Map(signatures);
+    const failed: number[] = [];
+    const deadline = Date.now() + 45_000;
+    while (open.size > 0 && Date.now() < deadline) {
+      await sleep(Math.max(gap, 1_000));
+      const entries = [...open.entries()];
+      let value: Awaited<ReturnType<web3.Connection['getSignatureStatuses']>>['value'];
+      try {
+        value = (await this.provider.connection.getSignatureStatuses(entries.map(([, signature]) => signature))).value;
+      } catch (error) {
+        if (!isRateLimit(error)) throw error;
+        console.warn('[comp-def] status check rate limited, waiting 8s');
+        await sleep(8_000);
+        continue;
+      }
+      entries.forEach(([index], at) => {
+        const status = value[at];
+        if (status?.err) {
+          failed.push(index);
+          open.delete(index);
+          return;
+        }
+        if (status?.confirmationStatus) open.delete(index);
+      });
+    }
+    return [...failed, ...open.keys()];
   }
 
   private async unconfirmedUploads(signatures: Map<number, string>): Promise<number[]> {
@@ -550,6 +708,7 @@ export class ArciumMPCHelper {
 
   /** Create any missing raw accounts, grow them, and write the local circuit bytes. */
   private async writeRawCircuit(offset: number, raw: Buffer, rewrite = true): Promise<void> {
+    void rewrite;
     const programId = this.pokerProgram.programId;
     const arciumProgram = getArciumProgram(this.provider);
     const compDefAccount = getCompDefAccAddress(programId, offset);
@@ -561,12 +720,6 @@ export class ArciumMPCHelper {
       const required = part.length + RAW_CIRCUIT_HEADER;
       const rawPda = getRawCircuitAccAddress(compDefAccount, ai);
       let info = await this.provider.connection.getAccountInfo(rawPda);
-      // Size is checked before embiggen. A freshly grown account is still
-      // zeros, so treating "already big enough" as "already written" skips
-      // the upload and leaves the node with a circuit of weight 0.
-      const priorPayload = info && info.data.length >= required
-        ? Buffer.from(info.data.subarray(RAW_CIRCUIT_HEADER, RAW_CIRCUIT_HEADER + part.length))
-        : null;
       if (!info) {
         await (arciumProgram.methods as any)
           .initRawCircuitAcc(offset, programId, ai)
@@ -589,8 +742,15 @@ export class ArciumMPCHelper {
         await this.provider.sendAndConfirm(tx, [], { commitment: 'confirmed' });
         info = await this.provider.connection.getAccountInfo(rawPda);
       }
-      if (!rewrite && priorPayload?.equals(part)) continue;
-      await this.sendCircuitUploadWave(arciumProgram, offset, programId, ai, part);
+      info = await this.provider.connection.getAccountInfo(rawPda);
+      const chunkCount = Math.ceil(part.length / MAX_UPLOAD_PER_TX_BYTES);
+      const missing = this.missingCircuitChunks(info, part);
+      if (missing.length === 0) {
+        console.log(`[comp-def] raw account ${ai} already matches (${part.length} bytes)`);
+        continue;
+      }
+      console.log(`[comp-def] raw account ${ai}: ${missing.length}/${chunkCount} chunks to write`);
+      await this.sendCircuitUploadWave(arciumProgram, offset, programId, ai, part, missing);
     }
   }
 
@@ -623,12 +783,11 @@ export class ArciumMPCHelper {
       throw new Error(`deactivate ${circuit} did not set a deactivation slot`);
     }
     const readyAt = BigInt(acc.deactivationSlot.toString()) + BigInt(COMP_DEF_TTL_SLOTS);
-    for (;;) {
-      const slot = BigInt(await this.provider.connection.getSlot('confirmed'));
-      if (slot >= readyAt) break;
+    const slot = BigInt(await this.provider.connection.getSlot('confirmed'));
+    if (slot < readyAt) {
       const behind = readyAt - slot;
       console.log(`[comp-def] ${circuit} TTL wait, ${behind} slots left`);
-      await sleep(Math.min(15_000, Math.max(1000, Number(behind) * 400)));
+      await sleep(Number(behind) * 400);
     }
 
     for (let i = 0; i < 8; i++) {
@@ -657,9 +816,16 @@ export class ArciumMPCHelper {
     options: { uploadConcurrency?: number } = {},
   ): Promise<{ finalized: string[]; uploaded: string[] }> {
     const uploadConcurrency = options.uploadConcurrency ?? 1;
-    const states = await Promise.all(
-      names.map(async (name) => ({ name, state: await this.getCompDefState(name) })),
-    );
+    const states: { name: string; state: Awaited<ReturnType<ArciumMPCHelper['getCompDefState']>> }[] = [];
+    if (this.pacedUpload()) {
+      for (const name of names) {
+        states.push({ name, state: await this.getCompDefState(name) });
+      }
+    } else {
+      states.push(...await Promise.all(
+        names.map(async (name) => ({ name, state: await this.getCompDefState(name) })),
+      ));
+    }
     const finalized = states.filter((s) => s.state === 'OnchainFinalized').map((s) => s.name);
     const stale = states.filter((s) => s.state === 'stale').map((s) => s.name);
     const orphans = states.filter((s) => s.state === 'mxe_orphan').map((s) => s.name);
@@ -687,6 +853,18 @@ export class ArciumMPCHelper {
           + `  bun run localnet:compdefs`,
       );
     }
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(uploadConcurrency, Math.max(needUpload.length, 1)) }, async () => {
+      while (cursor < needUpload.length) {
+        const i = cursor++;
+        const name = needUpload[i]!;
+        console.log(`[comp-def] init+upload ${name}...`);
+        await this.initCompDef(name);
+        uploaded.push(name);
+        console.log(`[comp-def] ${name} ready`);
+      }
+    });
+    if (needUpload.length > 0) await Promise.all(workers);
     for (const name of stale) {
       console.log(
         `[comp-def] ${circuitOffsetName(name)} finalized but raw circuit hash stale — force-upload`,
@@ -699,22 +877,6 @@ export class ArciumMPCHelper {
         console.log(`[comp-def] ${circuitOffsetName(name)} left active`);
       }
     }
-    if (needUpload.length === 0) {
-      return { finalized, uploaded };
-    }
-
-    let cursor = 0;
-    const workers = Array.from({ length: Math.min(uploadConcurrency, needUpload.length) }, async () => {
-      while (cursor < needUpload.length) {
-        const i = cursor++;
-        const name = needUpload[i]!;
-        console.log(`[comp-def] init+upload ${name}...`);
-        await this.initCompDef(name);
-        uploaded.push(name);
-        console.log(`[comp-def] ${name} ready`);
-      }
-    });
-    await Promise.all(workers);
     return { finalized, uploaded };
   }
 
@@ -807,7 +969,7 @@ export class ArciumMPCHelper {
       chunkCount: number;
       totalCount: number;
       recipientIndex: number;
-      recipient: web3.Keypair;
+      recipient: SeatAuthority;
       tableState: web3.PublicKey;
     },
   ): Promise<void> {
@@ -855,7 +1017,12 @@ export class ArciumMPCHelper {
                     web3.ComputeBudgetProgram.requestHeapFrame({ bytes: 256 * 1024 }),
                     web3.ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
                   ])
-                  .signers([opts.recipient])
+                  .signers((() => {
+                    const recipientKp = localKeypair(opts.recipient);
+                    return recipientKp && !recipientKp.publicKey.equals(this.provider.wallet.publicKey)
+                      ? [recipientKp]
+                      : [];
+                  })())
                   .rpc(),
             ),
           { retries: 8, delayMs: 750 },
@@ -885,7 +1052,7 @@ export class ArciumMPCHelper {
       baseNonce: bigint;
       totalCount: number;
       recipientIndex: number;
-      recipient: web3.Keypair;
+      recipient: SeatAuthority;
       tableState: web3.PublicKey;
       /** First limb of this recipient's section in the 36-limb card row. */
       sourceStart?: number;
@@ -1083,7 +1250,7 @@ export class ArciumMPCHelper {
     generation: bigint | number,
     encryptionPubkey: Uint8Array,
     nonceBase: bigint,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
     tableState?: web3.PublicKey,
   ): Promise<void> {
     const payer = authority?.publicKey ?? this.provider.wallet.publicKey;
@@ -1134,9 +1301,9 @@ export class ArciumMPCHelper {
       const transaction = await builder.transaction();
       transaction.feePayer = authority.publicKey;
       transaction.recentBlockhash = latest.blockhash;
-      transaction.sign(authority);
+      const signed = await signAuthorityTransaction(this.provider, transaction, authority);
       const signature = await this.provider.connection.sendRawTransaction(
-        transaction.serialize(),
+        signed.serialize(),
         { preflightCommitment: 'confirmed' },
       );
       await this.provider.connection.confirmTransaction(
@@ -1158,7 +1325,7 @@ export class ArciumMPCHelper {
     expectedHashLow: bigint,
     expectedHashHigh: bigint,
     tableState?: web3.PublicKey,
-    authority?: web3.Keypair,
+    authority?: SeatAuthority,
     opts?: {
       encryptionPubkey: Uint8Array;
       nonceBase: bigint;
@@ -1201,7 +1368,7 @@ export class ArciumMPCHelper {
           systemProgram: web3.SystemProgram.programId,
         })
         .remainingAccounts(casinoVaultRemaining(payer, this.pokerProgram.programId))
-        .signers(authority ? [authority] : [])
+        .signers(localKeypair(authority) ? [localKeypair(authority)!] : [])
         .rpc(),
     );
   }
@@ -1469,7 +1636,7 @@ export class ArciumMPCHelper {
     nonce: bigint,
     playerIndex: number,
     tableState: web3.PublicKey | undefined,
-    authority: web3.Keypair | undefined,
+    authority: SeatAuthority | undefined,
     coeffCount: number,
   ): Promise<void> {
     if (!tableState || !authority) {
@@ -1550,7 +1717,7 @@ export class ArciumMPCHelper {
     gameId: Uint8Array,
     playerIndex: number,
     tableState: web3.PublicKey,
-    authority: web3.Keypair | undefined,
+    authority: SeatAuthority | undefined,
     offsetBn: BN,
     awaitCallback = true,
   ): Promise<void> {
@@ -1574,15 +1741,15 @@ export class ArciumMPCHelper {
                 web3.ComputeBudgetProgram.requestHeapFrame({ bytes: 256 * 1024 }),
                 web3.ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
               ])
-              .signers(authority ? [authority] : [])
+              .signers(localKeypair(authority) ? [localKeypair(authority)!] : [])
               .rpc(),
           ),
         { retries: 8, delayMs: 750 },
       ),
-      authority,
+      localKeypair(authority),
       ),
     );
-    this.noteComputation(offsetBn, authority, true);
+    this.noteComputation(offsetBn, localKeypair(authority), true);
     if (awaitCallback) await this.reclaimComputationWhenFinalized(offsetBn);
   }
 
@@ -1604,6 +1771,15 @@ export class ArciumMPCHelper {
       if (m.length !== 32) throw new Error('Each winner mask ciphertext must be 32 bytes');
       return Array.from(m);
     });
+    const gameState = this.derivePDA(gameId, 'game_state');
+    const state = await (this.pokerProgram.account as any).gameState.fetch(gameState);
+    const roomId = Buffer.from(state.tableRoomId ?? state.table_room_id);
+    const tableId = Buffer.alloc(8);
+    tableId.writeBigUInt64LE(BigInt((state.tableId ?? state.table_id ?? 0).toString()));
+    const tableState = web3.PublicKey.findProgramAddressSync(
+      [Buffer.from('table'), roomId, tableId],
+      this.pokerProgram.programId,
+    )[0];
     await this.payComputationFromFloat(offsetBn, () =>
       (this.pokerProgram.methods as any)
       .distributeAndSettle(
@@ -1615,9 +1791,11 @@ export class ArciumMPCHelper {
       )
       .accountsPartial({
         payer: this.provider.wallet.publicKey,
-        gameState: this.derivePDA(gameId, 'game_state'),
+        gameState,
+        encryptedGameBetting: this.derivePDA(gameId, 'encrypted_betting'),
         sealedShowdownCoefficients: this.deriveSealedShowdownCoeffsPDA(submitter),
         playerGameEscrow: this.derivePlayerGameEscrowPDA(gameId, playerIndex),
+        tableState,
         ...this.arciumQueueAccounts(offsetBn, 'distributeAndSettle'),
       })
       .preInstructions([

@@ -5,7 +5,7 @@ export interface Room {
   vault: string;
   tableCount: bigint;
   smallBlindDefault: bigint;
-  /** Poker flop rake in basis points. `0` is the default. `500` is 5%. */
+  /** Poker rake in basis points. `0` is the default. `500` is 5%. Charged on a post-flop fold to one player, or at showdown. */
   rakeBps: number;
   /** Whitelisted house that receives the rake in its own encrypted wallet. */
   house: string;
