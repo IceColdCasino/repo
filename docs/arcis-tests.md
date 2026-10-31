@@ -35,8 +35,11 @@ and bingo have no house seat.
 other files under `test/e2e/` start localnet, load the programs, and stage
 the deck. They are not extra games.
 
-GitHub Actions does not run this suite. `.github/select-tests.sh` skips
-`test/e2e/`, `src/chain/`, `src/arcium/`, `src/testing/`, and `rust/`.
+GitHub Actions runs this suite on macOS after the game builds. That job
+downloads the macOS `libzkcasino` libraries and the Linux localnet programs
+(`casino.so`, the `.arcis` circuits, and `light_casino.so`) instead of
+compiling them again. A change under `test/e2e/`, `src/chain/`, `src/arcium/`,
+`src/testing/`, `rust/`, or `app/` selects every game so those libraries exist.
 
 ## Run
 

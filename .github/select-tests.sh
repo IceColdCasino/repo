@@ -40,8 +40,9 @@ classify() {
   esac
   case "$p" in
     *.md|docs/*) return ;;
-    # Solana e2e and its chain client are not the Groth16 proof suite.
-    test/e2e/*|src/chain/*|src/arcium/*|src/testing/*|rust/*) return ;;
+    # The macOS app and the Arcium localnet suite consume every game's
+    # libzkcasino build, so these paths select the full matrix.
+    test/e2e/*|src/chain/*|src/arcium/*|src/testing/*|rust/*|app/*) add all; return ;;
   esac
   case "$p" in
     *shuffle_1_deck_52*) add poker baccarat; return ;;
@@ -131,6 +132,7 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
     echo "typecheck=$TYPECHECK"
     echo "lean=$LEAN"
     echo "has_games=$HAS_GAMES"
+    echo "games=${selected[*]:-}"
     echo "matrix<<$delim"
     echo "$json"
     echo "$delim"

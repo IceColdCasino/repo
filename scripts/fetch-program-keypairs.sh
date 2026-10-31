@@ -8,10 +8,6 @@ VAULT="${OP_VAULT:-IceColdCasino}"
 
 export PATH="${HOME:-}/.local/share/solana/install/active_release/bin:${PATH}"
 
-if ! command -v op >/dev/null 2>&1; then
-  echo "error: 1Password CLI (op) is required to fetch program keypairs" >&2
-  exit 1
-fi
 if ! command -v solana-keygen >/dev/null 2>&1; then
   echo "error: solana-keygen is required to check the fetched program keypair" >&2
   exit 1
@@ -30,6 +26,10 @@ fetch_one() {
       echo "program keypair ${expected} -> ${dest#"$ROOT"/} (already present)"
       return 0
     fi
+  fi
+  if ! command -v op >/dev/null 2>&1; then
+    echo "error: 1Password CLI (op) is required to fetch program keypairs" >&2
+    exit 1
   fi
   tmp="$(mktemp)"
   chmod 600 "$tmp"

@@ -19,6 +19,7 @@ jobs:
       typecheck: ${{ steps.select.outputs.typecheck }}
       lean: ${{ steps.select.outputs.lean }}
       has_games: ${{ steps.select.outputs.has_games }}
+      games: ${{ steps.select.outputs.games }}
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
@@ -155,6 +156,14 @@ jobs:
         working-directory: libzkcasino
         run: zig build -Doptimize=ReleaseFast -Dcircuit-set=${{ matrix.circuit_set }}
 
+      - name: Upload macOS libzkcasino libraries
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: libzkcasino-macos-${{ matrix.circuit_set }}
+          if-no-files-found: error
+          path: libzkcasino/zig-out/lib
+
       - name: Save Zig cache
         if: steps.zig-cache.outputs.cache-hit != 'true'
         continue-on-error: true
@@ -185,4 +194,273 @@ jobs:
           df -h /
 
       - run: bun install --frozen-lockfile
-      - run: bun test --max-concurrency 1 "test/${{ matrix.test }}"
+      - name: Run proof tests
+        run: bash .github/run-proof-tests.sh "test/${{ matrix.test }}"
+
+  rust-linux:
+    name: Rust programs (linux)
+    needs: changes
+    if: needs.changes.outputs.has_games == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Solana, Anchor, and Arcium
+        run: bash .github/install-localnet-tools.sh
+      - name: Build casino and light-casino for localnet
+        run: |
+          set -eux
+          # Arcis images are linux/amd64. This runner is x86_64, so Docker is the runtime.
+          export ARCIUM_USE_APPLE_CONTAINER=0
+          export DOCKER_DEFAULT_PLATFORM=linux/amd64
+          export CASINO_ALLOW_TESTING=1
+          export CASINO_FEATURES=testing
+          bash rust/casino/scripts/build.sh
+          (
+            cd rust/light-casino
+            bash ../../scripts/write-build-keypairs.sh light-casino
+            unset CARGO_TARGET_DIR
+            RUSTFLAGS='--cfg getrandom_backend="custom"' cargo build-sbf \
+              --tools-version v1.54 \
+              --manifest-path programs/light-casino/Cargo.toml \
+              --features testing
+          )
+          deploy=rust/casino/target/deploy
+          printf 'testing\n' > "${deploy}/.casino_features_testing"
+          printf 'showdown-output-latch\n' > "${deploy}/.casino_cpi_bridge_v7"
+          python3 -c 'import json; from datetime import datetime, timezone; from pathlib import Path; Path("rust/casino/target/deploy/casino-artifact-mode.json").write_text(json.dumps({"version":1,"mode":"testing","testing":True,"features":["testing"],"generatedAt":datetime.now(timezone.utc).isoformat()}, indent=2)+"\n")'
+          printf 'testing\n' > rust/light-casino/target/deploy/.light_casino_features_testing
+          for name in verify_deck_hash_chunk reveal_card validate_bet seal_showdown_pair compute_pots distribute_and_settle settle_casino_hand; do
+            test -f "rust/casino/build/${name}.arcis"
+          done
+          test -f rust/casino/target/deploy/casino.so
+          test -f rust/casino/target/idl/casino.json
+          test -f rust/light-casino/target/deploy/light_casino.so
+      - name: Stage localnet artifacts
+        run: |
+          set -eux
+          stage="${GITHUB_WORKSPACE}/rust-localnet-artifact"
+          mkdir -p \
+            "${stage}/rust/casino/build" \
+            "${stage}/rust/casino/target/deploy" \
+            "${stage}/rust/casino/target/idl" \
+            "${stage}/rust/light-casino/target/deploy"
+          cp -a rust/casino/build/. "${stage}/rust/casino/build/"
+          cp -a rust/casino/target/deploy/casino.so "${stage}/rust/casino/target/deploy/"
+          cp -a rust/casino/target/deploy/.casino_features_testing "${stage}/rust/casino/target/deploy/"
+          cp -a rust/casino/target/deploy/.casino_cpi_bridge_v7 "${stage}/rust/casino/target/deploy/"
+          cp -a rust/casino/target/deploy/casino-artifact-mode.json "${stage}/rust/casino/target/deploy/"
+          cp -a rust/casino/target/idl/casino.json "${stage}/rust/casino/target/idl/"
+          cp -a rust/light-casino/target/deploy/light_casino.so "${stage}/rust/light-casino/target/deploy/"
+          cp -a rust/light-casino/target/deploy/.light_casino_features_testing "${stage}/rust/light-casino/target/deploy/"
+          rm -f "${stage}/rust/casino/target/deploy/"*keypair.json
+          rm -f "${stage}/rust/light-casino/target/deploy/"*keypair.json
+          echo "stage=${stage}" >> "${GITHUB_ENV}"
+      - name: Upload localnet programs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-localnet-linux
+          if-no-files-found: error
+          path: ${{ env.stage }}
+
+  macos-app:
+    name: macOS app
+    needs: [changes, games]
+    if: >-
+      always() &&
+      needs.changes.outputs.has_games == 'true' &&
+      needs.games.result == 'success' &&
+      contains(needs.changes.outputs.games, 'poker')
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - name: Free disk space
+        run: |
+          set -eux
+          sudo rm -rf \
+            /Library/Developer/CoreSimulator \
+            "$HOME/Library/Developer/CoreSimulator" \
+            "$HOME/Library/Developer/Xcode/DerivedData" \
+            "$HOME/Library/Android" \
+            /Users/runner/hostedtoolcache
+          df -h /
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Download macOS libzkcasino libraries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: libzkcasino-macos-*
+          path: libzkcasino-parts
+      - name: Install the downloaded libraries
+        run: |
+          set -eux
+          mkdir -p libzkcasino/zig-out/lib
+          find libzkcasino-parts -type f -exec cp -f {} libzkcasino/zig-out/lib/ \;
+          test -f libzkcasino/zig-out/lib/libzkcasino-poker.dylib
+          test -f libzkcasino/zig-out/lib/libzkcasino-shuffle-1-deck-52.dylib
+          test -f libzkcasino/zig-out/lib/libfr.dylib
+          test -f libzkcasino/zig-out/lib/libzkcasino.dylib
+      - name: Install the prover
+        run: |
+          set -eux
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          brew install gmp
+          brew trust --tap IceColdCasino/groth16
+          brew tap IceColdCasino/groth16 https://github.com/IceColdCasino/groth16
+          brew install icecoldcasino/groth16/zkey
+          zkey lib
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+          use-cache: false
+      - name: Build the macOS app
+        run: |
+          set -eux
+          lib="$(zkey lib)"
+          test -f "${lib}"
+          dest="$(cd "${GITHUB_WORKSPACE}/.." && pwd)/groth16/zig-out/lib"
+          mkdir -p "${dest}"
+          ln -sfn "${lib}" "${dest}/libgroth16.dylib"
+          mkdir -p /tmp/zn
+          npm init -y --prefix /tmp/zn >/dev/null
+          npm install --prefix /tmp/zn zero-native@0.2.0
+          cd app
+          zig build -Doptimize=ReleaseFast -Dzero-native-path=/tmp/zn/node_modules/zero-native
+          test -x zig-out/bin/app
+      - name: Frontend tests
+        working-directory: app/frontend
+        run: |
+          set -eux
+          npm ci
+          npm test
+
+  macos-arcium:
+    name: Arcium 2p (macOS)
+    needs: [changes, games, rust-linux]
+    if: >-
+      always() &&
+      needs.changes.outputs.has_games == 'true' &&
+      needs.games.result == 'success' &&
+      needs.rust-linux.result == 'success'
+    runs-on: macos-latest
+    timeout-minutes: 600
+    steps:
+      - name: Free disk space
+        run: |
+          set -eux
+          sudo rm -rf \
+            /Library/Developer/CoreSimulator \
+            "$HOME/Library/Developer/CoreSimulator" \
+            "$HOME/Library/Developer/Xcode/DerivedData" \
+            "$HOME/Library/Android" \
+            /Users/runner/hostedtoolcache
+          df -h /
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Download macOS libzkcasino libraries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: libzkcasino-macos-*
+          path: libzkcasino-parts
+      - name: Download Linux localnet programs
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-localnet-linux
+          path: .
+      - name: Install downloaded artifacts
+        run: |
+          set -eux
+          mkdir -p libzkcasino/zig-out/lib
+          find libzkcasino-parts -type f -exec cp -f {} libzkcasino/zig-out/lib/ \;
+          test -f libzkcasino/zig-out/lib/libzkcasino-player.dylib
+          test -f libzkcasino/zig-out/lib/libzkcasino-player-bridge.dylib
+          for name in verify_deck_hash_chunk reveal_card validate_bet seal_showdown_pair compute_pots distribute_and_settle settle_casino_hand; do
+            test -f "rust/casino/build/${name}.arcis"
+          done
+          test -f rust/casino/target/deploy/casino.so
+          test -f rust/casino/target/idl/casino.json
+          test -f rust/light-casino/target/deploy/light_casino.so
+          test -f rust/light-casino/idl/light_casino.json
+          python3 -c 'import os,time; now=time.time()+2; [os.utime(os.path.join(d,f),(now,now)) for r in ("rust/casino/build","rust/casino/target","rust/light-casino/target") for d,_,fs in os.walk(r) for f in fs]'
+      - name: Install the Metal prover
+        run: |
+          set -eux
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          brew install gmp
+          brew trust --tap IceColdCasino/groth16
+          brew tap IceColdCasino/groth16 https://github.com/IceColdCasino/groth16
+          brew install icecoldcasino/groth16/zkey
+          zkey lib
+      - name: Install Solana, Anchor, and Arcium
+        run: bash .github/install-localnet-tools.sh
+      - name: Install Apple Container
+        run: |
+          set -eux
+          sw_vers
+          api="$(curl -fsSL -H "Accept: application/vnd.github+json" https://api.github.com/repos/apple/container/releases/latest)"
+          url="$(python3 -c 'import json,sys; r=json.loads(sys.stdin.read()); print(next(a["browser_download_url"] for a in r["assets"] if a["name"].endswith(".pkg")))' <<<"${api}")"
+          curl -fsSL -o /tmp/container.pkg "${url}"
+          sudo installer -pkg /tmp/container.pkg -target /
+          container system start
+          mkdir -p "${HOME}/.local/apple-container/bin"
+          ln -sfn "$(command -v container)" "${HOME}/.local/apple-container/bin/container"
+          container system status
+      - name: Fetch program keypairs
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: |
+          set -eux
+          if [ -z "${OP_SERVICE_ACCOUNT_TOKEN}" ]; then
+            echo "OP_SERVICE_ACCOUNT_TOKEN is required. Localnet deploys the vanity casino and light-casino keypairs from 1Password."
+            exit 1
+          fi
+          brew install 1password-cli
+          export PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
+          bash scripts/fetch-program-keypairs.sh both
+      - uses: oven-sh/setup-bun@v2
+      - name: Pull proving keys
+        env:
+          GAMES: ${{ needs.changes.outputs.games }}
+        run: |
+          set -eux
+          git lfs install --local
+          includes=""
+          for game in ${GAMES}; do
+            case "${game}" in
+              poker) pat='zkey/register_main*,zkey/shuffle_1_deck_52_main*,zkey/poker_*' ;;
+              blackjack) pat='zkey/register_main*,zkey/shuffle_6_deck_52_main*,zkey/blackjack_*' ;;
+              baccarat) pat='zkey/register_main*,zkey/shuffle_6_deck_52_main*,zkey/baccarat_*' ;;
+              war) pat='zkey/register_main*,zkey/shuffle_6_deck_52_main*,zkey/war_*' ;;
+              roulette) pat='zkey/register_main*,zkey/shuffle_1_deck_37_main*,zkey/shuffle_1_deck_38_main*,zkey/roulette_*' ;;
+              craps) pat='zkey/register_main*,zkey/shuffle_2_dice_6_main*,zkey/craps_*' ;;
+              keno) pat='zkey/register_main*,zkey/shuffle_1_deck_80_main*,zkey/keno_*' ;;
+              slots) pat='zkey/register_main*,zkey/shuffle_3_reel_22_main*,zkey/shuffle_5_reel_22_main*,zkey/slot_*' ;;
+              bingo) pat='zkey/register_main*,zkey/shuffle_1_deck_75_main*,zkey/shuffle_1_deck_90_main*,zkey/bingo_*' ;;
+              *) echo "unknown game ${game}" >&2; exit 1 ;;
+            esac
+            if [ -n "${includes}" ]; then includes="${includes},"; fi
+            includes="${includes}${pat}"
+          done
+          git lfs pull --include="${includes}"
+          key=zkey/register_main_0001.zkey
+          test -f "${key}"
+          if head -c 40 "${key}" | grep -q "git-lfs.github.com"; then
+            echo "zkey files are still Git LFS pointers."
+            exit 1
+          fi
+      - run: bun install --frozen-lockfile
+      - name: Arcium 2-player tests
+        env:
+          GAMES: ${{ needs.changes.outputs.games }}
+        run: |
+          set -eux
+          export PATH="/tmp/arcium-0.14/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
+          for game in ${GAMES}; do
+            bun test --max-concurrency=1 --timeout=1800000 "test/e2e/full-game-zk-arcis-${game}-2player.test.ts"
+          done

@@ -1,0 +1,368 @@
+#!/usr/bin/env bash
+# Docker CLI shim for Apple Container + container-compose.
+# Prefer this over Docker Desktop when present early on PATH.
+set -euo pipefail
+
+REAL_DOCKER="${REAL_DOCKER:-/usr/local/bin/docker}"
+CONTAINER_BIN="${CONTAINER_BIN:-container}"
+SOCKTAINER_SOCK="${HOME}/.socktainer/container.sock"
+GOCKER_SOCK="${HOME}/.gocker/gocker.sock"
+
+have_apple_container() {
+  command -v "$CONTAINER_BIN" >/dev/null 2>&1 \
+    && "$CONTAINER_BIN" system status 2>/dev/null | grep -qi 'status[[:space:]]\+running'
+}
+
+# container-compose wants: compose <subcommand> [flags…]
+# docker compose accepts global flags before the subcommand; rewrite them.
+run_apple_compose() {
+  local -a global_flags=()
+  local -a rest=()
+  local sub=""
+  local skip_next=0
+  local detach=0
+  local arg
+
+  for arg in "$@"; do
+    if [[ "$skip_next" -eq 1 ]]; then
+      global_flags+=("$arg")
+      skip_next=0
+      continue
+    fi
+    if [[ -z "$sub" ]]; then
+      case "$arg" in
+        -f|--file|-p|--project-name|--env-file|--profile)
+          global_flags+=("$arg")
+          skip_next=1
+          ;;
+        -f=*|--file=*|-p=*|--project-name=*|--env-file=*|--profile=*)
+          global_flags+=("$arg")
+          ;;
+        -d|--detach)
+          detach=1
+          ;;
+        --remove-orphans|--force-recreate|--no-deps|--abort-on-container-exit|--quiet-pull)
+          ;;
+        up|down|ps|logs|config|exec|pull|stop|start|restart|kill|update)
+          sub="$arg"
+          ;;
+        *)
+          rest+=("$arg")
+          ;;
+      esac
+      continue
+    fi
+
+    case "$arg" in
+      -d|--detach)
+        detach=1
+        ;;
+      --remove-orphans|--force-recreate|--no-deps|--abort-on-container-exit|--quiet-pull)
+        ;;
+      --wait-timeout|--timeout|--scale|--exit-code-from)
+        skip_next=1
+        ;;
+      --wait-timeout=*|--timeout=*|--scale=*|--exit-code-from=*)
+        ;;
+      *)
+        rest+=("$arg")
+        ;;
+    esac
+  done
+
+  if [[ -z "$sub" ]]; then
+    sub="up"
+  fi
+
+  # Apple `container compose up` returns after start; Docker Compose without
+  # `-d` blocks until services stop. Arcium monitors that process and treats an
+  # early exit as "Localnet exited unexpectedly".
+  if [[ "$sub" == "up" && "$detach" -eq 0 ]]; then
+    "$CONTAINER_BIN" compose up "${global_flags[@]}" "${rest[@]}"
+    local up_status=$?
+    if [[ "$up_status" -ne 0 ]]; then
+      exit "$up_status"
+    fi
+    cleanup_compose_up() {
+      # Best-effort; arcium may also run `compose down`.
+      "$CONTAINER_BIN" compose down "${global_flags[@]}" >/dev/null 2>&1 || true
+      exit 0
+    }
+    trap cleanup_compose_up TERM INT HUP
+    # Stay alive while at least one arx/td container is running.
+    # `container list` ellipsizes IDs when stdout is not a tty, so a piped
+    # table can miss `artifacts-arx-node-*` and Arcium treats that as a crash.
+    local misses=0
+    while true; do
+      if "$CONTAINER_BIN" list --format json 2>/dev/null | grep -Eq 'artifacts-(arx-node|arcium-trusted-dealer)'; then
+        misses=0
+      else
+        misses=$((misses + 1))
+        if [[ "$misses" -ge 3 ]]; then
+          exit 1
+        fi
+      fi
+      sleep 2
+    done
+  fi
+
+  exec "$CONTAINER_BIN" compose "$sub" "${global_flags[@]}" "${rest[@]}"
+}
+
+run_via_bridge() {
+  if [[ -S "$GOCKER_SOCK" ]]; then
+    export DOCKER_HOST="unix://${GOCKER_SOCK}"
+  elif [[ -S "$SOCKTAINER_SOCK" ]]; then
+    export DOCKER_HOST="unix://${SOCKTAINER_SOCK}"
+  fi
+  exec "$REAL_DOCKER" "$@"
+}
+
+fake_info() {
+  cat <<'INFOEOF'
+Client:
+ Version:    28.3.2 (apple-container-shim)
+ Context:    apple-container
+Server:
+ Containers: 0
+  Running: 0
+  Paused: 0
+  Stopped: 0
+ Images: 0
+ Server Version: apple-container
+ Storage Driver: apple
+ Operating System: macOS (Apple Container)
+ OSType: linux
+ Architecture: aarch64
+ CPUs: 4
+ Total Memory: 8GiB
+ Name: apple-container
+ Docker Root Dir: /var/lib/apple-container
+INFOEOF
+}
+
+fake_version() {
+  cat <<'VEREOF'
+Client: Docker Engine - Community
+ Version:           28.3.2
+ API version:       1.51
+ Go version:        go1.24.0
+ OS/Arch:           darwin/arm64
+ Context:           apple-container
+
+Server: Apple Container
+ Engine:
+  Version:          1.2.0
+  API version:      1.51 (minimum version 1.32)
+  OSType:           linux
+  Architecture:     aarch64
+VEREOF
+}
+
+fake_compose_version() {
+  echo "Docker Compose version v2.39.1 (apple-container-compose)"
+}
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  ""|-h|--help)
+    if have_apple_container; then
+      echo "Docker shim → Apple Container / container-compose"
+      echo "Usage: docker compose … | docker info | docker version | docker rm …"
+      exit 0
+    fi
+    run_via_bridge "${cmd:-}" "$@"
+    ;;
+  compose)
+    if have_apple_container && "$CONTAINER_BIN" compose --help >/dev/null 2>&1; then
+      if [[ "${1:-}" == "version" || "${1:-}" == "--version" ]]; then
+        fake_compose_version
+        exit 0
+      fi
+      run_apple_compose "$@"
+    fi
+    run_via_bridge compose "$@"
+    ;;
+  info)
+    if have_apple_container; then
+      fake_info
+      exit 0
+    fi
+    run_via_bridge info "$@"
+    ;;
+  version|--version|-v)
+    if have_apple_container; then
+      if [[ "${1:-}" == "-f" || "${1:-}" == "--format" ]]; then
+        echo "28.3.2"
+        exit 0
+      fi
+      fake_version
+      exit 0
+    fi
+    run_via_bridge "$cmd" "$@"
+    ;;
+  rm|remove)
+    if have_apple_container; then
+      force=0
+      names=()
+      for arg in "$@"; do
+        case "$arg" in
+          -f|--force) force=1 ;;
+          -*) ;;
+          *) names+=("$arg") ;;
+        esac
+      done
+      for name in "${names[@]:-}"; do
+        if [[ "$force" -eq 1 ]]; then
+          "$CONTAINER_BIN" stop "$name" >/dev/null 2>&1 || true
+        fi
+        "$CONTAINER_BIN" rm "$name" >/dev/null 2>&1 || true
+      done
+      exit 0
+    fi
+    run_via_bridge rm "$@"
+    ;;
+  ps)
+    if have_apple_container; then
+      "$CONTAINER_BIN" ls "$@"
+      exit $?
+    fi
+    run_via_bridge ps "$@"
+    ;;
+  pull)
+    if have_apple_container; then
+      platform=""
+      image=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --platform) platform="$2"; shift 2 ;;
+          --platform=*) platform="${1#*=}"; shift ;;
+          -*) shift ;;
+          *) image="$1"; shift ;;
+        esac
+      done
+      if [[ -n "$platform" ]]; then
+        exec "$CONTAINER_BIN" image pull --platform "$platform" "$image"
+      fi
+      exec "$CONTAINER_BIN" image pull "$image"
+    fi
+    run_via_bridge pull "$@"
+    ;;
+  inspect)
+    if have_apple_container; then
+      # Convert Apple Container inspect → Docker-compatible JSON (IPAddress etc.).
+      python3 - "$@" <<'PY'
+import json, subprocess, sys
+
+names = [a for a in sys.argv[1:] if not a.startswith("-")]
+fmt = None
+args = sys.argv[1:]
+i = 0
+while i < len(args):
+    if args[i] in ("-f", "--format") and i + 1 < len(args):
+        fmt = args[i + 1]
+        i += 2
+        continue
+    if args[i].startswith("--format="):
+        fmt = args[i].split("=", 1)[1]
+        i += 1
+        continue
+    i += 1
+
+if not names:
+    print("docker inspect requires at least one container", file=sys.stderr)
+    sys.exit(1)
+
+raw = subprocess.check_output(["container", "inspect", *names], text=True)
+apple = json.loads(raw)
+if not isinstance(apple, list):
+    apple = [apple]
+
+out = []
+for obj in apple:
+    cfg = obj.get("configuration") or {}
+    status = obj.get("status") or {}
+    cid = obj.get("id") or cfg.get("id") or ""
+    state = status.get("state") or "unknown"
+    running = state == "running"
+    nets = status.get("networks") or []
+    ip = ""
+    gw = ""
+    mac = ""
+    networks = {}
+    for n in nets:
+        ipv4 = (n.get("ipv4Address") or "").split("/")[0]
+        if not ip and ipv4:
+            ip = ipv4
+            gw = n.get("ipv4Gateway") or ""
+            mac = n.get("macAddress") or ""
+        net_name = n.get("network") or "bridge"
+        networks[net_name] = {
+            "IPAMConfig": None,
+            "Links": None,
+            "Aliases": [n.get("hostname") or cid] if n.get("hostname") else [],
+            "NetworkID": net_name,
+            "EndpointID": "",
+            "Gateway": n.get("ipv4Gateway") or "",
+            "IPAddress": ipv4,
+            "IPPrefixLen": int((n.get("ipv4Address") or "0/16").split("/")[-1] or 16),
+            "IPv6Gateway": "",
+            "GlobalIPv6Address": (n.get("ipv6Address") or "").split("/")[0],
+            "GlobalIPv6PrefixLen": 0,
+            "MacAddress": n.get("macAddress") or "",
+            "DriverOpts": None,
+        }
+    image = ""
+    img = cfg.get("image") or {}
+    if isinstance(img, dict):
+        image = img.get("reference") or ""
+    out.append({
+        "Id": cid,
+        "Name": f"/{cid}",
+        "Config": {"Image": image, "Hostname": (nets[0].get("hostname") if nets else cid), "Labels": cfg.get("labels") or {}},
+        "Image": image,
+        "State": {
+            "Status": state,
+            "Running": running,
+            "Paused": False,
+            "Restarting": False,
+            "OOMKilled": False,
+            "Dead": False,
+            "Pid": 1 if running else 0,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": status.get("startedDate") or "",
+            "FinishedAt": "",
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "",
+            "Ports": {},
+            "Gateway": gw,
+            "IPAddress": ip,
+            "IPPrefixLen": 16,
+            "MacAddress": mac,
+            "Networks": networks,
+        },
+    })
+
+if fmt:
+    # Minimal support for common templates arcium might use.
+    if "IPAddress" in fmt and len(out) == 1:
+        print(out[0]["NetworkSettings"]["IPAddress"])
+    else:
+        print(json.dumps(out))
+else:
+    json.dump(out, sys.stdout, indent=4)
+    print()
+PY
+      exit $?
+    fi
+    run_via_bridge inspect "$@"
+    ;;
+  *)
+    run_via_bridge "$cmd" "$@"
+    ;;
+esac
