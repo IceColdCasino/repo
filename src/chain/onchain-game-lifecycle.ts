@@ -642,7 +642,8 @@ export class OnchainGameLifecycle {
     if (sizeLabel) {
       console.log(`[tx-size] ${sizeLabel}: ${legacySize} bytes`);
     }
-    const discovered = legacy.instructions.flatMap((ix) => [
+    const instructions = legacy.instructions as web3.TransactionInstruction[];
+    const discovered = instructions.flatMap((ix) => [
       ix.programId,
       ...ix.keys.map((meta) => meta.pubkey),
     ]);
@@ -829,9 +830,13 @@ export class OnchainGameLifecycle {
     return this.derivePDA(this.lightPokerProgram, seed, extra);
   }
 
-  private derivePokerPDA(seed: string, extra?: Buffer): web3.PublicKey {
+  private requirePokerProgram(): Program {
     if (!this.pokerProgram) throw new Error('pokerProgram is required for poker PDA derivation');
-    return this.derivePDA(this.pokerProgram, seed, extra);
+    return this.pokerProgram;
+  }
+
+  private derivePokerPDA(seed: string, extra?: Buffer): web3.PublicKey {
+    return this.derivePDA(this.requirePokerProgram(), seed, extra);
   }
 
   /** Matches light-casino `PROOF_RECEIPT_V2_SEED` + generation + phase + player. */
@@ -1234,7 +1239,7 @@ export class OnchainGameLifecycle {
     });
     const disc = createHash('sha256').update('global:close_light_session').digest().subarray(0, 8);
     const batchSize = 50;
-    const batches = open.length === 0 ? [[]] : [];
+    const batches: web3.PublicKey[][] = open.length === 0 ? [[]] : [];
     for (let start = 0; start < open.length; start += batchSize) {
       batches.push(open.slice(start, start + batchSize));
     }
@@ -1764,7 +1769,7 @@ export class OnchainGameLifecycle {
       blackjackTurn: this.lightPokerProgram.programId,
       sealedShowdownCoefficients: web3.PublicKey.findProgramAddressSync(
         [Buffer.from('sealed_showdown_coeffs'), this.authorityPubkey(authority).toBuffer()],
-        this.pokerProgram.programId,
+        this.requirePokerProgram().programId,
       )[0],
     };
     if (!material.isDealer) {

@@ -331,7 +331,7 @@ export function encryptCommitmentRowsForStaging(
   nActualPlayers = 10,
   /** When set (e.g. derived tableKey.nonceBase), peers can re-derive without disk. */
   fixedBaseNonce?: bigint,
-): { rows: EncryptedStagingRow[]; nonce: bigint; expectedHash: bigint } {
+): { rows: EncryptedStagingRow[]; nonce: bigint; expectedHash: bigint; arcisHash: bigint } {
   if (commitments.length !== 900) {
     throw new Error(`Expected 900 commitments, got ${commitments.length}`);
   }

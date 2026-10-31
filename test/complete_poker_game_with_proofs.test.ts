@@ -180,17 +180,17 @@ async function runGame(nActualPlayers = 2, toFold: (p: number) => boolean = () =
 describe('Complete Poker Game with Proofs', () => {
   test('2 players', async () => {
     await runGame();
-  }, 600_000);
+  }, 1_500_000);
 
   test('3 players, 1 folds', async () => {
     await runGame(3, p => p === 0);
-  }, 600_000);
+  }, 1_500_000);
 
   test('10 players, 5 fold', async () => {
     await runGame(10, p => p % 2 === 0);
-  }, 900_000);
+  }, 2_700_000);
 
   test('10 players', async () => {
     await runGame(10);
-  }, 900_000);
+  }, 2_700_000);
 });

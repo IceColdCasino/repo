@@ -299,6 +299,8 @@ export class ZkCryptoContext {
       publicKey,
       ciphertextCards: this.#finalDeck,
       ciphertextPartials: this.getCiphertextPartialsForPlayer(playerIndex),
+      // The local backend still records a placeholder commitment on the receipt.
+      sealCommitment: 0n,
     };
 
     const expectedInputHash = this.#poker.showdownHash(hashInput);

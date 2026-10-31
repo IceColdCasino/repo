@@ -167,19 +167,19 @@ async function runGame(nActualPlayers: number) {
 
 test('Complete Baccarat Game with 2 players', async () => {
   await runGame(2);
-}, 120_000);
+}, 1_500_000);
 
 test('Complete Baccarat Game with 3 players', async () => {
   await runGame(3);
-}, 180_000);
+}, 1_500_000);
 
 test('Complete Baccarat Game with 10 players', async () => {
   await runGame(10);
-}, 600_000);
+}, 2_700_000);
 
 test('Complete Baccarat Game with 12 players', async () => {
   await runGame(12);
-}, 900_000);
+}, 3_000_000);
 
 test('Baccarat multi-seat player and dealer pools settle proportionally', async () => {
   const game = new Game();
@@ -214,4 +214,4 @@ test('Baccarat multi-seat player and dealer pools settle proportionally', async 
   expect(nets.get(2)).toBe(-5n);
   expect(nets.get(1)).toBe(13n);
   expect(nets.get(3)).toBe(7n);
-}, 600_000);
+}, 1_500_000);

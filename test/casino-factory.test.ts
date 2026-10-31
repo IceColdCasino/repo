@@ -48,8 +48,8 @@ describe('casino factory', () => {
 
     const delegate = addCasinoAdminInstruction(authority, casinoId, admin);
     expect([...delegate.data.subarray(0, 8)]).toEqual([...ADD_CASINO_ADMIN]);
-    expect(delegate.keys[2].pubkey.equals(admin)).toBe(true);
-    expect(delegate.keys[3].pubkey.equals(casinoAdminPda(casinoId, admin))).toBe(true);
+    expect(delegate.keys[2]!.pubkey.equals(admin)).toBe(true);
+    expect(delegate.keys[3]!.pubkey.equals(casinoAdminPda(casinoId, admin))).toBe(true);
 
     const revoke = removeCasinoAdminInstruction(authority, casinoId, admin);
     expect([...revoke.data]).toEqual([...REMOVE_CASINO_ADMIN]);
@@ -60,7 +60,7 @@ describe('casino factory', () => {
     const ix = addCasinoDealerInstruction(admin, casinoId, 6, dealer);
     expect([...ix.data.subarray(0, 8)]).toEqual([...ADD_CASINO_DEALER]);
     expect(ix.data[40]).toBe(6);
-    expect(ix.keys[4].pubkey.equals(casinoDealerPda(casinoId, 6, dealer))).toBe(true);
+    expect(ix.keys[4]!.pubkey.equals(casinoDealerPda(casinoId, 6, dealer))).toBe(true);
 
     const remove = removeCasinoDealerInstruction(admin, casinoId, 6, dealer);
     expect([...remove.data]).toEqual([...REMOVE_CASINO_DEALER]);

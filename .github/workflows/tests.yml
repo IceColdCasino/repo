@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       typecheck: ${{ steps.select.outputs.typecheck }}
+      lean: ${{ steps.select.outputs.lean }}
       has_games: ${{ steps.select.outputs.has_games }}
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
@@ -52,6 +53,24 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
+
+  lean:
+    needs: changes
+    if: needs.changes.outputs.lean == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Install Lean
+        run: |
+          set -eux
+          curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Build the proofs
+        working-directory: lean
+        run: lake build
 
   games:
     name: ${{ matrix.game }} (${{ matrix.runner }})
@@ -166,4 +185,4 @@ jobs:
           df -h /
 
       - run: bun install --frozen-lockfile
-      - run: bun test "test/${{ matrix.test }}"
+      - run: bun test --max-concurrency 1 "test/${{ matrix.test }}"

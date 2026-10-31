@@ -401,13 +401,18 @@ export class CasinoSettlementHelper {
     const gameStatePda = this.gameStatePDA(params.gameId);
 
     const offsetBn = new BN(computationOffset);
-    const [totalAction, poolGrossWin] = await encryptBetFieldsAtNonce(
+    const encryptedFields = await encryptBetFieldsAtNonce(
       params.encryptionKey,
       this.provider,
       this.program.programId,
       [params.totalAction, params.poolGrossWin],
       params.nonce,
     );
+    const totalAction = encryptedFields[0];
+    const poolGrossWin = encryptedFields[1];
+    if (!totalAction || !poolGrossWin) {
+      throw new Error('casino settlement field encryption incomplete');
+    }
     await this.arcium.payComputationFromFloat(offsetBn, () =>
       (this.program.methods as any)
       .settleCasinoHand(

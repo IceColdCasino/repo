@@ -860,7 +860,7 @@ export class OnchainRoomLifecycle {
     player: web3.PublicKey | web3.Keypair = this.provider.wallet.publicKey,
   ): Promise<void> {
     const playerKp = player instanceof web3.Keypair ? player : null;
-    const playerPk = playerKp ? playerKp.publicKey : player;
+    const playerPk = player instanceof web3.Keypair ? player.publicKey : player;
     const builder = (this.pokerProgram.methods as any)
       .markInHand()
       .accounts({

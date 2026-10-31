@@ -2418,7 +2418,7 @@ async function sealShowdownCoefficientsForPerSeat(opts: {
     },
     { timeout: 180_000, interval: 2_000 },
   );
-  const ciphertexts = (sealed.coefficientsCiphertext ?? sealed.coefficients_ciphertext)
+  const ciphertexts = sealed.coefficientsCiphertext
     .map((c: number[] | Uint8Array) => c instanceof Uint8Array ? c : Uint8Array.from(c));
   const nonce = BigInt(sealed.nonce.toString());
   const { getMXEPublicKey } = await import('@arcium-hq/client');

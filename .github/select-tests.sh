@@ -11,6 +11,7 @@ ORDER=(poker blackjack baccarat war roulette craps keno slots bingo)
 
 declare -A ON=()
 TYPECHECK=false
+LEAN=false
 
 add() {
   local g
@@ -34,6 +35,9 @@ note_typecheck() {
 classify() {
   local p="$1"
   note_typecheck "$p"
+  case "$p" in
+    lean/*) LEAN=true; return ;;
+  esac
   case "$p" in
     *.md|docs/*) return ;;
     # Solana e2e and its chain client are not the Groth16 proof suite.
@@ -70,6 +74,7 @@ classify() {
 if [ "${1:-}" = "--all" ]; then
   add all
   TYPECHECK=true
+  LEAN=true
 else
   while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -115,6 +120,7 @@ else
 fi
 
 printf 'typecheck=%s\n' "$TYPECHECK"
+printf 'lean=%s\n' "$LEAN"
 printf 'has_games=%s\n' "$HAS_GAMES"
 printf 'games=%s\n' "${selected[*]:-}"
 printf 'matrix=%s\n' "$json"
@@ -123,6 +129,7 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
   delim="select$(date +%s%N)"
   {
     echo "typecheck=$TYPECHECK"
+    echo "lean=$LEAN"
     echo "has_games=$HAS_GAMES"
     echo "matrix<<$delim"
     echo "$json"

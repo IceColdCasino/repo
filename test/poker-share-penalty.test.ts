@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { GameKind } from '../src/game-config';
+import type { Ciphertext } from '../src/zk-casino';
 import { SHUFFLE_LANE_FEE_PER_TX, shuffleLanePlan } from '../src/chain/rent-vault';
 import { shuffleCallerInputs } from '../src/chain/shuffle-account';
 import { pokerStreetFieldGroups, shareStreetChunkCount } from '../src/share-street-fields';
@@ -18,7 +19,7 @@ const stake = 2n * reshuffle + protocolPenalty;
 
 describe('poker unseal penalty', () => {
   test('the share stake is sol for every other player plus the protocol penalty', () => {
-    const card = [0n, 0n, 0n, 0n];
+    const card = [0n, 0n, 0n, 0n] as Ciphertext;
     const grid = Array.from({ length: 9 }, () => Array.from({ length: 25 }, () => card));
     const shareChunks = shareStreetChunkCount(pokerStreetFieldGroups(grid));
     const shuffleFee = shuffleLanePlan(shuffleCallerInputs(GameKind.Poker, 1, 0)).fee;

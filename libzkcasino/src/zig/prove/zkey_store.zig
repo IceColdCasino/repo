@@ -3,21 +3,35 @@
 //! `plainPath` expands xz into the cache once and returns a path whose bytes
 //! are the proving key the library already reads.
 const std = @import("std");
+const builtin = @import("builtin");
 
 const store_magic = "zkx1";
 const raw_magic = "zkey";
 
 extern "c" fn popen(command: [*:0]const u8, mode: [*:0]const u8) ?*std.c.FILE;
 extern "c" fn pclose(stream: *std.c.FILE) c_int;
-extern "c" fn fstatat(dirfd: c_int, path: [*:0]const u8, buf: *std.c.Stat, flag: c_int) c_int;
 extern "c" fn access(path: [*:0]const u8, mode: c_int) c_int;
 
-const AT_FDCWD: c_int = -2;
+/// Seconds and bytes. Linux has no `std.c.Stat` (it is `void`); `statx` fills this.
+const Stamp = struct {
+    mtime_sec: i64,
+    size: u64,
+};
 
-fn statAt(path: [*:0]const u8) !std.c.Stat {
-    var st: std.c.Stat = undefined;
-    if (fstatat(AT_FDCWD, path, &st, 0) != 0) return error.ZkeyStat;
-    return st;
+fn stampAt(path: [*:0]const u8) !Stamp {
+    if (comptime builtin.os.tag == .linux) {
+        var stx = std.mem.zeroes(std.os.linux.Statx);
+        const rc = std.os.linux.statx(std.posix.AT.FDCWD, path, 0, .{ .MTIME = true, .SIZE = true }, &stx);
+        if (std.os.linux.errno(rc) != .SUCCESS) return error.ZkeyStat;
+        return .{ .mtime_sec = stx.mtime.sec, .size = stx.size };
+    } else {
+        const c = struct {
+            extern "c" fn fstatat(dirfd: c_int, path: [*:0]const u8, buf: *std.c.Stat, flag: c_int) c_int;
+        };
+        var st: std.c.Stat = undefined;
+        if (c.fstatat(std.posix.AT.FDCWD, path, &st, 0) != 0) return error.ZkeyStat;
+        return .{ .mtime_sec = st.mtime().sec, .size = @intCast(st.size) };
+    }
 }
 
 fn xzBin() [:0]const u8 {
@@ -57,20 +71,20 @@ pub fn plainPath(alloc: std.mem.Allocator, stored: [:0]const u8) ![:0]u8 {
     if (n < 12 or !std.mem.eql(u8, head[0..4], store_magic)) return error.ZkeyFormat;
 
     const uncompressed: u64 = std.mem.readInt(u64, head[4..12], .little);
-    const st = try statAt(stored);
+    const st = try stampAt(stored);
     const dir = try cacheDir(alloc);
     defer alloc.free(dir);
     const base = std.fs.path.basename(stored);
     const cache = try std.fmt.allocPrintSentinel(alloc, "{s}/{s}.{d}.{d}.zkey", .{
         dir,
         base,
-        st.mtime().sec,
+        st.mtime_sec,
         st.size,
     }, 0);
     errdefer alloc.free(cache);
 
-    if (statAt(cache)) |cached| {
-        if (cached.size == @as(std.c.off_t, @intCast(uncompressed))) return cache;
+    if (stampAt(cache)) |cached| {
+        if (cached.size == uncompressed) return cache;
     } else |_| {}
 
     const partial = try std.fmt.allocPrintSentinel(alloc, "{s}.partial", .{cache}, 0);
@@ -100,8 +114,8 @@ pub fn plainPath(alloc: std.mem.Allocator, stored: [:0]const u8) ![:0]u8 {
     const pipe = popen(cmd, "r") orelse return error.ZkeyExpand;
     const rc = pclose(pipe);
     if (rc != 0) return error.ZkeyExpand;
-    const expanded = statAt(cache) catch return error.ZkeyExpand;
-    if (expanded.size != @as(std.c.off_t, @intCast(uncompressed))) return error.ZkeyExpand;
+    const expanded = stampAt(cache) catch return error.ZkeyExpand;
+    if (expanded.size != uncompressed) return error.ZkeyExpand;
     return cache;
 }
 

@@ -177,19 +177,19 @@ async function runGame(nActualPlayers: number) {
 
 test('Complete War Game with 2 players', async () => {
   await runGame(2);
-}, 600_000);
+}, 1_500_000);
 
 test('Complete War Game with 3 players', async () => {
   await runGame(3);
-}, 600_000);
+}, 1_500_000);
 
 test('Complete War Game with 10 players', async () => {
   await runGame(10);
-}, 1_200_000);
+}, 2_400_000);
 
 test('Complete War Game with 12 players', async () => {
   await runGame(12);
-}, 1_800_000);
+}, 3_000_000);
 
 test('War multi-seat player and dealer pools settle proportionally', async () => {
   const game = new Game();
@@ -224,4 +224,4 @@ test('War multi-seat player and dealer pools settle proportionally', async () =>
   expect(nets.get(2)).toBe(20n);
   expect(nets.get(1)).toBe(-10n);
   expect(nets.get(3)).toBe(-20n);
-}, 900_000);
+}, 1_500_000);

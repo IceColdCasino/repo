@@ -452,6 +452,8 @@ export class ContinuousRouletteHand {
         nCards,
       );
       await timed(`tx:create_share_staging:p${p}`, () => stagingReady);
+      const expectedHash = signals[0];
+      if (expectedHash === undefined) throw new Error(`share proof for player ${p} has no public signal`);
       preparedSlots[p] = {
         p,
         proof,
@@ -460,7 +462,7 @@ export class ContinuousRouletteHand {
         ciphertexts,
         encryptedBets,
         nActualBets,
-        expectedHash: signals[0],
+        expectedHash,
         arcisHash,
         shareNonce: nonce,
         rows,

@@ -125,7 +125,7 @@ export function installDurableConfirm(connection: Connection): void {
   if (tagged[PATCHED]) return;
   tagged[PATCHED] = true;
   connection.confirmTransaction = (async (
-    strategy: Parameters<Connection['confirmTransaction']>[0],
+    strategy: string | { signature: string; lastValidBlockHeight: number },
     commitment?: Commitment,
   ) => {
     const wanted = commitment ?? 'confirmed';
