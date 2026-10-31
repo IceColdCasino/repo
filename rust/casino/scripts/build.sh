@@ -43,13 +43,14 @@ open(path, 'w').write('\n'.join(lines) + ('\n' if text.endswith('\n') else ''))
 PY
 fi
 
-# The Anchor accounts for the legacy testing queue still read this artifact.
-# Circuit source now settles through settle_all_seats and does not emit it.
-legacy="$ROOT/legacy/compute_pots.arcis"
-if [[ ! -f "$ROOT/build/compute_pots.arcis" ]]; then
-  mkdir -p "$ROOT/build"
-  cp "$legacy" "$ROOT/build/compute_pots.arcis"
-fi
+# The Anchor accounts for the legacy testing queue still read these artifacts.
+# Circuit source now settles through settle_all_seats and does not emit them.
+mkdir -p "$ROOT/build"
+for ext in arcis idarc weight hash; do
+  if [[ ! -f "$ROOT/build/compute_pots.$ext" ]]; then
+    cp "$ROOT/legacy/compute_pots.$ext" "$ROOT/build/compute_pots.$ext"
+  fi
+done
 
 echo "==> [2/2] On-chain program: cargo build-sbf (no --skip-program)"
 export RUSTFLAGS='--cfg getrandom_backend="custom"'

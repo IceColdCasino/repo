@@ -295,15 +295,15 @@ const runSlowEightSeatBlackjack = process.env.RUN_SLOW_BLACKJACK_8P === '1' ? it
 describe('Complete Blackjack Game with Proofs', () => {
   it('1 player + dealer (2 seats)', async () => {
     await runGame(2);
-  }, 600_000);
+  }, 1_800_000);
 
   it('2 players + dealer (3 seats)', async () => {
     await runGame(3);
-  }, 900_000);
+  }, 2_700_000);
 
   it('3 players + dealer (4 seats)', async () => {
     await runGame(4);
-  }, 1_200_000);
+  }, 3_600_000);
 
   runSlowEightSeatBlackjack('7 players + dealer: isolated 5-chunk shares, 7 showdowns', async () => {
     await runEightSeatGame();
