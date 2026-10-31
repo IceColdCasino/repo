@@ -102,7 +102,7 @@ pub const Engine = struct {
         if (self.circuits.getPtr(id)) |c| return c;
         const s = id.spec();
         const wit = try self.getLib(s.lib);
-        const short_z = try self.alloc.dupeZ(u8, s.short);
+        const short_z = try self.alloc.dupeSentinel(u8, s.short, 0);
         errdefer self.alloc.free(short_z);
         try self.circuits.put(id, .{
             .wit = wit,
@@ -255,9 +255,9 @@ pub const Engine = struct {
             std.debug.print("wrote witness {s} ({d} bytes)\n", .{ path, wtns.len });
         }
         if (std.c.getenv("ZK_WTNS_ONLY") != null) {
-            const proof_json = try self.alloc.dupeZ(u8, "{}");
+            const proof_json = try self.alloc.dupeSentinel(u8, "{}", 0);
             errdefer self.alloc.free(proof_json);
-            const public_json = try self.alloc.dupeZ(u8, "[]");
+            const public_json = try self.alloc.dupeSentinel(u8, "[]", 0);
             return .{ .proof_json = proof_json, .public_json = public_json, .alloc = self.alloc };
         }
 

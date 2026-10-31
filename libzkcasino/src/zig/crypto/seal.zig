@@ -44,7 +44,7 @@ pub fn padLive(live: []const Fr, out: *[SLOTS]Fr) error{InvalidSealedCoefficient
 
 /// rows[k] = Σ weight[k][i * 128 + j] over the set bits j of the two live coefficients.
 pub fn rows(coeffs: *const [SLOTS]Fr) [ROWS]Fr {
-    var out = [_]Fr{Fr.zero()} ** ROWS;
+    var out: [ROWS]Fr = @splat(Fr.zero());
     for (coeffs[0..LIVE], 0..) |c, i| {
         const limbs = c.toNormal();
         for (0..BITS) |j| {

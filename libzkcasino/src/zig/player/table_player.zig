@@ -57,7 +57,7 @@ pub const TablePlayer = struct {
     key: ?PlayerKey = null,
     engine: *Engine,
     owns_crypto: bool = false,
-    sealed_buf: [seal.SLOTS]Fr = .{Fr.zero()} ** seal.SLOTS,
+    sealed_buf: [seal.SLOTS]Fr = @splat(Fr.zero()),
     sealed_ready: bool = false,
 
     pub fn init(alloc: std.mem.Allocator, engine: *Engine, crypto: *Crypto) TablePlayer {

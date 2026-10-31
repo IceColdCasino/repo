@@ -51,7 +51,7 @@ fn cacheDir(alloc: std.mem.Allocator) ![:0]u8 {
             return std.fmt.allocPrintSentinel(alloc, "{s}/Library/Caches/IceColdCasino/zkey", .{std.mem.span(home)}, 0);
         }
     }
-    return alloc.dupeZ(u8, "/tmp/icecoldcasino-zkey");
+    return alloc.dupeSentinel(u8, "/tmp/icecoldcasino-zkey", 0);
 }
 
 fn quote(alloc: std.mem.Allocator, path: []const u8) ![:0]u8 {
@@ -66,7 +66,7 @@ pub fn plainPath(alloc: std.mem.Allocator, stored: [:0]const u8) ![:0]u8 {
     const n = std.c.fread(&head, 1, head.len, file);
     _ = std.c.fclose(file);
     if (n >= 4 and std.mem.eql(u8, head[0..4], raw_magic)) {
-        return alloc.dupeZ(u8, stored);
+        return alloc.dupeSentinel(u8, stored, 0);
     }
     if (n < 12 or !std.mem.eql(u8, head[0..4], store_magic)) return error.ZkeyFormat;
 

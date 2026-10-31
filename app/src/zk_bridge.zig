@@ -510,7 +510,7 @@ pub const State = struct {
         // Fall back to the repo source tree for local/simulator mounts.
         const root = if (is_ios) self.zkeyRoot() else self.repo_root;
         var source_buf: [512]u8 = undefined;
-        const source = std.fmt.bufPrintZ(&source_buf, "{s}/libzkcasino/src/zig/dat", .{root}) catch null;
+        const source = std.fmt.bufPrintSentinel(&source_buf, "{s}/libzkcasino/src/zig/dat", .{root}, 0) catch null;
         if (source) |p| {
             if (pathExists(p)) {
                 return std.fmt.bufPrint(buffer, "{s}/libzkcasino/src/zig/dat", .{root}) catch null;
@@ -539,7 +539,7 @@ pub const State = struct {
             return buffer[0..0 :0];
         }
         if (is_ios) {
-            return std.fmt.bufPrintZ(buffer, "{s}/Frameworks/librapidsnark.dylib", .{self.resource_root});
+            return std.fmt.bufPrintSentinel(buffer, "{s}/Frameworks/librapidsnark.dylib", .{self.resource_root}, 0);
         }
         if (std.c.getenv("RAPIDSNARK_LIB")) |raw| {
             const path = std.mem.span(raw);
@@ -549,11 +549,11 @@ pub const State = struct {
                 return buffer[0..path.len :0];
             }
         }
-        return std.fmt.bufPrintZ(buffer, "{s}/app/zig-out/lib/libgroth16.dylib", .{self.repo_root});
+        return std.fmt.bufPrintSentinel(buffer, "{s}/app/zig-out/lib/libgroth16.dylib", .{self.repo_root}, 0);
     }
 
     fn zkeyPath(self: *State, circuit_name: []const u8, buffer: *[512]u8) ![:0]u8 {
-        return std.fmt.bufPrintZ(buffer, "{s}/zkey/{s}_0001.zkey", .{ self.zkeyRoot(), circuit_name });
+        return std.fmt.bufPrintSentinel(buffer, "{s}/zkey/{s}_0001.zkey", .{ self.zkeyRoot(), circuit_name }, 0);
     }
 
     fn dupNullTerminated(self: *State, bytes: []const u8) ![:0]u8 {
@@ -609,7 +609,7 @@ pub const State = struct {
         }
 
         var circuit_buf: [64]u8 = undefined;
-        const circuit_c = try std.fmt.bufPrintZ(&circuit_buf, "{s}", .{config.circuit});
+        const circuit_c = try std.fmt.bufPrintSentinel(&circuit_buf, "{s}", .{config.circuit}, 0);
         const handle = zk.init(circuit_c.ptr) orelse return error.WitnessInitFailed;
 
         const key = try self.cache_allocator.dupe(u8, circuit_name);
@@ -665,7 +665,7 @@ pub const State = struct {
         var path_buf: [512]u8 = undefined;
         const lib_dir = try self.libDir(&path_buf);
         var full_buf: [640]u8 = undefined;
-        const full = try std.fmt.bufPrintZ(&full_buf, "{s}/lib{s}.dylib", .{ lib_dir, lib_name });
+        const full = try std.fmt.bufPrintSentinel(&full_buf, "{s}/lib{s}.dylib", .{ lib_dir, lib_name }, 0);
 
         if (is_ios) {
             var err_buf: [256]u8 = undefined;
@@ -1096,7 +1096,7 @@ fn readRepoRelativeJson(
     relative: []const u8,
 ) ![]const u8 {
     var path_buf: [512]u8 = undefined;
-    const path = try std.fmt.bufPrintZ(&path_buf, "{s}/{s}", .{ self.repo_root, relative });
+    const path = try std.fmt.bufPrintSentinel(&path_buf, "{s}/{s}", .{ self.repo_root, relative }, 0);
     return readFileAll(self.allocator(), path);
 }
 
@@ -1235,7 +1235,7 @@ fn extractProveArgs(
 
 fn readBundledWitness(self: *State, relative: []const u8) ![]u8 {
     var path_buf: [512]u8 = undefined;
-    const path = try std.fmt.bufPrintZ(&path_buf, "{s}/{s}", .{ self.resource_root, relative });
+    const path = try std.fmt.bufPrintSentinel(&path_buf, "{s}/{s}", .{ self.resource_root, relative }, 0);
     return readFileAll(self.allocator(), path);
 }
 
@@ -1357,7 +1357,7 @@ pub fn ping(context: *anyopaque, invocation: zero_native.bridge.Invocation, outp
     var lib_buf: [512]u8 = undefined;
     const lib_dir = try self.libDir(&lib_buf);
     var dylib_buf: [640]u8 = undefined;
-    const dylib_path = try std.fmt.bufPrintZ(&dylib_buf, "{s}/libzkcasino.dylib", .{lib_dir});
+    const dylib_path = try std.fmt.bufPrintSentinel(&dylib_buf, "{s}/libzkcasino.dylib", .{lib_dir}, 0);
     var dlopen_err: [512]u8 = undefined;
     @memset(&dlopen_err, 0);
     const dylib_ok = blk: {
@@ -1374,11 +1374,11 @@ pub fn ping(context: *anyopaque, invocation: zero_native.bridge.Invocation, outp
     const dylib_err = std.mem.sliceTo(&dlopen_err, 0);
 
     var shuffle_buf: [640]u8 = undefined;
-    const shuffle_path = try std.fmt.bufPrintZ(&shuffle_buf, "{s}/libzkcasino-shuffle-1-deck-52.dylib", .{lib_dir});
+    const shuffle_path = try std.fmt.bufPrintSentinel(&shuffle_buf, "{s}/libzkcasino-shuffle-1-deck-52.dylib", .{lib_dir}, 0);
     const shuffle_ok = pathExists(shuffle_path);
 
     var poker_buf: [640]u8 = undefined;
-    const poker_path = try std.fmt.bufPrintZ(&poker_buf, "{s}/libzkcasino-poker.dylib", .{lib_dir});
+    const poker_path = try std.fmt.bufPrintSentinel(&poker_buf, "{s}/libzkcasino-poker.dylib", .{lib_dir}, 0);
     var poker_load_error: []const u8 = "none";
     const poker_ok = blk: {
         if (is_ios) {
@@ -1397,7 +1397,7 @@ pub fn ping(context: *anyopaque, invocation: zero_native.bridge.Invocation, outp
     const dat_ok = blk: {
         if (dat_path.len == 0) break :blk false;
         var dat_file_buf: [580:0]u8 = undefined;
-        const dat_file = std.fmt.bufPrintZ(&dat_file_buf, "{s}/poker_share.dat", .{dat_path}) catch break :blk false;
+        const dat_file = std.fmt.bufPrintSentinel(&dat_file_buf, "{s}/poker_share.dat", .{dat_path}, 0) catch break :blk false;
         if (!pathExists(dat_file)) {
             dat_load_error = "FileNotFound";
             break :blk false;
@@ -1516,10 +1516,11 @@ pub fn proveHandlerSync(context: *anyopaque, invocation: zero_native.bridge.Invo
 /// Writes `{cwd}/.zig-cache/zero-native-automation/zk-prove-{id}.json` for host polls.
 fn writeProveAutomationSideChannel(request_id: []const u8, result_json: []const u8) void {
     var path_buf: [512]u8 = undefined;
-    const path_z = std.fmt.bufPrintZ(
+    const path_z = std.fmt.bufPrintSentinel(
         &path_buf,
         ".zig-cache/zero-native-automation/zk-prove-{s}.json",
         .{request_id},
+        0,
     ) catch return;
 
     var envelope_buf: [256 * 1024]u8 = undefined;

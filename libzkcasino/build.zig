@@ -81,9 +81,6 @@ pub fn build(b: *std.Build) void {
         (resolveSdkPath(b, target) orelse "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk")
     else
         "";
-    if (is_apple and b.sysroot == null) {
-        b.sysroot = sdk;
-    }
 
     var sdk_cxx_include_buf: [512]u8 = undefined;
     const sdk_cxx_include: []const u8 = if (is_apple)

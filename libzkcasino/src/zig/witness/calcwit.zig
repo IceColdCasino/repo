@@ -67,7 +67,7 @@ pub const CircomCalcWit = struct {
         const total_signals = vtable.get_total_signal_no();
         self.signalValues = try allocator.alloc(fr.FrElement, total_signals);
         @memset(self.signalValues, std.mem.zeroes(fr.FrElement));
-        self.signalValues[0] = fr.FrElement{ .shortVal = 1, .type = fr.Fr_SHORT, .longVal = .{0} ** 4 };
+        self.signalValues[0] = fr.FrElement{ .shortVal = 1, .type = fr.Fr_SHORT, .longVal = @splat(0) };
 
         self.circuit = circuit;
         self.circuitConstants = circuit.circuitConstants[0..vtable.get_size_of_constants()];
@@ -91,7 +91,7 @@ pub const CircomCalcWit = struct {
         self.inputSignalAssignedCounter = input_signal_count;
 
         @memset(self.signalValues, std.mem.zeroes(fr.FrElement));
-        self.signalValues[0] = fr.FrElement{ .shortVal = 1, .type = fr.Fr_SHORT, .longVal = .{0} ** 4 };
+        self.signalValues[0] = fr.FrElement{ .shortVal = 1, .type = fr.Fr_SHORT, .longVal = @splat(0) };
 
 
     }

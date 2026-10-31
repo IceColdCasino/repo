@@ -193,7 +193,7 @@ test "showdown seal commitment" {
     try std.testing.expectError(error.InvalidSealedCoefficient, seal.validate(coeffs[0..9]));
 
     // Account bytes as the casino program stores them: rows big-endian after the nonce.
-    var data = [_]u8{0} ** seal.ACCOUNT_LEN;
+    var data: [seal.ACCOUNT_LEN]u8 = @splat(0);
     data[8 + 32] = 3;
     data[8 + 32 + 1] = 2;
     const ct_at = 8 + 32 + 2;
@@ -282,7 +282,7 @@ test "derangement has no fixed points" {
     defer crypto.deinit(std.testing.allocator);
     var perm: [52]u16 = undefined;
     crypto.derangement(&perm);
-    var seen = [_]bool{false} ** 52;
+    var seen: [52]bool = @splat(false);
     for (perm, 0..) |dst, src| {
         try std.testing.expect(dst != src);
         try std.testing.expect(dst < 52);

@@ -3,7 +3,7 @@ const std = @import("std");
 pub const EvaluatedHand = [7]u64;
 
 fn zeroFill(src: []const u64) EvaluatedHand {
-    var out = [_]u64{0} ** 7;
+    var out: [7]u64 = @splat(0);
     @memcpy(out[0..src.len], src);
     return out;
 }
@@ -17,8 +17,8 @@ fn sortDesc(items: []u64) void {
 }
 
 const Freq = struct {
-    ranks: [13]u8 = .{0} ** 13,
-    suits: [4]u8 = .{0} ** 4,
+    ranks: [13]u8 = @splat(0),
+    suits: [4]u8 = @splat(0),
 };
 
 fn frequencies(cards: []const u64) Freq {
@@ -73,7 +73,7 @@ fn flushCheck(cards: []const u64, f: Freq) ?EvaluatedHand {
 fn straightFlushCheck(cards: []const u64, straight: ?EvaluatedHand, flush: ?EvaluatedHand) ?EvaluatedHand {
     if (straight == null or flush == null) return null;
     const flush_type = flush.?[6];
-    var ranks = [_]u8{0} ** 13;
+    var ranks: [13]u8 = @splat(0);
     for (cards) |card| {
         if (card / 13 == flush_type) ranks[card % 13] = 1;
     }
@@ -113,7 +113,7 @@ fn nOfAKind(n: u8, f: Freq) ?EvaluatedHand {
         2 => take + 1,
         else => unreachable,
     };
-    var out: [7]u64 = .{hand_type} ++ .{0} ** 6;
+    var out: [7]u64 = .{hand_type} ++ @as([6]u64, @splat(0));
     var o: usize = 1;
     i = 0;
     while (i < take) : (i += 1) {

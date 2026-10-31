@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
     const ios_query = std.Target.Query.parse(.{ .arch_os_abi = ios_target_name }) catch unreachable;
     const is_simulator = std.mem.indexOf(u8, ios_target_name, "simulator") != null;
 
-    b.sysroot = b.option([]const u8, "ios-sdk", "iOS SDK sysroot override") orelse iosSdkPath(b, if (is_simulator) "iphonesimulator" else "iphoneos");
+    const ios_sdk = b.option([]const u8, "ios-sdk", "iOS SDK sysroot override") orelse iosSdkPath(b, if (is_simulator) "iphonesimulator" else "iphoneos");
     const ios_target = b.resolveTargetQuery(ios_query);
 
     const patch_root = b.addWriteFile(b.pathJoin(&.{ zero_native_path, "src/no_embed_root.zig" }), @embedFile("vendor/no_embed_root.zig"));
@@ -82,8 +82,10 @@ pub fn build(b: *std.Build) void {
     ios_lib.root_module.linkSystemLibrary("c++", .{});
     ios_lib.bundle_compiler_rt = true;
     linkIosRapidsnark(b, ios_lib, is_simulator);
-    linkIosDispatch(b, ios_lib);
-    linkIosStubs(b, ios_lib);
+    if (ios_sdk) |sdk| {
+        linkIosDispatch(b, ios_lib, sdk);
+        linkIosStubs(b, ios_lib, sdk);
+    }
     ios_lib.step.dependOn(&patch_root.step);
 
     const install_ios_lib = b.addInstallArtifact(ios_lib, .{});
@@ -138,15 +140,13 @@ fn linkIosRapidsnark(b: *std.Build, ios_lib: *std.Build.Step.Compile, is_simulat
 }
 
 
-fn linkIosDispatch(b: *std.Build, ios_lib: *std.Build.Step.Compile) void {
-    const sdk = b.sysroot orelse iosSdkPath(b, "iphonesimulator") orelse return;
+fn linkIosDispatch(b: *std.Build, ios_lib: *std.Build.Step.Compile, sdk: []const u8) void {
     const sdk_include = b.pathJoin(&.{ sdk, "usr/include" });
     const flags = &[_][]const u8{ "-fobjc-arc", "-ObjC", "-isysroot", sdk, "-I", sdk_include };
     ios_lib.root_module.addCSourceFile(.{ .file = b.path("src/main_thread_dispatch.m"), .flags = flags });
 }
 
-fn linkIosStubs(b: *std.Build, ios_lib: *std.Build.Step.Compile) void {
-    const sdk = b.sysroot orelse iosSdkPath(b, "iphonesimulator") orelse return;
+fn linkIosStubs(b: *std.Build, ios_lib: *std.Build.Step.Compile, sdk: []const u8) void {
     const flags = &[_][]const u8{ "-isysroot", sdk };
     ios_lib.root_module.addCSourceFile(.{ .file = b.path("src/ios_link_stubs.c"), .flags = flags });
 }

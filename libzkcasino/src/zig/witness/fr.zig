@@ -297,9 +297,9 @@ test "FrElement size and alignment" {
 }
 
 test "Fr_add simple" {
-    var a = FrElement{ .shortVal = 5, .type = Fr_SHORT, .longVal = .{0} ** 4 };
-    var b = FrElement{ .shortVal = 3, .type = Fr_SHORT, .longVal = .{0} ** 4 };
-    var r = FrElement{ .shortVal = 0, .type = Fr_SHORT, .longVal = .{0} ** 4 };
+    var a = FrElement{ .shortVal = 5, .type = Fr_SHORT, .longVal = @splat(0) };
+    var b = FrElement{ .shortVal = 3, .type = Fr_SHORT, .longVal = @splat(0) };
+    var r = FrElement{ .shortVal = 0, .type = Fr_SHORT, .longVal = @splat(0) };
 
     Fr_add(&r, &a, &b);
 

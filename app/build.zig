@@ -231,10 +231,6 @@ fn zeroNativeTarget(b: *std.Build) std.Build.ResolvedTarget {
     const target = b.standardTargetOptions(.{});
     if (target.result.os.tag != .macos) return target;
 
-    if (b.sysroot == null) {
-        b.sysroot = macosSdkPath(b) orelse b.sysroot;
-    }
-
     var query = target.query;
     query.os_tag = .macos;
     query.os_version_min = .{ .semver = .{ .major = 11, .minor = 0, .patch = 0 } };
@@ -253,6 +249,10 @@ fn repoRootPath(b: *std.Build) ?[]const u8 {
         return null;
     }
     return std.mem.trimEnd(u8, result.stdout, "\r\n");
+}
+
+fn appleSysroot(b: *std.Build) ?[]const u8 {
+    return macosSdkPath(b);
 }
 
 fn macosSdkPath(b: *std.Build) ?[]const u8 {
@@ -331,8 +331,8 @@ fn linkPlatform(b: *std.Build, target: std.Build.ResolvedTarget, app_mod: *std.B
     if (platform == .macos) {
         switch (web_engine) {
             .system => {
-                const sdk_include = if (b.sysroot) |sysroot| b.fmt("-I{s}/usr/include", .{sysroot}) else "";
-                const flags: []const []const u8 = if (b.sysroot) |sysroot| &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0", "-isysroot", sysroot, sdk_include } else &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0" };
+                const sdk_include = if (appleSysroot(b)) |sysroot| b.fmt("-I{s}/usr/include", .{sysroot}) else "";
+                const flags: []const []const u8 = if (appleSysroot(b)) |sysroot| &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0", "-isysroot", sysroot, sdk_include } else &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0" };
                 app_mod.addCSourceFile(.{ .file = zeroNativePath(b, zero_native_path, "src/platform/macos/appkit_host.m"), .flags = flags });
                 app_mod.linkFramework("WebKit", .{});
             },
@@ -345,8 +345,8 @@ fn linkPlatform(b: *std.Build, target: std.Build.ResolvedTarget, app_mod: *std.B
                 exe.step.dependOn(&cef_check.step);
                 const include_arg = b.fmt("-I{s}", .{cef_dir});
                 const define_arg = b.fmt("-DZERO_NATIVE_CEF_DIR=\"{s}\"", .{cef_dir});
-                const sdk_include = if (b.sysroot) |sysroot| b.fmt("-I{s}/usr/include", .{sysroot}) else "";
-                const flags: []const []const u8 = if (b.sysroot) |sysroot| &.{ "-fobjc-arc", "-ObjC++", "-std=c++17", "-stdlib=libc++", "-mmacosx-version-min=11.0", "-isysroot", sysroot, sdk_include, include_arg, define_arg } else &.{ "-fobjc-arc", "-ObjC++", "-std=c++17", "-stdlib=libc++", "-mmacosx-version-min=11.0", include_arg, define_arg };
+                const sdk_include = if (appleSysroot(b)) |sysroot| b.fmt("-I{s}/usr/include", .{sysroot}) else "";
+                const flags: []const []const u8 = if (appleSysroot(b)) |sysroot| &.{ "-fobjc-arc", "-ObjC++", "-std=c++17", "-stdlib=libc++", "-mmacosx-version-min=11.0", "-isysroot", sysroot, sdk_include, include_arg, define_arg } else &.{ "-fobjc-arc", "-ObjC++", "-std=c++17", "-stdlib=libc++", "-mmacosx-version-min=11.0", include_arg, define_arg };
                 app_mod.addCSourceFile(.{ .file = zeroNativePath(b, zero_native_path, "src/platform/macos/cef_host.mm"), .flags = flags });
                 app_mod.addObjectFile(b.path(b.fmt("{s}/libcef_dll_wrapper/libcef_dll_wrapper.a", .{cef_dir})));
                 app_mod.addFrameworkPath(b.path(b.fmt("{s}/Release", .{cef_dir})));
@@ -354,7 +354,7 @@ fn linkPlatform(b: *std.Build, target: std.Build.ResolvedTarget, app_mod: *std.B
                 app_mod.addRPath(.{ .cwd_relative = "@executable_path/Frameworks" });
             },
         }
-        if (b.sysroot) |sysroot| {
+        if (appleSysroot(b)) |sysroot| {
             app_mod.addFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "System/Library/Frameworks" }) });
         }
         app_mod.linkFramework("AppKit", .{});
@@ -362,7 +362,7 @@ fn linkPlatform(b: *std.Build, target: std.Build.ResolvedTarget, app_mod: *std.B
         app_mod.linkFramework("IOKit", .{});
         app_mod.linkFramework("UniformTypeIdentifiers", .{});
         app_mod.linkSystemLibrary("c", .{});
-        const dispatch_flags: []const []const u8 = if (b.sysroot) |sysroot| &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0", "-isysroot", sysroot } else &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0" };
+        const dispatch_flags: []const []const u8 = if (appleSysroot(b)) |sysroot| &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0", "-isysroot", sysroot } else &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0" };
         app_mod.addCSourceFile(.{ .file = b.path("src/main_thread_dispatch.m"), .flags = dispatch_flags });
         if (web_engine == .chromium) app_mod.linkSystemLibrary("c++", .{});
     } else if (platform == .linux) {

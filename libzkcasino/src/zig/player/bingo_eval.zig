@@ -12,7 +12,7 @@ fn mark75(cells: []const u8, called: []const u8, marked: *[25]bool) void {
     for (cells, 0..) |cell, i| {
         if (i == 12 or cell == 0) marked[i] = true;
     }
-    var drawn = [_]bool{false} ** 76;
+    var drawn: [76]bool = @splat(false);
     for (called) |b| drawn[b + 1] = true;
     for (cells, 0..) |cell, i| {
         if (cell != 0 and drawn[cell]) marked[i] = true;
@@ -58,7 +58,7 @@ pub fn evaluate75(cells: []const u8, balls: []const u8, n_called: usize, pattern
 }
 
 fn mark90(cells: []const u8, called: []const u8, marked: *[27]bool) void {
-    var drawn = [_]bool{false} ** 91;
+    var drawn: [91]bool = @splat(false);
     for (called) |b| drawn[b + 1] = true;
     for (cells, 0..) |cell, i| {
         marked[i] = cell != 0 and drawn[cell];

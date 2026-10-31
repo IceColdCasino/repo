@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cross-compile libzkcasino witness dylibs for iOS Simulator and install into app/ios/Frameworks.
 #
-# Zig 0.16 cannot link iOS dynamic libraries directly ("unable to find libSystem").
+# Zig 0.17 cannot link iOS dynamic libraries directly ("unable to find libSystem").
 # We build static archives with Zig, then package dylibs with clang++ + Apple ld.
 #
 # Witness .dat files are NOT embedded — set zkcasino_set_dat_root at runtime.

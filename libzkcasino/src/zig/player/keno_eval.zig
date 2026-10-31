@@ -7,7 +7,7 @@ pub fn padSpots(spots: []const u8, out: *[MAX_KENO_SPOTS]u8) []const u8 {
         @memcpy(out, spots);
         return out;
     }
-    var used = [_]bool{false} ** KENO_SHOE_SIZE;
+    var used: [KENO_SHOE_SIZE]bool = @splat(false);
     var n: usize = 0;
     for (spots) |s| {
         used[s] = true;
@@ -25,7 +25,7 @@ pub fn padSpots(spots: []const u8, out: *[MAX_KENO_SPOTS]u8) []const u8 {
 }
 
 pub fn evaluate(draw: []const u8, spots: []const u8, n_actual: usize) u32 {
-    var drawn = [_]bool{false} ** KENO_SHOE_SIZE;
+    var drawn: [KENO_SHOE_SIZE]bool = @splat(false);
     for (draw) |d| drawn[d] = true;
     var matches: u32 = 0;
     var i: usize = 0;

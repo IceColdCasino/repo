@@ -136,7 +136,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
           use-cache: false
 
       - name: Restore Zig cache
@@ -147,9 +147,9 @@ jobs:
             .zig-cache
             libzkcasino/.zig-cache
             libzkcasino/zig-pkg
-          key: zig-0.16.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}-${{ hashFiles('libzkcasino/build.zig', 'libzkcasino/build.zig.zon', 'libzkcasino/src/**/*.zig', 'libzkcasino/src/witness_common/**', 'libzkcasino/src/circuits/**/*.cpp', 'libzkcasino/src/circuits/**/*_prefix.h') }}
+          key: zig-0.17.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}-${{ hashFiles('libzkcasino/build.zig', 'libzkcasino/build.zig.zon', 'libzkcasino/src/**/*.zig', 'libzkcasino/src/witness_common/**', 'libzkcasino/src/circuits/**/*.cpp', 'libzkcasino/src/circuits/**/*_prefix.h') }}
           restore-keys: |
-            zig-0.16.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}-
+            zig-0.17.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}-
 
       - name: Build libzkcasino
         working-directory: libzkcasino

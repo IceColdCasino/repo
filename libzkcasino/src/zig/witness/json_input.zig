@@ -57,11 +57,11 @@ pub fn json2FrElements(val: std.json.Value, allocator: std.mem.Allocator) !std.A
             try result.append(allocator, v);
         },
         .integer => |n| {
-            try result.append(allocator, fr.FrElement{ .shortVal = @intCast(n), .type = fr.Fr_SHORT, .longVal = .{0} ** 4 });
+            try result.append(allocator, fr.FrElement{ .shortVal = @intCast(n), .type = fr.Fr_SHORT, .longVal = @splat(0) });
         },
         .float => |f| {
             const n = @as(i64, @intFromFloat(f));
-            try result.append(allocator, fr.FrElement{ .shortVal = @intCast(n), .type = fr.Fr_SHORT, .longVal = .{0} ** 4 });
+            try result.append(allocator, fr.FrElement{ .shortVal = @intCast(n), .type = fr.Fr_SHORT, .longVal = @splat(0) });
         },
         .array => |arr| {
             for (arr.items) |item| {
@@ -81,7 +81,7 @@ fn parseFrElement(s: []const u8, base: u32) !fr.FrElement {
     const n = try std.fmt.parseInt(u256, s, @intCast(base));
     
     // Convert to FrElement longVal [4]u64
-    var longVal: [4]u64 = .{0} ** 4;
+    var longVal: [4]u64 = @splat(0);
     const n_u256: u256 = n;
     longVal[0] = @intCast(n_u256 & 0xFFFFFFFFFFFFFFFF);
     longVal[1] = @intCast((n_u256 >> 64) & 0xFFFFFFFFFFFFFFFF);
@@ -90,7 +90,7 @@ fn parseFrElement(s: []const u8, base: u32) !fr.FrElement {
     
     // Check if it fits in shortVal (32-bit signed)
     if (n <= 0x7FFFFFFF) {
-        return fr.FrElement{ .shortVal = @intCast(n), .type = fr.Fr_SHORT, .longVal = .{0} ** 4 };
+        return fr.FrElement{ .shortVal = @intCast(n), .type = fr.Fr_SHORT, .longVal = @splat(0) };
     } else {
         return fr.FrElement{ .shortVal = 0, .type = fr.Fr_LONG, .longVal = longVal };
     }

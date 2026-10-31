@@ -56,10 +56,10 @@ fn loadDatFromRoot(circuit_name: []const u8) ![]const u8 {
     }
 
     var path_buf: [max_root_bytes + 64 + 1]u8 = undefined;
-    const rel = try std.fmt.bufPrintZ(&path_buf, "{s}/{s}.dat", .{
+    const rel = try std.fmt.bufPrintSentinel(&path_buf, "{s}/{s}.dat", .{
         dat_root[0..dat_root_len],
         circuit_name,
-    });
+    }, 0);
     const bytes = try readFileAll(rel);
 
     const key = try std.heap.c_allocator.dupe(u8, circuit_name);
