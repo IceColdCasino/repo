@@ -362,7 +362,8 @@ fn linkPlatform(b: *std.Build, target: std.Build.ResolvedTarget, app_mod: *std.B
         app_mod.linkFramework("IOKit", .{});
         app_mod.linkFramework("UniformTypeIdentifiers", .{});
         app_mod.linkSystemLibrary("c", .{});
-        const dispatch_flags: []const []const u8 = if (appleSysroot(b)) |sysroot| &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0", "-isysroot", sysroot } else &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0" };
+        const dispatch_include = if (appleSysroot(b)) |sysroot| b.fmt("-I{s}/usr/include", .{sysroot}) else "";
+        const dispatch_flags: []const []const u8 = if (appleSysroot(b)) |sysroot| &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0", "-isysroot", sysroot, dispatch_include } else &.{ "-fobjc-arc", "-ObjC", "-mmacosx-version-min=11.0" };
         app_mod.addCSourceFile(.{ .file = b.path("src/main_thread_dispatch.m"), .flags = dispatch_flags });
         if (web_engine == .chromium) app_mod.linkSystemLibrary("c++", .{});
     } else if (platform == .linux) {
