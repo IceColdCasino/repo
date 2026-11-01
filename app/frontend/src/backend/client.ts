@@ -809,6 +809,8 @@ export interface HandResultSnapshot {
   actionOrder: number[];
   zkFinalDeck?: string[][];
   handNumPlayers?: number;
+  /** Per-pot bitsets. Bit i set means seat i won that pot. */
+  winnerMasks?: Array<string | bigint>;
 }
 
 export interface GameSnapshot {

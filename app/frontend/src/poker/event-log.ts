@@ -398,6 +398,18 @@ function revealEvents(
   return events;
 }
 
+function seatsFromWinnerMask(mask: string | bigint): number[] {
+  const seats: number[] = [];
+  let bits = BigInt(mask);
+  let seat = 0;
+  while (bits > 0n && seat < 64) {
+    if ((bits & 1n) === 1n) seats.push(seat);
+    bits >>= 1n;
+    seat += 1;
+  }
+  return seats;
+}
+
 function resultEvents(
   prev: GameSnapshot | null,
   next: GameSnapshot,
@@ -407,7 +419,13 @@ function resultEvents(
   const handNumber = next.handNumber ?? null;
   if (!prev?.handResult && next.handResult) {
     // Prefer proof winnerMasks (all set bits) over a single-seat heuristic.
-    const potResults = potResultsFromHandResult(next.handResult);
+    const masks = next.handResult.winnerMasks;
+    const potResults = potResultsFromHandResult(next.handResult).map((pot) => {
+      const raw = masks?.[pot.potIndex];
+      if (raw === undefined) return pot;
+      const seats = seatsFromWinnerMask(raw);
+      return seats.length > 0 ? { ...pot, winnerSeats: seats } : pot;
+    });
     const potLines = potResults.map((pot) => {
       const seats = pot.winnerSeats;
       if (seats.length === 0) {

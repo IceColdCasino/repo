@@ -1,4 +1,21 @@
-/** WebView stub — host Zig player-bridge FFI never ships in the macOS/iOS apps. */
+/**
+ * WebView stub — host Zig player-bridge FFI never ships in the macOS/iOS apps.
+ * `initialDeck` is pure BabyJub identity cards, so vitest can build a deck
+ * without the native calc bridge.
+ */
+import { buildBabyjub, type BabyJub } from 'circomlibjs';
+
+const babyjub: BabyJub = await buildBabyjub();
+
+function identityCard(scalar: number): string[] {
+  const point = babyjub.mulPointEscalar(babyjub.Base8, BigInt(scalar));
+  return [
+    '0',
+    '1',
+    String(babyjub.F.toObject(point[0])),
+    String(babyjub.F.toObject(point[1])),
+  ];
+}
 
 export function playerBridgeFfiAvailable(): boolean {
   return false;
@@ -23,6 +40,19 @@ export function bridgeCall(
   variant: number,
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (payload.op === 'calc' && payload.fn === 'initialDeck') {
+    const count = Number(payload.count ?? 0);
+    const decks = Number(payload.decks ?? 1);
+    const deck: string[][] = [];
+    for (let deckIndex = 0; deckIndex < decks; deckIndex += 1) {
+      for (let card = 0; card < count; card += 1) {
+        deck.push(identityCard(card + 1));
+      }
+    }
+    void kind;
+    void variant;
+    return { ok: true, deck };
+  }
   const zero = (globalThis as { window?: { zero?: ZeroBridge } }).window?.zero;
   const call = zero?.invokeSync ?? zero?.invoke;
   if (!call) {

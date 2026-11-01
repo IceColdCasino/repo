@@ -48,6 +48,15 @@ function browserPokerShims() {
       }
       return shimFor(source);
     },
+    transform(code, id) {
+      if (!id.replace(/\\/g, '/').endsWith('/src/poker-player.ts')) return null;
+      const needle = 'ffi.requirePlayerBridge();';
+      if (!code.includes(needle)) return null;
+      return code.replace(
+        needle,
+        'if (!ffi.playerBridgeFfiAvailable()) return false;\n    ffi.requirePlayerBridge();',
+      );
+    },
   };
 }
 

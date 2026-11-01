@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { isNativeE2e, loadE2eSeatHandKey } from './e2e-seat-hand-key';
 
 describe('e2e-seat-hand-key parse helpers', () => {

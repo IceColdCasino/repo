@@ -176,9 +176,15 @@ case "$cmd" in
     run_via_bridge "${cmd:-}" "$@"
     ;;
   compose)
-    if have_apple_container && "$CONTAINER_BIN" compose --help >/dev/null 2>&1; then
+    # Apple Container has no Compose until the container-compose plugin is installed.
+    # Arcium accepts a Docker-shaped version line, then runs `compose up`.
+    if have_apple_container && "$CONTAINER_BIN" compose version >/dev/null 2>&1; then
       if [[ "${1:-}" == "version" || "${1:-}" == "--version" ]]; then
-        fake_compose_version
+        if [[ "${2:-}" == "--short" || "${1:-}" == "--short" ]]; then
+          echo "2.39.1"
+        else
+          fake_compose_version
+        fi
         exit 0
       fi
       run_apple_compose "$@"

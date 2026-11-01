@@ -22,8 +22,9 @@ import {
   createNativeHandFlow as createManualNativeHandFlow,
   ensurePlayerKeyForHand as ensureManualPlayerKeyForHand,
   maybeAdvanceZkHand as maybeAdvanceManualZkHand,
+  canAttemptShowdownSubmission,
+  designatedShowdownSeat,
   needsRegistration,
-  shouldSubmitShowdownNow,
   submitRegistration as submitManualRegistration,
   submitShowdownProof as submitManualShowdownProof,
   syncGameFromSnapshot,
@@ -254,15 +255,13 @@ export async function maybeAdvanceZkHand(
   }
 
   if (isE2eVisualShowdown(snapshot)) {
-    const due = await shouldSubmitShowdownNow(
-      client,
-      gameId,
-      localSeat,
-      state,
-      snapshot,
-      provisionalResult,
-    );
-    if (!due) {
+    // Dummy proofs do not race the winner's Groth16, so the preference window
+    // would only stall the visual hand.
+    if (!canAttemptShowdownSubmission(snapshot, localSeat, state)) {
+      return null;
+    }
+    const designated = designatedShowdownSeat(snapshot);
+    if (designated !== null && designated !== localSeat) {
       return null;
     }
     state.inFlight = true;

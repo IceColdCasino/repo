@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Arcium looks for a standalone docker-compose binary as well as `docker compose`.
+exec "$(cd "$(dirname "$0")" && pwd)/docker" compose "$@"

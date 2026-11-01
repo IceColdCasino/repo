@@ -384,6 +384,12 @@ jobs:
         working-directory: app/frontend
         run: |
           set -eux
+          # The image npm rejects this lockfile (it wants typescript 7's
+          # optional platform packages recorded). 11.6.1 installs it as written.
+          npm install --prefix "${HOME}/.local" npm@11.6.1
+          export PATH="${HOME}/.local/bin:${PATH}"
+          hash -r
+          npm --version
           npm ci
           npm test
 
@@ -459,11 +465,27 @@ jobs:
           url="$(python3 -c 'import json,sys; r=json.loads(sys.stdin.read()); print(next(a["browser_download_url"] for a in r["assets"] if a["name"].endswith(".pkg")))' <<<"${api}")"
           curl -fsSL -o /tmp/container.pkg "${url}"
           sudo installer -pkg /tmp/container.pkg -target /
+          # Apple's pkg has no Compose. Arcium checks `docker compose version`
+          # before it will start the localnet.
+          curl -fsSL -o /tmp/container-compose.pkg \
+            https://github.com/flaticols/container-compose/releases/download/v0.1.0/container-compose-0.1.0.pkg
+          sudo installer -pkg /tmp/container-compose.pkg -target /
           # First start asks to download the Kata kernel. Actions has no TTY,
           # so the prompt fails with "failed to read user input".
           container system start --enable-kernel-install
-          mkdir -p "${HOME}/.local/apple-container/bin"
+          if ! container compose version >/dev/null 2>&1; then
+            container system stop || true
+            container system start --enable-kernel-install
+          fi
+          container compose version
+          mkdir -p "${HOME}/.local/apple-container/bin" "${HOME}/.local/bin"
           ln -sfn "$(command -v container)" "${HOME}/.local/apple-container/bin/container"
+          ln -sfn "${GITHUB_WORKSPACE}/scripts/bin/docker" "${HOME}/.local/bin/docker"
+          ln -sfn "${GITHUB_WORKSPACE}/scripts/bin/docker-compose" "${HOME}/.local/bin/docker-compose"
+          export PATH="${HOME}/.local/bin:${PATH}"
+          hash -r
+          docker compose version
+          docker-compose version
           container system status
       - name: Bind the checkout to this localnet's program ids
         run: |
