@@ -109,7 +109,45 @@ jobs:
         with:
           lfs: false
 
+      - name: Look for a passed run with a stored library
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 .github/reuse-proof-artifact.py
+          "${{ matrix.game }}"
+          "${{ matrix.runner }}"
+          "${{ matrix.test }}"
+          "${{ matrix.lfs }}"
+          "${{ matrix.circuit_set }}"
+
+      - name: Download the stored macOS libraries
+        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'macOS'
+        uses: actions/download-artifact@v4
+        with:
+          name: libzkcasino-macos-${{ matrix.circuit_set }}
+          path: libzkcasino/zig-out/lib
+          run-id: ${{ steps.reuse.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Check the stored libraries
+        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'macOS'
+        run: |
+          set -eux
+          find libzkcasino/zig-out/lib -type f -name '*.dylib' -print
+          find libzkcasino/zig-out/lib -type f -name '*.dylib' | grep -q .
+
+      - name: Reupload the stored libraries for this run
+        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: libzkcasino-macos-${{ matrix.circuit_set }}
+          if-no-files-found: error
+          overwrite: true
+          path: libzkcasino/zig-out/lib
+
       - name: Install the prover
+        if: steps.reuse.outputs.reuse != 'true'
         run: |
           set -eux
           if [ "$RUNNER_OS" = "macOS" ]; then
@@ -136,12 +174,14 @@ jobs:
           fi
 
       - uses: mlugg/setup-zig@v2
+        if: steps.reuse.outputs.reuse != 'true'
         with:
           version: 0.17.0
           use-cache: false
 
       - name: Restore Zig cache
         id: zig-cache
+        if: steps.reuse.outputs.reuse != 'true'
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -153,19 +193,21 @@ jobs:
             zig-0.17.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}
 
       - name: Build libzkcasino
+        if: steps.reuse.outputs.reuse != 'true'
         working-directory: libzkcasino
         run: zig build -Doptimize=ReleaseFast -Dcircuit-set=${{ matrix.circuit_set }}
 
       - name: Upload macOS libzkcasino libraries
-        if: runner.os == 'macOS'
+        if: steps.reuse.outputs.reuse != 'true' && runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: libzkcasino-macos-${{ matrix.circuit_set }}
           if-no-files-found: error
+          overwrite: true
           path: libzkcasino/zig-out/lib
 
       - name: Save Zig cache
-        if: steps.zig-cache.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reuse != 'true' && steps.zig-cache.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
@@ -176,11 +218,14 @@ jobs:
           key: ${{ steps.zig-cache.outputs.cache-primary-key }}
 
       - name: Drop the Zig cache
+        if: steps.reuse.outputs.reuse != 'true'
         run: rm -rf .zig-cache libzkcasino/.zig-cache libzkcasino/zig-pkg "${HOME}/.cache/zig" "${HOME}/Library/Caches/zig"
 
       - uses: oven-sh/setup-bun@v2
+        if: steps.reuse.outputs.reuse != 'true'
 
       - name: Pull proving keys for this game
+        if: steps.reuse.outputs.reuse != 'true'
         run: |
           set -eux
           git lfs install --local
@@ -194,7 +239,9 @@ jobs:
           df -h /
 
       - run: bun install --frozen-lockfile
+        if: steps.reuse.outputs.reuse != 'true'
       - name: Run proof tests
+        if: steps.reuse.outputs.reuse != 'true'
         run: bash .github/run-proof-tests.sh "test/${{ matrix.test }}"
 
   rust-linux:
@@ -407,7 +454,9 @@ jobs:
           url="$(python3 -c 'import json,sys; r=json.loads(sys.stdin.read()); print(next(a["browser_download_url"] for a in r["assets"] if a["name"].endswith(".pkg")))' <<<"${api}")"
           curl -fsSL -o /tmp/container.pkg "${url}"
           sudo installer -pkg /tmp/container.pkg -target /
-          container system start
+          # First start asks to download the Kata kernel. Actions has no TTY,
+          # so the prompt fails with "failed to read user input".
+          container system start --enable-kernel-install
           mkdir -p "${HOME}/.local/apple-container/bin"
           ln -sfn "$(command -v container)" "${HOME}/.local/apple-container/bin/container"
           container system status

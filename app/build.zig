@@ -109,6 +109,7 @@ pub fn build(b: *std.Build) void {
     player_bridge_mod.addImport("zero-native", zero_native_mod);
     player_bridge_mod.addImport("build_options", zk_options_mod);
     player_bridge_mod.addImport("zk_bridge", zk_bridge_mod);
+    player_bridge_mod.addImport("main_thread_dispatch", main_thread_dispatch_mod);
     const player_crypto_mod = b.createModule(.{
         .root_source_file = b.path("../libzkcasino/src/zig/player_crypto.zig"),
         .target = target,

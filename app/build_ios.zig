@@ -40,6 +40,7 @@ pub fn build(b: *std.Build) void {
     ios_player_bridge_mod.addImport("zero-native", ios_zero_native_mod);
     ios_player_bridge_mod.addImport("build_options", ios_zk_options_mod);
     ios_player_bridge_mod.addImport("zk_bridge", ios_zk_bridge_mod);
+    ios_player_bridge_mod.addImport("main_thread_dispatch", ios_main_thread_mod);
     const ios_player_crypto_mod = b.createModule(.{
         .root_source_file = b.path("../libzkcasino/src/zig/player_crypto.zig"),
         .target = ios_target,
