@@ -8,7 +8,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 mkdir -p target/deploy
-bash "$ROOT/../../scripts/write-build-keypairs.sh" casino
+# CI localnet builds against the keypair already written by
+# prepare-ephemeral-program-ids.sh. A fresh keypair would not match declare_id.
+if [[ "${CASINO_EPHEMERAL_PROGRAM_IDS:-}" == "1" && -f target/deploy/casino-keypair.json ]]; then
+  echo "keeping ephemeral casino keypair $(solana-keygen pubkey target/deploy/casino-keypair.json)"
+else
+  bash "$ROOT/../../scripts/write-build-keypairs.sh" casino
+fi
 
 FEATURES="${CASINO_FEATURES:-}"
 SBF_TOOLS_VERSION="${SBF_TOOLS_VERSION:-v1.54}"

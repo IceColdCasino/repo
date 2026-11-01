@@ -357,6 +357,9 @@ fn linkPlatform(b: *std.Build, target: std.Build.ResolvedTarget, app_mod: *std.B
         }
         if (appleSysroot(b)) |sysroot| {
             app_mod.addFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "System/Library/Frameworks" }) });
+            // Zig looks up Foundation's /usr/lib/libobjc.A.dylib on the host.
+            // The stub lives in the SDK.
+            app_mod.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/lib" }) });
         }
         app_mod.linkFramework("AppKit", .{});
         app_mod.linkFramework("Foundation", .{});

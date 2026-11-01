@@ -19,6 +19,14 @@ fetch_one() {
   local dest="$3"
   local tmp
   mkdir -p "$(dirname "$dest")"
+  if [[ "${CASINO_EPHEMERAL_PROGRAM_IDS:-}" == "1" ]]; then
+    if [[ ! -f "$dest" ]]; then
+      echo "error: ephemeral program keypair missing at ${dest#"$ROOT"/}" >&2
+      exit 1
+    fi
+    echo "ephemeral program keypair $(solana-keygen pubkey "$dest") -> ${dest#"$ROOT"/}"
+    return 0
+  fi
   if [[ -f "$dest" ]]; then
     local have
     have="$(solana-keygen pubkey "$dest" 2>/dev/null || true)"
