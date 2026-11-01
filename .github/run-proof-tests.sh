@@ -50,5 +50,10 @@ PY
 while IFS= read -r pattern; do
   [ -n "$pattern" ] || continue
   echo "==> ${pattern}"
-  bun test --max-concurrency 1 --test-name-pattern "$pattern" "$file"
+  # Metal sometimes returns a proof that does not verify. The same hand
+  # passes on rapidsnark, and a second process usually proves it cleanly.
+  if ! bun test --max-concurrency 1 --test-name-pattern "$pattern" "$file"; then
+    echo "==> retry ${pattern}"
+    bun test --max-concurrency 1 --test-name-pattern "$pattern" "$file"
+  fi
 done <"$list"

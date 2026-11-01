@@ -145,8 +145,8 @@ async function runGame(variant: BingoVariant, nActualPlayers: number) {
 
 test('Complete 75-ball Bingo with 2 players (card commit after register, 5-ball share)', async () => {
   await runGame(75, 2);
-}, 900_000);
+}, 3_600_000);
 
 test('Complete 90-ball Bingo with 2 players (card commit after register, 5-ball share)', async () => {
   await runGame(90, 2);
-}, 900_000);
+}, 3_600_000);

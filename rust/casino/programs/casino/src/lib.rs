@@ -23,6 +23,14 @@ mod getrandom_stub {
     register_custom_getrandom!(solana_getrandom);
 }
 
+/// `solana-nostd-sha256` calls the dynamic `sol_sha256` symbol. Platform-tools
+/// with static syscalls do not export it, so the program fails to link.
+#[cfg(all(target_os = "solana", target_feature = "static-syscalls"))]
+#[no_mangle]
+pub unsafe extern "C" fn sol_sha256(vals: *const u8, val_len: u64, hash_result: *mut u8) -> u64 {
+    unsafe { solana_sha256_hasher::sol_sha256(vals, val_len, hash_result) }
+}
+
 pub mod pot;
 pub mod wallet;
 pub mod room;
