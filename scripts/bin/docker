@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Docker CLI shim for Apple Container + container-compose.
 # Prefer this over Docker Desktop when present early on PATH.
-set -euo pipefail
+# macOS ships bash 3.2; empty "${arr[@]}" under `set -u` aborts the script.
+set -eo pipefail
 
 REAL_DOCKER="${REAL_DOCKER:-/usr/local/bin/docker}"
 CONTAINER_BIN="${CONTAINER_BIN:-container}"
@@ -103,15 +104,31 @@ run_apple_compose() {
     done
     {
       printf '%s compose up' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      printf ' %q' "${global_flags[@]}" "${rest[@]}"
+      if [[ ${#global_flags[@]} -gt 0 ]]; then printf ' %q' "${global_flags[@]}"; fi
+      if [[ ${#rest[@]} -gt 0 ]]; then printf ' %q' "${rest[@]}"; fi
       printf ' file=%q\n' "${compose_file}"
     } >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
     : >"$up_log"
+    if [[ -z "$compose_file" || ! -f "$compose_file" ]]; then
+      # arcium invokes us from rust/casino; resolve relative -f paths.
+      local cand
+      for cand in \
+        "${compose_file}" \
+        "artifacts/docker-compose-arx-env.yml" \
+        "rust/casino/artifacts/docker-compose-arx-env.yml"
+      do
+        if [[ -n "$cand" && -f "$cand" ]]; then
+          compose_file="$(cd "$(dirname "$cand")" && pwd)/$(basename "$cand")"
+          break
+        fi
+      done
+    fi
     if [[ -n "$compose_file" && -f "$compose_file" ]] \
       && grep -q 'arcium-trusted-dealer:' "$compose_file" \
       && command -v python3 >/dev/null 2>&1
     then
       set +e
+      echo "docker shim: starting arcium via container run from ${compose_file}" >>"$up_log"
       python3 - "$CONTAINER_BIN" "$compose_file" "artifacts-arx_network" <<'PY' >>"$up_log" 2>&1
 import os, re, subprocess, sys, time
 
@@ -237,7 +254,10 @@ PY
     exit 1
   fi
 
-  exec "$CONTAINER_BIN" compose "$sub" "${global_flags[@]}" "${rest[@]}"
+  if [[ ${#global_flags[@]} -gt 0 || ${#rest[@]} -gt 0 ]]; then
+    exec "$CONTAINER_BIN" compose "$sub" ${global_flags[@]+"${global_flags[@]}"} ${rest[@]+"${rest[@]}"}
+  fi
+  exec "$CONTAINER_BIN" compose "$sub"
 }
 
 run_via_bridge() {
