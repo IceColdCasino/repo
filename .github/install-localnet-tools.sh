@@ -24,12 +24,17 @@ if ! command -v cargo >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> Solana CLI"
-if ! command -v solana >/dev/null 2>&1; then
-  sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
-fi
+# Arcium 0.14.1 requires Solana CLI 3.1.10 (see docs.arcium.com installation).
+# `stable`/`edge` track Agave 4.x and make `arcium localnet` panic after log streams.
+SOLANA_RELEASE="${SOLANA_RELEASE:-v3.1.10}"
+echo "==> Solana CLI ${SOLANA_RELEASE}"
+sh -c "$(curl -sSfL "https://release.anza.xyz/${SOLANA_RELEASE}/install")"
 solana_bin="${HOME}/.local/share/solana/install/active_release/bin"
 export PATH="${solana_bin}:${PATH}"
+solana --version | grep -E '3\.1\.10|3\.1\.' || {
+  echo "error: expected Solana ${SOLANA_RELEASE}, got: $(solana --version)" >&2
+  exit 1
+}
 
 echo "==> Anchor ${anchor_asset}"
 mkdir -p "${HOME}/.local/bin"

@@ -59,14 +59,12 @@ export interface LocalnetOrchestratorOptions {
   streamLogs?: boolean;
 }
 
-/** arcium 0.14.1 panics after failed pubsub setup; detect before the MXE wait burns 30m. */
+/** arcium 0.14.1 panics hard on several localnet races; fail before the MXE wait burns 30m. */
 function arciumCliFatalLog(log: string): string | null {
   if (/thread 'main'.*panicked|called `Option::unwrap\(\)` on a `None` value/s.test(log)) {
-    return 'arcium localnet panicked (see log). Often caused by websocket '
-      + 'subscribe failing against a non-loopback bind_address — on Apple '
-      + 'Container CI set SOLANA_BIND_ADDRESS=127.0.0.1 and '
-      + 'ARCIUM_DOCKER_HOST_GATEWAY=203.0.113.113 with '
-      + '`container system dns create host.docker.internal --localhost 203.0.113.113`.';
+    return 'arcium localnet panicked (see log). Check Solana CLI is 3.1.x '
+      + '(Arcium 0.14.1), Apple Container localhost DNS redirect is set, and '
+      + 'ARX compose came up.';
   }
   if (log.includes('Log streams set up successfully (0 streams)')) {
     return 'arcium localnet set up 0 log streams after websocket subscribe failures';
