@@ -68,6 +68,15 @@ export const ARCIUM_DOCKER_DESKTOP_HOST_GATEWAY = '192.168.65.254';
  * (192.168.65.1 is Docker Desktop’s gateway — unreachable from Apple’s 172.21 net.)
  */
 export const ARCIUM_APPLE_CONTAINER_HOST_GATEWAY = '192.168.1.90';
+/**
+ * Documentation-range IPv4 used with
+ * `container system dns create host.docker.internal --localhost 203.0.113.113`.
+ * Apple Container PF redirects this address to the Mac’s 127.0.0.1, so ARX/TD
+ * can reach a loopback-bound solana-test-validator. Prefer this over en0 on
+ * GitHub Actions, where binding the validator to the vmnet IP (192.168.64.x)
+ * makes the arcium CLI’s own websocket subscribe fail and panic.
+ */
+export const ARCIUM_APPLE_LOCALHOST_REDIRECT_GATEWAY = '203.0.113.113';
 
 function homePath(...parts: string[]): string {
   return path.join(process.env.HOME ?? '', ...parts);

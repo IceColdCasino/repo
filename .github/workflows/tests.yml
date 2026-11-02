@@ -408,6 +408,11 @@ jobs:
       # CI has no Light CLI accounts tree; leave genesis unseeded and strip any
       # stale absolute Light paths from Anchor.toml before arcium starts.
       LIGHT_GENESIS: "0"
+      # Bind solana-test-validator to loopback so arcium CLI websocket subscribe
+      # works. ARX/TD reach it via Apple Container's localhost DNS redirect
+      # (see Install Apple Container step) rewritten into compose/node configs.
+      SOLANA_BIND_ADDRESS: "127.0.0.1"
+      ARCIUM_DOCKER_HOST_GATEWAY: "203.0.113.113"
     steps:
       - name: Free disk space
         run: |
@@ -486,6 +491,11 @@ jobs:
           container system start --enable-kernel-install
           # Plugin flag is --version. Bare `version` looks for a compose file.
           container compose --version
+          # Redirect 203.0.113.113 → host 127.0.0.1 so ARX can reach a
+          # loopback-bound validator. PF rules are not reboot-persistent.
+          sudo container system dns delete host.docker.internal || true
+          sudo container system dns create host.docker.internal --localhost 203.0.113.113
+          container system dns list
           mkdir -p "${HOME}/.local/apple-container/bin" "${HOME}/.local/bin"
           ln -sfn "$(command -v container)" "${HOME}/.local/apple-container/bin/container"
           ln -sfn "${GITHUB_WORKSPACE}/scripts/bin/docker" "${HOME}/.local/bin/docker"

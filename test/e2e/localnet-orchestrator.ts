@@ -59,6 +59,21 @@ export interface LocalnetOrchestratorOptions {
   streamLogs?: boolean;
 }
 
+/** arcium 0.14.1 panics after failed pubsub setup; detect before the MXE wait burns 30m. */
+function arciumCliFatalLog(log: string): string | null {
+  if (/thread 'main'.*panicked|called `Option::unwrap\(\)` on a `None` value/s.test(log)) {
+    return 'arcium localnet panicked (see log). Often caused by websocket '
+      + 'subscribe failing against a non-loopback bind_address — on Apple '
+      + 'Container CI set SOLANA_BIND_ADDRESS=127.0.0.1 and '
+      + 'ARCIUM_DOCKER_HOST_GATEWAY=203.0.113.113 with '
+      + '`container system dns create host.docker.internal --localhost 203.0.113.113`.';
+  }
+  if (log.includes('Log streams set up successfully (0 streams)')) {
+    return 'arcium localnet set up 0 log streams after websocket subscribe failures';
+  }
+  return null;
+}
+
 export function isDockerRunning(): boolean {
   try {
     const env = arciumDockerEnv();
@@ -234,6 +249,7 @@ export function localnetStatus(): {
 
 export class LocalnetOrchestrator {
   private arciumProcess?: ChildProcess;
+  private arciumExitCode: number | null = null;
   private arciumLog = '';
   private killed = false;
   readonly managed: boolean;
@@ -302,7 +318,8 @@ export class LocalnetOrchestrator {
       log('stripped Light genesis (LIGHT_GENESIS=0)');
     }
     if (pinValidatorBindAddress(ANCHOR_TOML_PATH)) {
-      log('pinned validator bind_address to host LAN IP for container RPC access');
+      const bind = process.env.SOLANA_BIND_ADDRESS?.trim() || 'host LAN IP';
+      log(`pinned validator bind_address to ${bind} for container RPC access`);
     }
     syncArciumAccountAddresses(ANCHOR_TOML_PATH);
 
@@ -340,9 +357,11 @@ export class LocalnetOrchestrator {
     if (wantsLightGenesis()) {
       this.watchAnchorTomlForLightGenesis();
     }
+    this.arciumExitCode = null;
     this.arciumProcess.stdout?.on('data', (chunk) => this.onLog(chunk));
     this.arciumProcess.stderr?.on('data', (chunk) => this.onLog(chunk));
     this.arciumProcess.on('exit', (code) => {
+      this.arciumExitCode = code;
       if (code !== 0 && code !== null && !this.killed) {
         this.onLog(`\narcium localnet exited with code ${code}\n`);
       }
@@ -408,16 +427,22 @@ export class LocalnetOrchestrator {
     }
   }
 
+  private arciumDiedEarly(): string | null {
+    const code = this.arciumExitCode ?? this.arciumProcess?.exitCode ?? null;
+    if (code != null && code !== 0) {
+      return `arcium localnet exited early (code ${code})`;
+    }
+    return arciumCliFatalLog(this.arciumLog);
+  }
+
   private async waitForValidator(timeout: number): Promise<void> {
     const start = Date.now();
     let lastProgress = 0;
     while (Date.now() - start < timeout) {
       if (this.killed) throw new Error('Orchestrator was killed');
-      if (this.arciumProcess?.exitCode != null && this.arciumProcess.exitCode !== 0) {
-        throw new Error(
-          `arcium localnet exited early (code ${this.arciumProcess.exitCode})\n`
-            + this.arciumLog.trim().slice(-3000),
-        );
+      const fatal = this.arciumDiedEarly();
+      if (fatal) {
+        throw new Error(`${fatal}\n` + this.arciumLog.trim().slice(-3000));
       }
       if (this.arciumLog.includes('program file does not exist')) {
         throw new Error(
@@ -514,11 +539,9 @@ export class LocalnetOrchestrator {
     let lastProgress = 0;
     while (Date.now() - start < timeout) {
       if (this.killed) throw new Error('Orchestrator was killed');
-      if (this.arciumProcess?.exitCode != null && this.arciumProcess.exitCode !== 0) {
-        throw new Error(
-          `arcium localnet exited early (code ${this.arciumProcess.exitCode})\n`
-            + this.arciumLog.trim().slice(-3000),
-        );
+      const fatal = this.arciumDiedEarly();
+      if (fatal) {
+        throw new Error(`${fatal}\n` + this.arciumLog.trim().slice(-3000));
       }
 
       if (

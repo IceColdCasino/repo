@@ -155,7 +155,10 @@ export function anchorTomlHasLightGenesis(
 
 /**
  * Keep validator RPC on a concrete host IP (Agave rejects 0.0.0.0).
- * Prefer en0 / SOLANA_BIND_ADDRESS so Apple Container ARX can reach RPC.
+ * Prefer SOLANA_BIND_ADDRESS, then en0. On Apple Container CI bind to
+ * 127.0.0.1 and set ARCIUM_DOCKER_HOST_GATEWAY to the localhost DNS redirect
+ * (203.0.113.113) so arcium CLI websockets and ARX RPC both work — a raw
+ * en0/vmnet bind (192.168.64.x) breaks the CLI subscribe path on Actions.
  * `arcium localnet` may rewrite Anchor.toml; re-apply before the validator spawns.
  */
 function detectHostLanIp(): string {
