@@ -151,7 +151,7 @@ for raw in text.splitlines():
         src = services[current].pop("_src", None)
         if src:
             services[current]["volumes"].append((src, m.group(1)))
-    elif m := re.match(r'^\s+-\s*"([^"]+)"\s*$', raw) and ":" in m.group(1):
+    elif (m := re.match(r'^\s+-\s*"([^"]+)"\s*$', raw)) and ":" in m.group(1):
         services[current]["ports"].append(m.group(1))
 
 # Ensure the shared network exists (created earlier by ensureAppleArxNetwork).
