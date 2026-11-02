@@ -22,6 +22,7 @@ import { casinoLocalnetArtifactsReady } from './build-casino';
 import { isArciumMxeReady, isValidatorReady, isLocalnetReady } from './localnet-health';
 import {
   injectLightGenesisIntoAnchorToml,
+  stripLightGenesisFromAnchorToml,
   anchorTomlHasLightGenesis,
   pinValidatorBindAddress,
   startLightSidecars,
@@ -281,6 +282,8 @@ export class LocalnetOrchestrator {
     fs.writeFileSync(LOG_PATH, '');
 
     // Seed Light genesis before arcium runs; re-inject if it regenerates Anchor.toml.
+    // A skipped seed must still strip a stale block — committed Anchor.toml may
+    // point at another machine's absolute paths for Light programs.
     if (wantsLightGenesis()) {
       const seeded = injectLightGenesisIntoAnchorToml(ANCHOR_TOML_PATH);
       if (seeded.ok) {
@@ -289,8 +292,14 @@ export class LocalnetOrchestrator {
             + `(${seeded.programCount} programs, ${seeded.accountCount} accounts)`,
         );
       } else {
-        log(`Light genesis seed skipped: ${seeded.reason}`);
+        if (stripLightGenesisFromAnchorToml(ANCHOR_TOML_PATH)) {
+          log(`stripped stale Light genesis (${seeded.reason})`);
+        } else {
+          log(`Light genesis seed skipped: ${seeded.reason}`);
+        }
       }
+    } else if (stripLightGenesisFromAnchorToml(ANCHOR_TOML_PATH)) {
+      log('stripped Light genesis (LIGHT_GENESIS=0)');
     }
     if (pinValidatorBindAddress(ANCHOR_TOML_PATH)) {
       log('pinned validator bind_address to host LAN IP for container RPC access');

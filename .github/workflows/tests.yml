@@ -405,6 +405,9 @@ jobs:
     timeout-minutes: 600
     env:
       CASINO_EPHEMERAL_PROGRAM_IDS: "1"
+      # CI has no Light CLI accounts tree; leave genesis unseeded and strip any
+      # stale absolute Light paths from Anchor.toml before arcium starts.
+      LIGHT_GENESIS: "0"
     steps:
       - name: Free disk space
         run: |

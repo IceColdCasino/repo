@@ -55,6 +55,23 @@ const MARKER_BEGIN = '# BEGIN light-protocol genesis (do not hand-edit; regenera
 const MARKER_END = '# END light-protocol genesis';
 
 /**
+ * Drop a previous Light genesis injection. CI checkouts keep absolute paths from
+ * a developer machine; those break `arcium localnet` when the files are absent.
+ */
+export function stripLightGenesisFromAnchorToml(
+  anchorTomlPath: string = path.join(process.cwd(), 'rust/casino/Anchor.toml'),
+): boolean {
+  if (!fs.existsSync(anchorTomlPath)) return false;
+  const text = fs.readFileSync(anchorTomlPath, 'utf8');
+  const begin = text.indexOf(MARKER_BEGIN);
+  const end = text.indexOf(MARKER_END);
+  if (begin === -1 || end === -1 || end <= begin) return false;
+  const next = (text.slice(0, begin) + text.slice(end + MARKER_END.length)).replace(/\n{3,}/g, '\n\n');
+  fs.writeFileSync(anchorTomlPath, next.trimEnd() + '\n');
+  return true;
+}
+
+/**
  * Append Light [[test.genesis]] + [[test.validator.account]] blocks to poker Anchor.toml.
  * Must run after `arcium localnet` regenerates the file and before the validator
  * process is spawned — or before a clean restart that re-reads Anchor.toml.
