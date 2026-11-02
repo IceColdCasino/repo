@@ -314,7 +314,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     player_lib_mod.addObject(fr_cpp_obj);
-    player_lib_mod.addObject(fr_asm_obj);
+    if (fr_asm_obj) |obj| player_lib_mod.addObject(obj);
     linkGmp(player_lib_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(player_lib_mod, target, sdk);
     if (target.result.os.tag == .macos or target.result.os.tag == .ios) {
@@ -343,7 +343,7 @@ pub fn build(b: *std.Build) void {
     player_bridge_lib_mod.addImport("house_options", house_options_mod);
     player_bridge_lib_mod.addImport("zkey_store", zkey_store_mod);
     player_bridge_lib_mod.addObject(fr_cpp_obj);
-    player_bridge_lib_mod.addObject(fr_asm_obj);
+    if (fr_asm_obj) |obj| player_bridge_lib_mod.addObject(obj);
     linkGmp(player_bridge_lib_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(player_bridge_lib_mod, target, sdk);
     if (target.result.os.tag == .macos or target.result.os.tag == .ios) {
@@ -371,7 +371,7 @@ pub fn build(b: *std.Build) void {
     });
     player_prove_mod.addImport("zkey_store", zkey_store_mod);
     player_prove_mod.addObject(fr_cpp_obj);
-    player_prove_mod.addObject(fr_asm_obj);
+    if (fr_asm_obj) |obj| player_prove_mod.addObject(obj);
     linkGmp(player_prove_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(player_prove_mod, target, sdk);
 
