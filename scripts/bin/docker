@@ -92,9 +92,26 @@ run_apple_compose() {
       printf '\n'
     } >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
     # Capture Apple compose stdout/stderr — prior CI runs left container list [].
+    # Cap wall time: a mem_limit that exceeds host RAM can hang with zero containers.
+    local up_timeout="${ARCIUM_COMPOSE_UP_TIMEOUT_SECS:-300}"
     set +e
-    "$CONTAINER_BIN" compose up "${global_flags[@]}" "${rest[@]}" >"$up_log" 2>&1
-    local up_status=$?
+    if command -v python3 >/dev/null 2>&1; then
+      python3 - "$up_timeout" "$CONTAINER_BIN" "${global_flags[@]}" "${rest[@]}" <<'PY' >"$up_log" 2>&1
+import subprocess, sys
+timeout = int(sys.argv[1])
+cmd = [sys.argv[2], "compose", "up", *sys.argv[3:]]
+try:
+    r = subprocess.run(cmd, timeout=timeout)
+    sys.exit(r.returncode)
+except subprocess.TimeoutExpired:
+    print(f"docker shim: container compose up timed out after {timeout}s", file=sys.stderr)
+    sys.exit(124)
+PY
+      local up_status=$?
+    else
+      "$CONTAINER_BIN" compose up "${global_flags[@]}" "${rest[@]}" >"$up_log" 2>&1
+      local up_status=$?
+    fi
     set -e
     if [[ -f "$up_log" ]]; then
       cat "$up_log" >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true

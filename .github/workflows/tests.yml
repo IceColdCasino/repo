@@ -413,6 +413,9 @@ jobs:
       # (see Install Apple Container step) rewritten into compose/node configs.
       SOLANA_BIND_ADDRESS: "127.0.0.1"
       ARCIUM_DOCKER_HOST_GATEWAY: "203.0.113.113"
+      # Apple mem_limit is a hard VM reservation; 4g × 6 services exceeds runner RAM.
+      ARCIUM_APPLE_MEM_LIMIT: "1536m"
+      ARCIUM_COMPOSE_UP_TIMEOUT_SECS: "300"
     steps:
       - name: Free disk space
         run: |

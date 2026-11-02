@@ -786,8 +786,19 @@ export function patchArciumDockerArtifacts(): void {
     ).split('\n');
     const out: string[] = [];
 
+    // Apple Container treats mem_limit as a hard per-VM reservation. Six Arcium
+    // services at 4g need ~24 GiB; GitHub's macOS runners have ~14 GiB, so
+    // compose up never creates containers. Cap via ARCIUM_APPLE_MEM_LIMIT
+    // (default 1536m). Docker Desktop keeps soft 4g cgroup limits.
+    const appleMemLimit = process.env.ARCIUM_APPLE_MEM_LIMIT?.trim() || '1536m';
+    const memLimitValue = isAppleContainerRuntime() ? appleMemLimit : '4g';
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
+      if (/^\s+mem_limit:\s*/.test(line)) {
+        // Normalize whatever arcium or a prior patch wrote.
+        out.push(`    mem_limit: ${memLimitValue}`);
+        continue;
+      }
       out.push(line);
       if (line.includes('image: "arcium/') && !line.includes('platform:')) {
         const next = lines[i + 1] ?? '';
@@ -795,16 +806,11 @@ export function patchArciumDockerArtifacts(): void {
           out.push('    platform: linux/amd64');
         }
       }
-      // Share-hash EncData OOMs under Apple Container's default 1GiB for amd64
-      // ARX nodes. Prefer `deploy.resources` only when Docker Desktop is in use —
-      // Apple container-compose has rejected / ignored plain `mem_limit` and left
-      // `compose up` with an empty container list on CI.
       if (
-        !isAppleContainerRuntime()
-        && /^\s+platform:\s*linux\/amd64\s*$/.test(line)
+        /^\s+platform:\s*linux\/amd64\s*$/.test(line)
         && !lines.slice(Math.max(0, i - 3), i + 4).some((l) => /mem_limit:/.test(l))
       ) {
-        out.push('    mem_limit: 4g');
+        out.push(`    mem_limit: ${memLimitValue}`);
       }
     }
 
