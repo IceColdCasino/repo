@@ -568,10 +568,14 @@ jobs:
               || {
                 echo '==== docker shim log ===='
                 cat "${DOCKER_SHIM_LOG}" 2>/dev/null || true
+                echo '==== compose up log ===='
+                cat "${DOCKER_SHIM_LOG%.log}-compose-up.log" 2>/dev/null || true
                 echo '==== container list ===='
                 container list --format json 2>/dev/null || true
                 echo '==== compose (if present) ===='
-                sed -n '1,80p' rust/casino/artifacts/docker-compose-arx-env.yml 2>/dev/null || true
+                sed -n '1,120p' rust/casino/artifacts/docker-compose-arx-env.yml 2>/dev/null || true
+                echo '==== trusted dealer config (rpc) ===='
+                rg -n 'endpoint|host\.docker|203\.|8899|8900' rust/casino/artifacts/trusted_dealer_config.toml rust/casino/artifacts/node_config_*.toml 2>/dev/null || true
                 exit 1
               }
           done
