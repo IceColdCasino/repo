@@ -575,7 +575,29 @@ jobs:
           container network rm icc-smoke-net 2>/dev/null || true
           container network create icc-smoke-net
           container network inspect icc-smoke-net
+          # Prove amd64 run + compose up against an external network return.
+          container delete --force icc-smoke 2>/dev/null || true
+          perl -e 'alarm 120; exec @ARGV' 120 \
+            container run --name icc-smoke --rm --platform linux/amd64 \
+            --network icc-smoke-net --memory 512m \
+            docker.io/library/busybox:1.36 echo ok
+          cat > /tmp/icc-smoke-compose.yml <<'YAML'
+          networks:
+            arx_network:
+              name: icc-smoke-net
+              external: true
+          services:
+            smoke:
+              image: "docker.io/library/busybox:1.36"
+              platform: linux/amd64
+              mem_limit: 512m
+              command: ["echo", "compose-ok"]
+              networks: [arx_network]
+          YAML
+          perl -e 'alarm 120; exec @ARGV' 120 \
+            container compose --verbose up -f /tmp/icc-smoke-compose.yml
           container network rm icc-smoke-net
+          container delete --force icc-smoke 2>/dev/null || true
       - name: Arcium 2-player tests
         env:
           GAMES: ${{ needs.changes.outputs.games }}

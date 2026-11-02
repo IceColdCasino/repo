@@ -100,29 +100,39 @@ run_apple_compose() {
     fi
     set +e
     : >"$up_log"
-    "$CONTAINER_BIN" compose up "${global_flags[@]}" "${rest[@]}" >>"$up_log" 2>&1 &
-    local up_pid=$!
-    local waited=0
-    local up_status=0
-    while kill -0 "$up_pid" 2>/dev/null; do
-      if [[ "$waited" -ge "$up_timeout" ]]; then
+    # perl alarm reliably kills a hung `container compose` (bash kill loops did
+    # not fire on CI while compose sat with an empty log for 10+ minutes).
+    if command -v perl >/dev/null 2>&1; then
+      perl -e 'alarm shift; exec @ARGV' "$up_timeout" \
+        "$CONTAINER_BIN" compose --verbose up "${global_flags[@]}" "${rest[@]}" \
+        >>"$up_log" 2>&1
+      local up_status=$?
+      if [[ "$up_status" -eq 142 || "$up_status" -eq 14 ]]; then
         echo "docker shim: container compose up timed out after ${up_timeout}s" >>"$up_log"
-        kill -TERM "$up_pid" 2>/dev/null || true
-        sleep 2
-        kill -KILL "$up_pid" 2>/dev/null || true
-        # Compose plugin may outlive the parent CLI when stuck in network create.
         pkill -KILL -f 'container-plugins/compose' 2>/dev/null || true
-        pkill -KILL -f 'container compose' 2>/dev/null || true
-        wait "$up_pid" 2>/dev/null || true
         up_status=124
-        break
       fi
-      sleep 1
-      waited=$((waited + 1))
-    done
-    if [[ "$up_status" -eq 0 ]]; then
-      wait "$up_pid"
-      up_status=$?
+    else
+      "$CONTAINER_BIN" compose --verbose up "${global_flags[@]}" "${rest[@]}" >>"$up_log" 2>&1 &
+      local up_pid=$!
+      local waited=0
+      local up_status=0
+      while kill -0 "$up_pid" 2>/dev/null; do
+        if [[ "$waited" -ge "$up_timeout" ]]; then
+          echo "docker shim: container compose up timed out after ${up_timeout}s" >>"$up_log"
+          kill -KILL "$up_pid" 2>/dev/null || true
+          pkill -KILL -f 'container-plugins/compose' 2>/dev/null || true
+          wait "$up_pid" 2>/dev/null || true
+          up_status=124
+          break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+      done
+      if [[ "$up_status" -eq 0 ]]; then
+        wait "$up_pid"
+        up_status=$?
+      fi
     fi
     set -e
     if [[ -f "$up_log" ]]; then

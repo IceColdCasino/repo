@@ -440,7 +440,11 @@ export function ensureAppleArxNetwork(): {
   return { network: APPLE_ARX_NETWORK_NAME, subnet, tdIp, arxIps };
 }
 
-/** Drop compose IPAM/static IPs and attach to the pre-created Apple network. */
+/**
+ * Drop compose IPAM/static IPs, attach to the pre-created Apple network, and
+ * keep only the primary TD + two ARX nodes. Backup/recovery stacks need another
+ * ~6–14 VMs and blow past GitHub macOS RAM even at 1.5g each.
+ */
 function pinAppleExternalArxNetwork(text: string): string {
   if (!isAppleContainerRuntime()) return text;
   // Replace the top-level networks block with an external reference. Arcium's
@@ -451,7 +455,40 @@ function pinAppleExternalArxNetwork(text: string): string {
   );
   // Static ipv4_address is ignored by Apple DHCP and confuses some compose paths.
   next = next.replace(/^\s+ipv4_address:.*\n/gm, '');
-  return next;
+
+  const keep = new Set([
+    'arcium-trusted-dealer',
+    'arx-node-0',
+    'arx-node-1',
+  ]);
+  const lines = next.split('\n');
+  const out: string[] = [];
+  let inServices = false;
+  let skipping = false;
+  for (const line of lines) {
+    if (/^networks:\s*$/.test(line)) {
+      inServices = false;
+      skipping = false;
+      out.push(line);
+      continue;
+    }
+    if (/^services:\s*$/.test(line)) {
+      inServices = true;
+      skipping = false;
+      out.push(line);
+      continue;
+    }
+    if (inServices) {
+      const svc = /^  ([a-z0-9-]+):\s*$/.exec(line);
+      if (svc) {
+        skipping = !keep.has(svc[1]!);
+        if (skipping) continue;
+      }
+      if (skipping) continue;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
 }
 
 function pinArciumImageTags(text: string): string {
