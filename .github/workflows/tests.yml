@@ -415,7 +415,7 @@ jobs:
       ARCIUM_DOCKER_HOST_GATEWAY: "203.0.113.113"
       # Apple mem_limit is a hard VM reservation; 4g × 6 services exceeds runner RAM.
       ARCIUM_APPLE_MEM_LIMIT: "1536m"
-      ARCIUM_COMPOSE_UP_TIMEOUT_SECS: "300"
+      ARCIUM_COMPOSE_UP_TIMEOUT_SECS: "180"
     steps:
       - name: Free disk space
         run: |
@@ -557,7 +557,12 @@ jobs:
           do
             docker pull --platform linux/amd64 "${img}"
           done
-          container images list || true
+          container image list || container images list || true
+          # Prove network create without --subnet works; custom IPAM hangs on CI.
+          container network rm icc-smoke-net 2>/dev/null || true
+          container network create icc-smoke-net
+          container network inspect icc-smoke-net
+          container network rm icc-smoke-net
       - name: Arcium 2-player tests
         env:
           GAMES: ${{ needs.changes.outputs.games }}

@@ -101,8 +101,13 @@ export function isDockerDesktopHost(dockerHost: string | undefined | null): bool
 }
 
 export function appleContainerBin(): string {
-  return homePath('.local', 'apple-container', 'bin', 'container');
+  const shimmed = homePath('.local', 'apple-container', 'bin', 'container');
+  if (fs.existsSync(shimmed)) return shimmed;
+  return 'container';
 }
+
+/** Compose project network name for `rust/casino/artifacts/docker-compose-*.yml`. */
+export const APPLE_ARX_NETWORK_NAME = 'artifacts-arx_network';
 
 export function appleContainerDockerShim(): string {
   return homePath('.local', 'bin', 'docker');
@@ -350,12 +355,11 @@ function pinAppleDhcpStartOrder(text: string): string {
 
 /**
  * Apple Container vmnet keeps DHCP leases after containers are removed.
- * Drop the Arcium network so the next compose starts again at 172.21.0.2.
+ * Drop the Arcium network so the next compose starts again at gateway+1.
  */
 export function resetAppleArxDhcpNetwork(): void {
   if (!isAppleContainerRuntime()) return;
   const bin = appleContainerBin();
-  if (!fs.existsSync(bin)) return;
   const env = arciumDockerEnv();
   for (const name of [
     'artifacts-arcium-trusted-dealer',
@@ -368,7 +372,86 @@ export function resetAppleArxDhcpNetwork(): void {
     spawnSync(bin, ['stop', name], { stdio: 'pipe', env });
     spawnSync(bin, ['rm', '-f', name], { stdio: 'pipe', env });
   }
-  spawnSync(bin, ['network', 'rm', 'artifacts-arx_network'], { stdio: 'pipe', env });
+  spawnSync(bin, ['network', 'rm', APPLE_ARX_NETWORK_NAME], { stdio: 'pipe', env });
+}
+
+/**
+ * Apple `container network create --subnet …` is unreliable (hangs or rejects
+ * /16 on CI). Pre-create the compose network with no subnet so vmnet picks a
+ * free /24, then pin ARCIUM_* IPs to that subnet's .2/.3/.4 (DHCP start order).
+ */
+export function ensureAppleArxNetwork(): {
+  network: string;
+  subnet: string;
+  tdIp: string;
+  arxIps: [string, string];
+} | null {
+  if (!isAppleContainerRuntime()) return null;
+  const bin = appleContainerBin();
+  const env = arciumDockerEnv();
+  resetAppleArxDhcpNetwork();
+  const created = spawnSync(bin, ['network', 'create', APPLE_ARX_NETWORK_NAME], {
+    encoding: 'utf8',
+    env,
+  });
+  if (created.status !== 0) {
+    throw new Error(
+      `Apple Container failed to create ${APPLE_ARX_NETWORK_NAME}: `
+        + `${created.stderr || created.stdout || created.status}`,
+    );
+  }
+  const inspected = spawnSync(bin, ['network', 'inspect', APPLE_ARX_NETWORK_NAME], {
+    encoding: 'utf8',
+    env,
+  });
+  if (inspected.status !== 0) {
+    throw new Error(
+      `Apple Container failed to inspect ${APPLE_ARX_NETWORK_NAME}: `
+        + `${inspected.stderr || inspected.stdout || inspected.status}`,
+    );
+  }
+  let subnet = '';
+  try {
+    const raw = JSON.parse(inspected.stdout) as Array<{
+      status?: { ipv4Subnet?: string };
+    }>;
+    subnet = raw[0]?.status?.ipv4Subnet ?? '';
+  } catch (e) {
+    throw new Error(
+      `Apple Container network inspect JSON parse failed: ${e}\n${inspected.stdout}`,
+    );
+  }
+  const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)\/(\d+)$/.exec(subnet);
+  if (!m) {
+    throw new Error(
+      `Apple Container network ${APPLE_ARX_NETWORK_NAME} has no ipv4Subnet `
+        + `(got ${JSON.stringify(subnet)})`,
+    );
+  }
+  const prefix = `${m[1]}.${m[2]}.${m[3]}`;
+  const tdIp = `${prefix}.2`;
+  const arxIps: [string, string] = [`${prefix}.3`, `${prefix}.4`];
+  process.env.ARCIUM_TRUSTED_DEALER_IP = tdIp;
+  process.env.ARCIUM_ARX_NODE_IPS = arxIps.join(',');
+  console.log(
+    `[arcium-docker] Apple network ${APPLE_ARX_NETWORK_NAME} ${subnet} `
+      + `→ td=${tdIp} arx=${arxIps.join(',')}`,
+  );
+  return { network: APPLE_ARX_NETWORK_NAME, subnet, tdIp, arxIps };
+}
+
+/** Drop compose IPAM/static IPs and attach to the pre-created Apple network. */
+function pinAppleExternalArxNetwork(text: string): string {
+  if (!isAppleContainerRuntime()) return text;
+  // Replace the top-level networks block with an external reference. Arcium's
+  // file always starts with `networks:` / `arx_network:` / ipam subnet.
+  let next = text.replace(
+    /^networks:\n(?:[ \t]+.*\n|\n)*?(?=services:\n)/m,
+    `networks:\n  arx_network:\n    name: ${APPLE_ARX_NETWORK_NAME}\n    external: true\n\n`,
+  );
+  // Static ipv4_address is ignored by Apple DHCP and confuses some compose paths.
+  next = next.replace(/^\s+ipv4_address:.*\n/gm, '');
+  return next;
 }
 
 function pinArciumImageTags(text: string): string {
@@ -782,7 +865,9 @@ export function patchArciumDockerArtifacts(): void {
   if (fs.existsSync(COMPOSE_PATH)) {
     const text = fs.readFileSync(COMPOSE_PATH, 'utf8');
     const lines = pinDockerHostGateway(
-      pinAppleDhcpStartOrder(pinArciumImageTags(remapArciumSubnet(text))),
+      pinAppleExternalArxNetwork(
+        pinAppleDhcpStartOrder(pinArciumImageTags(remapArciumSubnet(text))),
+      ),
     ).split('\n');
     const out: string[] = [];
 

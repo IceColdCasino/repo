@@ -12,6 +12,7 @@ import {
   pinArciumTomlNodeIps,
   retargetMxeKeygenToCasinoProgram,
   resetAppleArxDhcpNetwork,
+  ensureAppleArxNetwork,
   resolveArxNodeIps,
   resolveDockerBinary,
   resolveTrustedDealerIpArg,
@@ -326,6 +327,18 @@ export class LocalnetOrchestrator {
     syncArciumAccountAddresses(ANCHOR_TOML_PATH);
 
     const arciumBin = resolveArciumCli();
+    // Apple: pre-create the compose network without --subnet (custom subnets hang
+    // on CI) and pin TD/ARX IPs to the vmnet-assigned /24 before genesis.
+    const appleNet = ensureAppleArxNetwork();
+    if (appleNet) {
+      log(
+        `Apple network ${appleNet.network} ${appleNet.subnet} `
+          + `(td ${appleNet.tdIp}; arx ${appleNet.arxIps.join(', ')})`,
+      );
+    } else {
+      // Docker Desktop: drop any prior containers/network before regenerate.
+      resetAppleArxDhcpNetwork();
+    }
     const tdIpArg = resolveTrustedDealerIpArg();
     const [arx0, arx1] = resolveArxNodeIps();
     if (pinArciumTomlNodeIps()) {
@@ -333,8 +346,6 @@ export class LocalnetOrchestrator {
     }
     // Ensure compose/node genesis patches exist before arcium regenerates accounts.
     patchArciumDockerArtifacts();
-    // Fresh vmnet so trusted-dealer / arx-node-0 / arx-node-1 get .2 / .3 / .4.
-    resetAppleArxDhcpNetwork();
     log(
       `starting \`${arciumBin} localnet --skip-build\` `
         + `(trusted dealer IP ${tdIpArg}; arx ${arx0}, ${arx1})…`,

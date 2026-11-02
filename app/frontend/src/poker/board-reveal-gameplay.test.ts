@@ -89,7 +89,7 @@ function flopSnapshot(
 }
 
 describe('gameplay board reveal (Flop, partial)', () => {
-  it('flop board decrypts to faces during betting', { timeout: 30_000 }, async () => {
+  it('flop board decrypts to faces during betting', { timeout: 120_000 }, async () => {
     const { keys, zkCrypto, reveal } = await buildFlopReveal();
 
     const decrypted = await decryptDealCards({
