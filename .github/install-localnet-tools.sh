@@ -48,6 +48,13 @@ solana --version
 "${HOME}/.local/bin/anchor" --version
 arcium --version
 
+# Anchor.toml and `arcium localnet` read this wallet. CI images have none.
+mkdir -p "${HOME}/.config/solana"
+if [[ ! -f "${HOME}/.config/solana/id.json" ]]; then
+  solana-keygen new --no-bip39-passphrase --silent -o "${HOME}/.config/solana/id.json"
+fi
+solana-keygen pubkey "${HOME}/.config/solana/id.json"
+
 if [ -n "${GITHUB_PATH:-}" ]; then
   echo "${solana_bin}" >> "${GITHUB_PATH}"
   echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"

@@ -389,7 +389,9 @@ jobs:
           bun install --frozen-lockfile
           npm --version
           npm ci --prefix app/frontend
-          npm test --prefix app/frontend
+          # Shared macOS runners are slower than a local Mac; decrypt and bridge
+          # suites need headroom past vitest's 5s default.
+          npm test --prefix app/frontend -- --testTimeout=120000
 
   macos-arcium:
     name: Arcium 2p (macOS)
