@@ -393,134 +393,92 @@ jobs:
           # suites need headroom past vitest's 5s default.
           npm test --prefix app/frontend -- --testTimeout=120000
 
-  macos-arcium:
-    name: Arcium 2p (macOS)
+  # GitHub-hosted macOS runners cannot run Apple Container (no nested
+  # Virtualization.framework — VZErrorDomain Code=2; actions/runner-images#9460).
+  # Arcium localnet therefore runs on Linux Docker here; Apple Container remains
+  # the supported path on bare-metal Macs.
+  linux-arcium:
+    name: Arcium 2p (linux)
     needs: [changes, games, rust-linux]
     if: >-
       always() &&
       needs.changes.outputs.has_games == 'true' &&
       needs.games.result == 'success' &&
       needs.rust-linux.result == 'success'
-    runs-on: macos-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 600
     env:
       CASINO_EPHEMERAL_PROGRAM_IDS: "1"
-      # CI has no Light CLI accounts tree; leave genesis unseeded and strip any
-      # stale absolute Light paths from Anchor.toml before arcium starts.
       LIGHT_GENESIS: "0"
-      # Bind solana-test-validator to loopback so arcium CLI websocket subscribe
-      # works. ARX/TD reach it via Apple Container's localhost DNS redirect
-      # (see Install Apple Container step) rewritten into compose/node configs.
+      ARCIUM_USE_APPLE_CONTAINER: "0"
+      DOCKER_DEFAULT_PLATFORM: "linux/amd64"
+      # Host CLI / readiness probes use loopback (Agave rejects 0.0.0.0).
+      # Containers reach RPC/WS via socat on the docker bridge gateway (see below).
       SOLANA_BIND_ADDRESS: "127.0.0.1"
-      ARCIUM_DOCKER_HOST_GATEWAY: "203.0.113.113"
-      # Apple mem_limit is a hard VM reservation; 4g × 6 services exceeds runner RAM.
-      ARCIUM_APPLE_MEM_LIMIT: "1536m"
-      ARCIUM_COMPOSE_UP_TIMEOUT_SECS: "180"
+      ARCIUM_DOCKER_HOST_GATEWAY: "172.17.0.1"
     steps:
       - name: Free disk space
         run: |
           set -eux
-          sudo rm -rf \
-            /Library/Developer/CoreSimulator \
-            "$HOME/Library/Developer/CoreSimulator" \
-            "$HOME/Library/Developer/Xcode/DerivedData" \
-            "$HOME/Library/Android" \
-            /Users/runner/hostedtoolcache
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/share/swift
           df -h /
       - uses: actions/checkout@v4
         with:
           lfs: false
       - uses: dtolnay/rust-toolchain@stable
-      - name: Download macOS libzkcasino libraries
-        uses: actions/download-artifact@v4
+      - uses: mlugg/setup-zig@v2
         with:
-          pattern: libzkcasino-macos-*
-          path: libzkcasino-parts
+          version: 0.17.0
+          use-cache: false
       - name: Download Linux localnet programs
         uses: actions/download-artifact@v4
         with:
           name: rust-localnet-linux
           path: .
-      - name: Install downloaded artifacts
+      - name: Install prover and build libzkcasino
+        env:
+          GAMES: ${{ needs.changes.outputs.games }}
         run: |
           set -eux
+          sudo apt-get update
+          sudo apt-get install -y g++ libgmp-dev git-lfs unzip
+          ver=v0.0.8
+          asset="rapidsnark-linux-x86_64-${ver}"
+          curl -fsSL -o /tmp/rapidsnark.zip \
+            "https://github.com/iden3/rapidsnark/releases/download/${ver}/${asset}.zip"
+          unzip -q /tmp/rapidsnark.zip -d /tmp/rapidsnark
+          lib="/tmp/rapidsnark/${asset}/lib/librapidsnark.so"
+          test -f "$lib"
+          export RAPIDSNARK_LIB="$lib"
+          echo "RAPIDSNARK_LIB=${lib}" >> "$GITHUB_ENV"
+          sets=""
+          for game in ${GAMES}; do
+            sets="${sets} ${game}"
+          done
+          # Deduplicate circuit sets (matrix game name == circuit_set).
+          sets="$(echo ${sets} | tr ' ' '\n' | sort -u | tr '\n' ' ')"
           mkdir -p libzkcasino/zig-out/lib
-          find libzkcasino-parts -type f -exec cp -f {} libzkcasino/zig-out/lib/ \;
-          test -f libzkcasino/zig-out/lib/libzkcasino-player.dylib
-          test -f libzkcasino/zig-out/lib/libzkcasino-player-bridge.dylib
+          for set in ${sets}; do
+            (cd libzkcasino && zig build -Doptimize=ReleaseFast -Dcircuit-set="${set}")
+          done
+          test -f libzkcasino/zig-out/lib/libzkcasino-player.so
+          test -f libzkcasino/zig-out/lib/libzkcasino-player-bridge.so
           for name in verify_deck_hash_chunk reveal_card validate_bet seal_showdown_pair compute_pots distribute_and_settle settle_casino_hand; do
             test -f "rust/casino/build/${name}.arcis"
           done
           test -f rust/casino/target/deploy/casino.so
           test -f rust/casino/target/idl/casino.json
           test -f rust/light-casino/target/deploy/light_casino.so
-          test -f rust/light-casino/idl/light_casino.json
+          # light-casino IDL may live under idl/ or target/idl/ depending on build.
+          if [ ! -f rust/light-casino/idl/light_casino.json ]; then
+            test -f rust/light-casino/target/idl/light_casino.json
+            mkdir -p rust/light-casino/idl
+            cp -a rust/light-casino/target/idl/light_casino.json rust/light-casino/idl/
+          fi
           test -f rust/casino/target/deploy/casino-keypair.json
           test -f rust/light-casino/target/deploy/light_casino-keypair.json
-      - name: Install the Metal prover
-        run: |
-          set -eux
-          export HOMEBREW_NO_AUTO_UPDATE=1
-          brew install gmp
-          brew trust --tap IceColdCasino/groth16
-          brew tap IceColdCasino/groth16 https://github.com/IceColdCasino/groth16
-          brew install icecoldcasino/groth16/zkey
-          zkey lib
       - name: Install Solana, Anchor, and Arcium
         run: bash .github/install-localnet-tools.sh
-      - name: Install Apple Container
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -eux
-          sw_vers
-          # Unauthenticated api.github.com calls 403 on shared Actions IPs.
-          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
-          api="$(curl -fsSL "${auth[@]}" https://api.github.com/repos/apple/container/releases/latest)"
-          url="$(python3 -c 'import json,sys; r=json.loads(sys.stdin.read()); print(next(a["browser_download_url"] for a in r["assets"] if a["name"].endswith(".pkg")))' <<<"${api}")"
-          curl -fsSL -o /tmp/container.pkg "${url}"
-          sudo installer -pkg /tmp/container.pkg -target /
-          # Apple's pkg has no Compose. Arcium checks `docker compose version`
-          # before it will start the localnet.
-          compose_api="$(curl -fsSL "${auth[@]}" https://api.github.com/repos/flaticols/container-compose/releases/tags/v0.1.0)"
-          compose_url="$(python3 -c 'import json,sys; r=json.loads(sys.stdin.read()); print(next(a["browser_download_url"] for a in r["assets"] if a["name"].endswith(".pkg")))' <<<"${compose_api}")"
-          curl -fsSL -o /tmp/container-compose.pkg "${compose_url}"
-          sudo installer -pkg /tmp/container-compose.pkg -target /
-          # First start downloads the Kata kernel. Actions has no TTY, so use
-          # --enable-kernel-install; the download is flaky (remoteConnectionClosed).
-          # Reload after the compose plugin install so `container` picks it up.
-          start_ok=0
-          for attempt in 1 2 3 4 5; do
-            if container system start --enable-kernel-install; then
-              start_ok=1
-              break
-            fi
-            echo "container system start failed (attempt ${attempt}); retrying…"
-            container system stop || true
-            sleep $((attempt * 5))
-          done
-          if [[ "${start_ok}" -ne 1 ]]; then
-            echo "container system start failed after retries" >&2
-            exit 1
-          fi
-          container system stop || true
-          container system start --enable-kernel-install
-          # Plugin flag is --version. Bare `version` looks for a compose file.
-          container compose --version
-          # Redirect 203.0.113.113 → host 127.0.0.1 so ARX can reach a
-          # loopback-bound validator. PF rules are not reboot-persistent.
-          sudo container system dns delete host.docker.internal || true
-          sudo container system dns create host.docker.internal --localhost 203.0.113.113
-          container system dns list
-          mkdir -p "${HOME}/.local/apple-container/bin" "${HOME}/.local/bin"
-          ln -sfn "$(command -v container)" "${HOME}/.local/apple-container/bin/container"
-          ln -sfn "${GITHUB_WORKSPACE}/scripts/bin/docker" "${HOME}/.local/bin/docker"
-          ln -sfn "${GITHUB_WORKSPACE}/scripts/bin/docker-compose" "${HOME}/.local/bin/docker-compose"
-          export PATH="${HOME}/.local/bin:${PATH}"
-          hash -r
-          docker compose version
-          docker-compose version
-          container system status
       - name: Bind the checkout to this localnet's program ids
         run: |
           set -eux
@@ -562,7 +520,8 @@ jobs:
       - name: Pre-pull Arcium node images
         run: |
           set -eux
-          export PATH="${HOME}/.local/bin:${PATH}"
+          docker version
+          docker compose version
           for img in \
             arcium/trusted-dealer:v0.14.1 \
             arcium/arx-node:v0.14.1 \
@@ -570,55 +529,38 @@ jobs:
           do
             docker pull --platform linux/amd64 "${img}"
           done
-          container image list || container images list || true
-          # Prove network create without --subnet works; custom IPAM hangs on CI.
-          container network rm icc-smoke-net 2>/dev/null || true
-          container network create icc-smoke-net
-          container network inspect icc-smoke-net
-          # Prove amd64 run + compose up against an external network return.
-          container delete --force icc-smoke 2>/dev/null || true
-          perl -e 'alarm 120; exec @ARGV' 120 \
-            container run --name icc-smoke --rm --platform linux/amd64 \
-            --network icc-smoke-net --memory 512m \
-            docker.io/library/busybox:1.36 echo ok
-          cat > /tmp/icc-smoke-compose.yml <<'YAML'
-          networks:
-            arx_network:
-              name: icc-smoke-net
-              external: true
-          services:
-            smoke:
-              image: "docker.io/library/busybox:1.36"
-              platform: linux/amd64
-              mem_limit: 512m
-              command: ["echo", "compose-ok"]
-              networks: [arx_network]
-          YAML
-          perl -e 'alarm 120; exec @ARGV' 120 \
-            container compose --verbose up -f /tmp/icc-smoke-compose.yml
-          container network rm icc-smoke-net
-          container delete --force icc-smoke 2>/dev/null || true
       - name: Arcium 2-player tests
         env:
           GAMES: ${{ needs.changes.outputs.games }}
           RUST_BACKTRACE: "1"
-          DOCKER_SHIM_LOG: ${{ runner.temp }}/docker-shim.log
         run: |
           set -eux
           export PATH="/tmp/arcium-0.14/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
+          export ARCIUM_USE_APPLE_CONTAINER=0
+          export DOCKER_DEFAULT_PLATFORM=linux/amd64
+          # Validator stays on 127.0.0.1 for arcium CLI websockets. Containers dial
+          # the docker bridge gateway, so forward RPC (:8899) and pubsub (:8900)
+          # for the lifetime of this step.
+          sudo apt-get update
+          sudo apt-get install -y socat
+          gateway="$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')"
+          test -n "${gateway}"
+          export ARCIUM_DOCKER_HOST_GATEWAY="${gateway}"
+          sudo pkill -f 'socat TCP-LISTEN:8899' || true
+          sudo pkill -f 'socat TCP-LISTEN:8900' || true
+          sudo socat TCP-LISTEN:8899,bind="${gateway}",fork,reuseaddr TCP:127.0.0.1:8899 &
+          sudo socat TCP-LISTEN:8900,bind="${gateway}",fork,reuseaddr TCP:127.0.0.1:8900 &
+          sleep 1
+          ss -ltn | grep -E ":8899|:8900" || true
           for game in ${GAMES}; do
             bun test --max-concurrency=1 --timeout=1800000 "test/e2e/full-game-zk-arcis-${game}-2player.test.ts" \
               || {
-                echo '==== docker shim log ===='
-                cat "${DOCKER_SHIM_LOG}" 2>/dev/null || true
-                echo '==== compose up log ===='
-                cat "${DOCKER_SHIM_LOG%.log}-compose-up.log" 2>/dev/null || true
-                echo '==== container list ===='
-                container list --format json 2>/dev/null || true
+                echo '==== docker ps ===='
+                docker ps -a || true
                 echo '==== compose (if present) ===='
                 sed -n '1,120p' rust/casino/artifacts/docker-compose-arx-env.yml 2>/dev/null || true
                 echo '==== trusted dealer config (rpc) ===='
-                rg -n 'endpoint|host\.docker|203\.|8899|8900' rust/casino/artifacts/trusted_dealer_config.toml rust/casino/artifacts/node_config_*.toml 2>/dev/null || true
+                rg -n 'endpoint|host\.docker|172\.|8899|8900' rust/casino/artifacts/trusted_dealer_config.toml rust/casino/artifacts/node_config_*.toml 2>/dev/null || true
                 exit 1
               }
           done
