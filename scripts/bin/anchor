@@ -2,9 +2,18 @@
 # PATH prefers this directory over ~/.local/bin (see arciumDockerEnv).
 # Arcium rewrites Anchor.toml, then execs `anchor localnet`. Sleep so
 # localnet-orchestrator can sync genesis addresses to artifact pubkeys
-# before Anchor reads the file. The real shim keeps stdin open.
+# before Anchor reads the file.
+#
+# Anchor 1.0.2 localnet ends with:
+#   stdin().lock().lines().next().unwrap().unwrap();
+# A closed stdin makes `.next()` return None → Option::unwrap panic right
+# after "Log streams set up successfully". Keep a forever-open stdin.
 set -euo pipefail
+ANCHOR_BIN="${HOME}/.local/bin/anchor"
 if [[ "${1:-}" == "localnet" ]]; then
   sleep 2
+  # `tail -f /dev/null` never writes and never EOFs, so Anchor blocks until
+  # the process group is killed on localnet teardown.
+  exec "$ANCHOR_BIN" "$@" < <(exec tail -f /dev/null)
 fi
-exec "${HOME}/.local/bin/anchor" "$@"
+exec "$ANCHOR_BIN" "$@"
