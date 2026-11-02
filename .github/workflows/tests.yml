@@ -384,11 +384,6 @@ jobs:
         working-directory: app/frontend
         run: |
           set -eux
-          # The image npm rejects this lockfile (it wants typescript 7's
-          # optional platform packages recorded). 11.6.1 installs it as written.
-          npm install --prefix "${HOME}/.local" npm@11.6.1
-          export PATH="${HOME}/.local/bin:${PATH}"
-          hash -r
           npm --version
           npm ci
           npm test
@@ -458,17 +453,22 @@ jobs:
       - name: Install Solana, Anchor, and Arcium
         run: bash .github/install-localnet-tools.sh
       - name: Install Apple Container
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eux
           sw_vers
-          api="$(curl -fsSL -H "Accept: application/vnd.github+json" https://api.github.com/repos/apple/container/releases/latest)"
+          # Unauthenticated api.github.com calls 403 on shared Actions IPs.
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          api="$(curl -fsSL "${auth[@]}" https://api.github.com/repos/apple/container/releases/latest)"
           url="$(python3 -c 'import json,sys; r=json.loads(sys.stdin.read()); print(next(a["browser_download_url"] for a in r["assets"] if a["name"].endswith(".pkg")))' <<<"${api}")"
           curl -fsSL -o /tmp/container.pkg "${url}"
           sudo installer -pkg /tmp/container.pkg -target /
           # Apple's pkg has no Compose. Arcium checks `docker compose version`
           # before it will start the localnet.
-          curl -fsSL -o /tmp/container-compose.pkg \
-            https://github.com/flaticols/container-compose/releases/download/v0.1.0/container-compose-0.1.0.pkg
+          compose_api="$(curl -fsSL "${auth[@]}" https://api.github.com/repos/flaticols/container-compose/releases/tags/v0.1.0)"
+          compose_url="$(python3 -c 'import json,sys; r=json.loads(sys.stdin.read()); print(next(a["browser_download_url"] for a in r["assets"] if a["name"].endswith(".pkg")))' <<<"${compose_api}")"
+          curl -fsSL -o /tmp/container-compose.pkg "${compose_url}"
           sudo installer -pkg /tmp/container-compose.pkg -target /
           # First start asks to download the Kata kernel. Actions has no TTY,
           # so the prompt fails with "failed to read user input".
