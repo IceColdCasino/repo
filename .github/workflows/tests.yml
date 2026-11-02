@@ -380,13 +380,16 @@ jobs:
           cd app
           zig build -Doptimize=ReleaseFast -Dzero-native-path=/tmp/zn/node_modules/zero-native
           test -x zig-out/bin/app
+      - uses: oven-sh/setup-bun@v2
       - name: Frontend tests
-        working-directory: app/frontend
         run: |
           set -eux
+          # Browser Anchor shims and @poker-src resolve through the repo-root
+          # install. Frontend npm ci still owns vitest and the Vite app deps.
+          bun install --frozen-lockfile
           npm --version
-          npm ci
-          npm test
+          npm ci --prefix app/frontend
+          npm test --prefix app/frontend
 
   macos-arcium:
     name: Arcium 2p (macOS)
@@ -471,13 +474,13 @@ jobs:
           curl -fsSL -o /tmp/container-compose.pkg "${compose_url}"
           sudo installer -pkg /tmp/container-compose.pkg -target /
           # First start asks to download the Kata kernel. Actions has no TTY,
-          # so the prompt fails with "failed to read user input".
+          # so the prompt fails with "failed to read user input". Reload after
+          # the compose plugin install so `container` picks it up.
           container system start --enable-kernel-install
-          if ! container compose version >/dev/null 2>&1; then
-            container system stop || true
-            container system start --enable-kernel-install
-          fi
-          container compose version
+          container system stop || true
+          container system start --enable-kernel-install
+          # Plugin flag is --version. Bare `version` looks for a compose file.
+          container compose --version
           mkdir -p "${HOME}/.local/apple-container/bin" "${HOME}/.local/bin"
           ln -sfn "$(command -v container)" "${HOME}/.local/apple-container/bin/container"
           ln -sfn "${GITHUB_WORKSPACE}/scripts/bin/docker" "${HOME}/.local/bin/docker"
