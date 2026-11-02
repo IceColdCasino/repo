@@ -81,97 +81,160 @@ run_apple_compose() {
     sub="up"
   fi
 
-  # Apple `container compose up` returns after start; Docker Compose without
-  # `-d` blocks until services stop. Arcium monitors that process and treats an
-  # early exit as "Localnet exited unexpectedly".
-  if [[ "$sub" == "up" && "$detach" -eq 0 ]]; then
+  # Apple `container compose up` has hung indefinitely on the Arcium stack in CI
+  # (empty log, zero containers) even after stripping IPAM/subnet. Busybox smoke
+  # tests prove `container run` works, so drive Arcium services that way.
+  if [[ "$sub" == "up" ]]; then
     local up_log="${DOCKER_SHIM_LOG%.log}-compose-up.log"
+    local compose_file=""
+    local i=0
+    while [[ $i -lt ${#global_flags[@]} ]]; do
+      case "${global_flags[$i]}" in
+        -f|--file)
+          compose_file="${global_flags[$((i + 1))]:-}"
+          break
+          ;;
+        -f=*|--file=*)
+          compose_file="${global_flags[$i]#*=}"
+          break
+          ;;
+      esac
+      i=$((i + 1))
+    done
     {
       printf '%s compose up' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       printf ' %q' "${global_flags[@]}" "${rest[@]}"
-      printf '\n'
+      printf ' file=%q\n' "${compose_file}"
     } >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
-    # Capture Apple compose stdout/stderr — prior CI runs left container list [].
-    # Cap wall time hard: custom --subnet IPAM and oversize mem_limit have both
-    # hung here with zero containers and no output for 30+ minutes.
-    local up_timeout="${ARCIUM_COMPOSE_UP_TIMEOUT_SECS:-180}"
-    if ! [[ "$up_timeout" =~ ^[1-9][0-9]*$ ]]; then
-      up_timeout=180
-    fi
-    set +e
     : >"$up_log"
-    # perl alarm reliably kills a hung `container compose` (bash kill loops did
-    # not fire on CI while compose sat with an empty log for 10+ minutes).
-    if command -v perl >/dev/null 2>&1; then
-      perl -e 'alarm shift; exec @ARGV' "$up_timeout" \
-        "$CONTAINER_BIN" compose --verbose up "${global_flags[@]}" "${rest[@]}" \
-        >>"$up_log" 2>&1
+    if [[ -n "$compose_file" && -f "$compose_file" ]] \
+      && grep -q 'arcium-trusted-dealer:' "$compose_file" \
+      && command -v python3 >/dev/null 2>&1
+    then
+      set +e
+      python3 - "$CONTAINER_BIN" "$compose_file" "artifacts-arx_network" <<'PY' >>"$up_log" 2>&1
+import os, re, subprocess, sys, time
+
+container, compose_path, network = sys.argv[1], sys.argv[2], sys.argv[3]
+mem = os.environ.get("ARCIUM_APPLE_MEM_LIMIT", "1536m").strip() or "1536m"
+text = open(compose_path, encoding="utf-8").read()
+# Keep primary cluster only — matches test/e2e/arcium-docker.ts Apple filter.
+keep = ["arcium-trusted-dealer", "arx-node-0", "arx-node-1"]
+services = {}
+current = None
+in_env = False
+for raw in text.splitlines():
+    m = re.match(r"^  ([a-z0-9-]+):\s*$", raw)
+    if m and not raw.startswith("   "):
+        name = m.group(1)
+        current = name if name in keep else None
+        in_env = False
+        if current:
+            services[current] = {"image": None, "platform": "linux/amd64", "env": {}, "volumes": [], "ports": []}
+        continue
+    if not current:
+        continue
+    if re.match(r"^\s+environment:\s*$", raw):
+        in_env = True
+        continue
+    if re.match(r"^\s+(image|platform|restart|volumes|ports|networks|depends_on|mem_limit):", raw):
+        in_env = False
+    if m := re.match(r'^\s+image:\s*"?([^"]+)"?\s*$', raw):
+        services[current]["image"] = m.group(1)
+    elif m := re.match(r"^\s+platform:\s*(\S+)\s*$", raw):
+        services[current]["platform"] = m.group(1)
+    elif in_env and (m := re.match(r"^\s+([A-Z0-9_]+):\s*(.+?)\s*$", raw)):
+        services[current]["env"][m.group(1)] = m.group(2).strip().strip('"')
+    elif m := re.match(r'^\s+source:\s*(.+?)\s*$', raw):
+        services[current]["_src"] = m.group(1)
+    elif m := re.match(r'^\s+target:\s*(.+?)\s*$', raw):
+        src = services[current].pop("_src", None)
+        if src:
+            services[current]["volumes"].append((src, m.group(1)))
+    elif m := re.match(r'^\s+-\s*"([^"]+)"\s*$', raw) and ":" in m.group(1):
+        services[current]["ports"].append(m.group(1))
+
+# Ensure the shared network exists (created earlier by ensureAppleArxNetwork).
+subprocess.run([container, "network", "inspect", network], check=False, capture_output=True)
+
+order = [s for s in keep if s in services]
+if not order:
+    print("docker shim: no arcium services found in compose file", file=sys.stderr)
+    sys.exit(1)
+
+for name in order:
+    svc = services[name]
+    cname = f"artifacts-{name}"
+    subprocess.run([container, "stop", cname], check=False, capture_output=True)
+    subprocess.run([container, "delete", "--force", cname], check=False, capture_output=True)
+    cmd = [
+        container, "run", "-d", "--name", cname,
+        "--platform", svc["platform"],
+        "--memory", mem,
+        "--network", network,
+    ]
+    for k, v in svc["env"].items():
+        cmd += ["--env", f"{k}={v}"]
+    for src, tgt in svc["volumes"]:
+        cmd += ["--volume", f"{src}:{tgt}"]
+    for p in svc["ports"]:
+        # "127.0.0.1:9091:9091" → publish 9091
+        parts = p.split(":")
+        cmd += ["--publish", parts[-2] + ":" + parts[-1] if len(parts) >= 2 else p]
+    if not svc["image"]:
+        print(f"docker shim: service {name} missing image", file=sys.stderr)
+        sys.exit(1)
+    cmd.append(svc["image"])
+    print("+", " ".join(cmd), flush=True)
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    sys.stdout.write(r.stdout)
+    sys.stderr.write(r.stderr)
+    if r.returncode != 0:
+        print(f"docker shim: container run failed for {name} (exit {r.returncode})", file=sys.stderr)
+        sys.exit(r.returncode)
+    time.sleep(2)
+
+listed = subprocess.run([container, "list", "--format", "json"], capture_output=True, text=True)
+print(listed.stdout)
+if "arcium-trusted-dealer" not in listed.stdout and "arx-node" not in listed.stdout:
+    print("docker shim: containers did not appear after run", file=sys.stderr)
+    sys.exit(1)
+print("docker shim: arcium containers started via container run", flush=True)
+PY
       local up_status=$?
-      if [[ "$up_status" -eq 142 || "$up_status" -eq 14 ]]; then
-        echo "docker shim: container compose up timed out after ${up_timeout}s" >>"$up_log"
-        pkill -KILL -f 'container-plugins/compose' 2>/dev/null || true
-        up_status=124
-      fi
-    else
-      "$CONTAINER_BIN" compose --verbose up "${global_flags[@]}" "${rest[@]}" >>"$up_log" 2>&1 &
-      local up_pid=$!
-      local waited=0
-      local up_status=0
-      while kill -0 "$up_pid" 2>/dev/null; do
-        if [[ "$waited" -ge "$up_timeout" ]]; then
-          echo "docker shim: container compose up timed out after ${up_timeout}s" >>"$up_log"
-          kill -KILL "$up_pid" 2>/dev/null || true
-          pkill -KILL -f 'container-plugins/compose' 2>/dev/null || true
-          wait "$up_pid" 2>/dev/null || true
-          up_status=124
-          break
-        fi
-        sleep 1
-        waited=$((waited + 1))
-      done
-      if [[ "$up_status" -eq 0 ]]; then
-        wait "$up_pid"
-        up_status=$?
-      fi
-    fi
-    set -e
-    if [[ -f "$up_log" ]]; then
+      set -e
       cat "$up_log" >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
-      # Also surface on arcium's captured stderr so GH Actions shows it inline.
       cat "$up_log" >&2 || true
-    fi
-    {
-      echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) compose up exit=${up_status}"
-      "$CONTAINER_BIN" list --format json 2>/dev/null || echo '[]'
-    } >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
-    if [[ "$up_status" -ne 0 ]]; then
-      exit "$up_status"
-    fi
-    if ! "$CONTAINER_BIN" list --format json 2>/dev/null | grep -Eq 'arcium-trusted-dealer|arx-node'; then
-      echo "docker shim: compose up returned 0 but no arx/td containers are running" >&2
-      exit 1
-    fi
-    cleanup_compose_up() {
-      # Best-effort; arcium may also run `compose down`.
-      "$CONTAINER_BIN" compose down "${global_flags[@]}" >/dev/null 2>&1 || true
-      exit 0
-    }
-    trap cleanup_compose_up TERM INT HUP
-    # Stay alive while at least one arx/td container is running.
-    # Match service names broadly — Apple compose naming is not identical to
-    # Docker Compose's `artifacts-arx-node-0-1` form.
-    local misses=0
-    while true; do
-      if "$CONTAINER_BIN" list --format json 2>/dev/null | grep -Eq 'arcium-trusted-dealer|arx-node'; then
-        misses=0
-      else
-        misses=$((misses + 1))
-        if [[ "$misses" -ge 3 ]]; then
-          exit 1
-        fi
+      {
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) compose up exit=${up_status} (container-run path)"
+        "$CONTAINER_BIN" list --format json 2>/dev/null || echo '[]'
+      } >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
+      if [[ "$up_status" -ne 0 ]]; then
+        exit "$up_status"
       fi
-      sleep 2
-    done
+      cleanup_compose_up() {
+        for n in artifacts-arcium-trusted-dealer artifacts-arx-node-0 artifacts-arx-node-1; do
+          "$CONTAINER_BIN" stop "$n" >/dev/null 2>&1 || true
+          "$CONTAINER_BIN" delete --force "$n" >/dev/null 2>&1 || true
+        done
+        exit 0
+      }
+      trap cleanup_compose_up TERM INT HUP
+      local misses=0
+      while true; do
+        if "$CONTAINER_BIN" list --format json 2>/dev/null | grep -Eq 'arcium-trusted-dealer|arx-node'; then
+          misses=0
+        else
+          misses=$((misses + 1))
+          if [[ "$misses" -ge 3 ]]; then
+            exit 1
+          fi
+        fi
+        sleep 2
+      done
+    fi
+    echo "docker shim: refusing Apple container compose up without arcium compose file" >&2
+    exit 1
   fi
 
   exec "$CONTAINER_BIN" compose "$sub" "${global_flags[@]}" "${rest[@]}"
