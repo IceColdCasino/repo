@@ -31,10 +31,13 @@ echo "==> Solana CLI ${SOLANA_RELEASE}"
 sh -c "$(curl -sSfL "https://release.anza.xyz/${SOLANA_RELEASE}/install")"
 solana_bin="${HOME}/.local/share/solana/install/active_release/bin"
 export PATH="${solana_bin}:${PATH}"
-solana --version | grep -E '3\.1\.10|3\.1\.' || {
-  echo "error: expected Solana ${SOLANA_RELEASE}, got: $(solana --version)" >&2
-  exit 1
-}
+case "$(solana --version 2>/dev/null || true)" in
+  *"3.1.10"*) ;;
+  *)
+    echo "error: expected Solana CLI 3.1.10 (${SOLANA_RELEASE}), got: $(solana --version 2>/dev/null || echo missing)" >&2
+    exit 1
+    ;;
+esac
 
 echo "==> Anchor ${anchor_asset}"
 mkdir -p "${HOME}/.local/bin"
