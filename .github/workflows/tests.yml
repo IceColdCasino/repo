@@ -486,10 +486,23 @@ jobs:
           compose_url="$(python3 -c 'import json,sys; r=json.loads(sys.stdin.read()); print(next(a["browser_download_url"] for a in r["assets"] if a["name"].endswith(".pkg")))' <<<"${compose_api}")"
           curl -fsSL -o /tmp/container-compose.pkg "${compose_url}"
           sudo installer -pkg /tmp/container-compose.pkg -target /
-          # First start asks to download the Kata kernel. Actions has no TTY,
-          # so the prompt fails with "failed to read user input". Reload after
-          # the compose plugin install so `container` picks it up.
-          container system start --enable-kernel-install
+          # First start downloads the Kata kernel. Actions has no TTY, so use
+          # --enable-kernel-install; the download is flaky (remoteConnectionClosed).
+          # Reload after the compose plugin install so `container` picks it up.
+          start_ok=0
+          for attempt in 1 2 3 4 5; do
+            if container system start --enable-kernel-install; then
+              start_ok=1
+              break
+            fi
+            echo "container system start failed (attempt ${attempt}); retrying…"
+            container system stop || true
+            sleep $((attempt * 5))
+          done
+          if [[ "${start_ok}" -ne 1 ]]; then
+            echo "container system start failed after retries" >&2
+            exit 1
+          fi
           container system stop || true
           container system start --enable-kernel-install
           # Plugin flag is --version. Bare `version` looks for a compose file.
