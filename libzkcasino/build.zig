@@ -74,9 +74,9 @@ pub fn build(b: *std.Build) void {
     const witness_poker_options_mod = witness_poker_options.createModule();
 
     const is_apple = target.result.os.tag == .macos or target.result.os.tag == .ios;
-    if (target.result.os.tag == .linux and target.result.cpu.arch != .aarch64) {
-        @panic("Linux builds of libzkcasino require aarch64");
-    }
+    // rapidsnark's vendored tree only ships arm64 assembly; x86_64 Linux uses the
+    // generic C++ field path (still links the prebuilt librapidsnark.so prover).
+    const use_arm64_asm = target.result.cpu.arch == .aarch64;
     const sdk: []const u8 = if (is_apple)
         (resolveSdkPath(b, target) orelse "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk")
     else
@@ -100,12 +100,20 @@ pub fn build(b: *std.Build) void {
     const is_ios = target.result.os.tag == .ios;
     const is_ios_sim = is_ios and target.result.abi == .simulator;
 
-    const linux_fr_cpp_flags = [_][]const u8{
+    const linux_fr_cpp_flags_asm = [_][]const u8{
         "-std=c++11",
         "-fPIC",
         opt_flag,
         "-DUSE_ASM",
         "-DARCH_ARM64",
+        "-stdlib=libc++",
+        "-Wno-vla-cxx-extension",
+        "-Wno-error=vla-cxx-extension",
+    };
+    const linux_fr_cpp_flags_generic = [_][]const u8{
+        "-std=c++11",
+        "-fPIC",
+        opt_flag,
         "-stdlib=libc++",
         "-Wno-vla-cxx-extension",
         "-Wno-error=vla-cxx-extension",
@@ -122,8 +130,10 @@ pub fn build(b: *std.Build) void {
             "-isysroot",
             sdk,
         }, is_ios, is_ios_sim, sdk_c_include)
+    else if (use_arm64_asm)
+        &linux_fr_cpp_flags_asm
     else
-        &linux_fr_cpp_flags;
+        &linux_fr_cpp_flags_generic;
 
     const fr_cpp_mod = b.createModule(.{
         .target = target,
@@ -131,38 +141,39 @@ pub fn build(b: *std.Build) void {
     });
     // libc++ keeps std::map at 24 bytes, matching calcwit.zig. libstdc++ is 48.
     if (!is_apple) fr_cpp_mod.link_libcpp = true;
-    addCppCompileIncludes(fr_cpp_mod, sdk_cxx_include, rapidsnark.path("build"), target.result.os.tag, target.result.os.tag == .macos or target.result.os.tag == .ios);
+    addCppCompileIncludes(fr_cpp_mod, sdk_cxx_include, rapidsnark.path("build"), target.result.os.tag, target.result.cpu.arch, target.result.os.tag == .macos or target.result.os.tag == .ios);
     fr_cpp_mod.addCSourceFile(.{ .file = rapidsnark.path("build/fr.cpp"), .flags = fr_cpp_flags });
     fr_cpp_mod.addCSourceFile(.{ .file = rapidsnark.path("build/fr_generic.cpp"), .flags = fr_cpp_flags });
     fr_cpp_mod.addCSourceFile(.{ .file = b.path("src/witness_common/fr_raw_to_montgomery.cpp"), .flags = fr_cpp_flags });
-
-    const fr_asm_mod = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-    });
-    var fr_asm_flag_buf: [16][]const u8 = undefined;
-    const fr_asm_flags = if (is_ios)
-        appendIosCppFlags(&fr_asm_flag_buf, &.{
-            "-fPIC",
-            opt_flag,
-            "-isysroot",
-            sdk,
-        }, true, is_ios_sim, sdk_c_include)
-    else
-        &[_][]const u8{ "-fPIC", "-O3" };
-    fr_asm_mod.addCSourceFile(.{
-        .file = rapidsnark.path("build/fr_raw_arm64.s"),
-        .flags = fr_asm_flags,
-    });
 
     const fr_cpp_obj = b.addObject(.{
         .name = "fr_cpp",
         .root_module = fr_cpp_mod,
     });
-    const fr_asm_obj = b.addObject(.{
-        .name = "fr_asm",
-        .root_module = fr_asm_mod,
-    });
+    const fr_asm_obj: ?*std.Build.Step.Compile = if (use_arm64_asm) blk: {
+        const fr_asm_mod = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        });
+        var fr_asm_flag_buf: [16][]const u8 = undefined;
+        const fr_asm_flags = if (is_ios)
+            appendIosCppFlags(&fr_asm_flag_buf, &.{
+                "-fPIC",
+                opt_flag,
+                "-isysroot",
+                sdk,
+            }, true, is_ios_sim, sdk_c_include)
+        else
+            &[_][]const u8{ "-fPIC", "-O3" };
+        fr_asm_mod.addCSourceFile(.{
+            .file = rapidsnark.path("build/fr_raw_arm64.s"),
+            .flags = fr_asm_flags,
+        });
+        break :blk b.addObject(.{
+            .name = "fr_asm",
+            .root_module = fr_asm_mod,
+        });
+    } else null;
 
     const fr_mod = b.createModule(.{
         .target = target,
@@ -170,7 +181,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = !linksLibSystemViaTbd(target.result.os.tag),
     });
     fr_mod.addObject(fr_cpp_obj);
-    fr_mod.addObject(fr_asm_obj);
+    if (fr_asm_obj) |obj| fr_mod.addObject(obj);
     linkGmp(fr_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(fr_mod, target, sdk);
 
@@ -186,13 +197,22 @@ pub fn build(b: *std.Build) void {
     }
     b.installArtifact(fr_lib);
 
-    const linux_cpp_flags = [_][]const u8{
+    const linux_cpp_flags_asm = [_][]const u8{
         "-std=c++11",
         "-fPIC",
         "-O3",
         "-fvisibility=hidden",
         "-DUSE_ASM",
         "-DARCH_ARM64",
+        "-stdlib=libc++",
+        "-Wno-vla-cxx-extension",
+        "-Wno-error=vla-cxx-extension",
+    };
+    const linux_cpp_flags_generic = [_][]const u8{
+        "-std=c++11",
+        "-fPIC",
+        "-O3",
+        "-fvisibility=hidden",
         "-stdlib=libc++",
         "-Wno-vla-cxx-extension",
         "-Wno-error=vla-cxx-extension",
@@ -210,8 +230,10 @@ pub fn build(b: *std.Build) void {
             "-isysroot",
             sdk,
         }, is_ios, is_ios_sim, sdk_c_include)
+    else if (use_arm64_asm)
+        &linux_cpp_flags_asm
     else
-        &linux_cpp_flags;
+        &linux_cpp_flags_generic;
 
     const cpp_common_files = [_][]const u8{
         "src/witness_common/calcwit.cpp",
@@ -270,7 +292,7 @@ pub fn build(b: *std.Build) void {
     });
     player_test_mod.addImport("zkey_store", zkey_store_mod);
     player_test_mod.addObject(fr_cpp_obj);
-    player_test_mod.addObject(fr_asm_obj);
+    if (fr_asm_obj) |obj| player_test_mod.addObject(obj);
     linkGmp(player_test_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(player_test_mod, target, sdk);
 
@@ -452,7 +474,7 @@ fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
                 .strip = true,
             });
             if (opts.target.result.os.tag == .linux) cpp_mod.link_libcpp = true;
-            addCppCompileIncludes(cpp_mod, opts.sdk_cxx_include, opts.rapidsnark_build, opts.target.result.os.tag, opts.target.result.os.tag == .macos or opts.target.result.os.tag == .ios);
+            addCppCompileIncludes(cpp_mod, opts.sdk_cxx_include, opts.rapidsnark_build, opts.target.result.os.tag, opts.target.result.cpu.arch, opts.target.result.os.tag == .macos or opts.target.result.os.tag == .ios);
             addCppSourceWithPrefix(cpp_mod, cpp_file, prefix_path, opts.cpp_flags);
 
             const obj = b.addObject(.{
@@ -529,12 +551,13 @@ fn addCppCompileIncludes(
     sdk_cxx_include: []const u8,
     rapidsnark_build: std.Build.LazyPath,
     os_tag: std.Target.Os.Tag,
+    cpu_arch: std.Target.Cpu.Arch,
     include_gmp_headers: bool,
 ) void {
     if (sdk_cxx_include.len > 0) {
         module.addIncludePath(.{ .cwd_relative = sdk_cxx_include });
     }
-    if (os_tag == .linux) addLinuxCIncludes(module);
+    if (os_tag == .linux) addLinuxCIncludes(module, cpu_arch);
     module.addIncludePath(module.owner.path("src/witness_common"));
     module.addIncludePath(rapidsnark_build);
     if (include_gmp_headers) {
@@ -611,9 +634,14 @@ fn defaultGmpPath(os_tag: std.Target.Os.Tag) []const u8 {
     };
 }
 
-fn addLinuxCIncludes(module: *std.Build.Module) void {
+fn addLinuxCIncludes(module: *std.Build.Module, cpu_arch: std.Target.Cpu.Arch) void {
     // C headers only. C++ comes from Zig's libc++ via link_libcpp.
-    module.addIncludePath(.{ .cwd_relative = "/usr/include/aarch64-linux-gnu" });
+    const multiarch: []const u8 = switch (cpu_arch) {
+        .aarch64 => "/usr/include/aarch64-linux-gnu",
+        .x86_64 => "/usr/include/x86_64-linux-gnu",
+        else => "/usr/include",
+    };
+    module.addIncludePath(.{ .cwd_relative = multiarch });
     module.addIncludePath(.{ .cwd_relative = "/usr/include" });
 }
 
