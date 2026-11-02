@@ -543,12 +543,35 @@ jobs:
             exit 1
           fi
       - run: bun install --frozen-lockfile
+      - name: Pre-pull Arcium node images
+        run: |
+          set -eux
+          export PATH="${HOME}/.local/bin:${PATH}"
+          for img in \
+            arcium/trusted-dealer:v0.14.1 \
+            arcium/arx-node:v0.14.1 \
+            arcium/recovery-node:v0.14.1
+          do
+            docker pull --platform linux/amd64 "${img}"
+          done
+          container images list || true
       - name: Arcium 2-player tests
         env:
           GAMES: ${{ needs.changes.outputs.games }}
+          RUST_BACKTRACE: "1"
+          DOCKER_SHIM_LOG: ${{ runner.temp }}/docker-shim.log
         run: |
           set -eux
           export PATH="/tmp/arcium-0.14/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
           for game in ${GAMES}; do
-            bun test --max-concurrency=1 --timeout=1800000 "test/e2e/full-game-zk-arcis-${game}-2player.test.ts"
+            bun test --max-concurrency=1 --timeout=1800000 "test/e2e/full-game-zk-arcis-${game}-2player.test.ts" \
+              || {
+                echo '==== docker shim log ===='
+                cat "${DOCKER_SHIM_LOG}" 2>/dev/null || true
+                echo '==== container list ===='
+                container list --format json 2>/dev/null || true
+                echo '==== compose (if present) ===='
+                sed -n '1,80p' rust/casino/artifacts/docker-compose-arx-env.yml 2>/dev/null || true
+                exit 1
+              }
           done

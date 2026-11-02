@@ -7,6 +7,13 @@ REAL_DOCKER="${REAL_DOCKER:-/usr/local/bin/docker}"
 CONTAINER_BIN="${CONTAINER_BIN:-container}"
 SOCKTAINER_SOCK="${HOME}/.socktainer/container.sock"
 GOCKER_SOCK="${HOME}/.gocker/gocker.sock"
+# CI / local diagnostics: every invocation arcium makes through this shim.
+DOCKER_SHIM_LOG="${DOCKER_SHIM_LOG:-${TMPDIR:-/tmp}/docker-shim.log}"
+{
+  printf '%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ) docker"
+  printf ' %q' "$@"
+  printf '\n'
+} >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
 
 have_apple_container() {
   command -v "$CONTAINER_BIN" >/dev/null 2>&1 \

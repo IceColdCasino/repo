@@ -61,10 +61,13 @@ export interface LocalnetOrchestratorOptions {
 
 /** arcium 0.14.1 panics hard on several localnet races; fail before the MXE wait burns 30m. */
 function arciumCliFatalLog(log: string): string | null {
-  if (/thread 'main'.*panicked|called `Option::unwrap\(\)` on a `None` value/s.test(log)) {
-    return 'arcium localnet panicked (see log). Check Solana CLI is 3.1.x '
-      + '(Arcium 0.14.1), Apple Container localhost DNS redirect is set, and '
-      + 'ARX compose came up.';
+  // Require the panic location so a child-process panic string alone is not enough,
+  // and so RUST_BACKTRACE lines can flush before we abort the wait loop.
+  if (
+    /panicked at cli\/src\/lib\.rs:\d+/s.test(log)
+    && /called `Option::unwrap\(\)` on a `None` value/s.test(log)
+  ) {
+    return 'arcium localnet panicked at cli/src/lib.rs Option::unwrap (see log + RUST_BACKTRACE)';
   }
   if (log.includes('Log streams set up successfully (0 streams)')) {
     return 'arcium localnet set up 0 log streams after websocket subscribe failures';
@@ -250,6 +253,7 @@ export class LocalnetOrchestrator {
   private arciumExitCode: number | null = null;
   private arciumLog = '';
   private killed = false;
+  private panicGraceStartedAt: number | null = null;
   readonly managed: boolean;
   private readonly streamLogs: boolean;
 
@@ -430,7 +434,18 @@ export class LocalnetOrchestrator {
     if (code != null && code !== 0) {
       return `arcium localnet exited early (code ${code})`;
     }
-    return arciumCliFatalLog(this.arciumLog);
+    const fatal = arciumCliFatalLog(this.arciumLog);
+    if (!fatal) {
+      this.panicGraceStartedAt = null;
+      return null;
+    }
+    // Give RUST_BACKTRACE a moment to flush into the pipe before we abort.
+    if (this.panicGraceStartedAt == null) {
+      this.panicGraceStartedAt = Date.now();
+      return null;
+    }
+    if (Date.now() - this.panicGraceStartedAt < 2000) return null;
+    return fatal;
   }
 
   private async waitForValidator(timeout: number): Promise<void> {
