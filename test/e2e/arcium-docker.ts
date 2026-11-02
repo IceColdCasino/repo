@@ -796,9 +796,12 @@ export function patchArciumDockerArtifacts(): void {
         }
       }
       // Share-hash EncData OOMs under Apple Container's default 1GiB for amd64
-      // ARX nodes — bump before Cerberus online phase.
+      // ARX nodes. Prefer `deploy.resources` only when Docker Desktop is in use —
+      // Apple container-compose has rejected / ignored plain `mem_limit` and left
+      // `compose up` with an empty container list on CI.
       if (
-        /^\s+platform:\s*linux\/amd64\s*$/.test(line)
+        !isAppleContainerRuntime()
+        && /^\s+platform:\s*linux\/amd64\s*$/.test(line)
         && !lines.slice(Math.max(0, i - 3), i + 4).some((l) => /mem_limit:/.test(l))
       ) {
         out.push('    mem_limit: 4g');

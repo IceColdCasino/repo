@@ -85,10 +85,32 @@ run_apple_compose() {
   # `-d` blocks until services stop. Arcium monitors that process and treats an
   # early exit as "Localnet exited unexpectedly".
   if [[ "$sub" == "up" && "$detach" -eq 0 ]]; then
-    "$CONTAINER_BIN" compose up "${global_flags[@]}" "${rest[@]}"
+    local up_log="${DOCKER_SHIM_LOG%.log}-compose-up.log"
+    {
+      printf '%s compose up' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      printf ' %q' "${global_flags[@]}" "${rest[@]}"
+      printf '\n'
+    } >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
+    # Capture Apple compose stdout/stderr — prior CI runs left container list [].
+    set +e
+    "$CONTAINER_BIN" compose up "${global_flags[@]}" "${rest[@]}" >"$up_log" 2>&1
     local up_status=$?
+    set -e
+    if [[ -f "$up_log" ]]; then
+      cat "$up_log" >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
+      # Also surface on arcium's captured stderr so GH Actions shows it inline.
+      cat "$up_log" >&2 || true
+    fi
+    {
+      echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) compose up exit=${up_status}"
+      "$CONTAINER_BIN" list --format json 2>/dev/null || echo '[]'
+    } >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
     if [[ "$up_status" -ne 0 ]]; then
       exit "$up_status"
+    fi
+    if ! "$CONTAINER_BIN" list --format json 2>/dev/null | grep -Eq 'arcium-trusted-dealer|arx-node'; then
+      echo "docker shim: compose up returned 0 but no arx/td containers are running" >&2
+      exit 1
     fi
     cleanup_compose_up() {
       # Best-effort; arcium may also run `compose down`.
@@ -97,11 +119,11 @@ run_apple_compose() {
     }
     trap cleanup_compose_up TERM INT HUP
     # Stay alive while at least one arx/td container is running.
-    # `container list` ellipsizes IDs when stdout is not a tty, so a piped
-    # table can miss `artifacts-arx-node-*` and Arcium treats that as a crash.
+    # Match service names broadly — Apple compose naming is not identical to
+    # Docker Compose's `artifacts-arx-node-0-1` form.
     local misses=0
     while true; do
-      if "$CONTAINER_BIN" list --format json 2>/dev/null | grep -Eq 'artifacts-(arx-node|arcium-trusted-dealer)'; then
+      if "$CONTAINER_BIN" list --format json 2>/dev/null | grep -Eq 'arcium-trusted-dealer|arx-node'; then
         misses=0
       else
         misses=$((misses + 1))
