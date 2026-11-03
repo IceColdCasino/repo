@@ -442,15 +442,6 @@ jobs:
           set -eux
           sudo apt-get update
           sudo apt-get install -y g++ libgmp-dev git-lfs unzip
-          ver=v0.0.8
-          asset="rapidsnark-linux-x86_64-${ver}"
-          curl -fsSL -o /tmp/rapidsnark.zip \
-            "https://github.com/iden3/rapidsnark/releases/download/${ver}/${asset}.zip"
-          unzip -q /tmp/rapidsnark.zip -d /tmp/rapidsnark
-          lib="/tmp/rapidsnark/${asset}/lib/librapidsnark.so"
-          test -f "$lib"
-          export RAPIDSNARK_LIB="$lib"
-          echo "RAPIDSNARK_LIB=${lib}" >> "$GITHUB_ENV"
           sets=""
           for game in ${GAMES}; do
             sets="${sets} ${game}"

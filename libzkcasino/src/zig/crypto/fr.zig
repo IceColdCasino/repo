@@ -1,4 +1,4 @@
-//! BN254 Fr via rapidsnark libfr (Montgomery, ARM64 asm).
+//! BN254 Fr pure Zig implementation (no rapidsnark dependency).
 const std = @import("std");
 
 pub const N64 = 4;
@@ -9,19 +9,105 @@ pub const Q_LIMBS = [4]u64{
     0x30644e72e131a029,
 };
 
-extern "c" fn Fr_rawCopy(dst: [*c]u64, src: [*c]u64) void;
-extern "c" fn Fr_rawAdd(dst: [*c]u64, a: [*c]u64, b: [*c]u64) void;
-extern "c" fn Fr_rawSub(dst: [*c]u64, a: [*c]u64, b: [*c]u64) void;
-extern "c" fn Fr_rawNeg(dst: [*c]u64, a: [*c]u64) void;
-extern "c" fn Fr_rawMMul(dst: [*c]u64, a: [*c]u64, b: [*c]u64) void;
-extern "c" fn Fr_rawFromMontgomery(dst: [*c]u64, src: [*c]u64) void;
-extern "c" fn zkcasino_Fr_rawToMontgomery(dst: [*c]u64, src: [*c]u64) void;
-extern "c" fn Fr_rawIsEq(a: [*c]u64, b: [*c]u64) c_int;
-extern "c" fn Fr_rawIsZero(a: [*c]u64) c_int;
-extern "c" fn Fr_rawCmp(a: [*c]u64, b: [*c]u64) c_int;
+// Pure Zig: modular addition (a + b) mod Q
+// Q = 0x30644e72e131a029 * 2^256 + 0x43e1f593f0000001
+// (BN254 curve order, also known as the "goldilocks" prime variant)
+pub fn rawAdd(a: [4]u64, b: [4]u64) [4]u64 {
+    var sum: [4]u64 = undefined;
+    var carry: u64 = 0;
+    inline for (0..4) |i| {
+        const w: u128 = @as(u128, a[i]) + @as(u128, b[i]) + carry;
+        sum[i] = @truncate(w);
+        carry = @truncate(w >> 64);
+    }
+    // Subtract Q if sum >= Q
+    const q = Q_LIMBS;
+    const cmp = rawCmp(sum, q);
+    if (cmp >= 0) {
+        var borrow: u64 = 0;
+        inline for (0..4) |i| {
+            const w: u128 = @as(u128, sum[i]) - @as(u128, q[i]) - borrow;
+            sum[i] = @truncate(w);
+            if (w >> 64 != 0) borrow = 1 else borrow = 0;
+        }
+    }
+    return sum;
+}
 
-fn toMontRaw(dst: [*c]u64, src: [*c]u64) void {
-    zkcasino_Fr_rawToMontgomery(dst, src);
+// Pure Zig: modular subtraction (a - b) mod Q
+pub fn rawSub(a: [4]u64, b: [4]u64) [4]u64 {
+    var diff: [4]u64 = undefined;
+    var borrow: u64 = 0;
+    inline for (0..4) |i| {
+        const w: u128 = @as(u128, a[i]) - @as(u128, b[i]) - borrow;
+        diff[i] = @truncate(w);
+        if (w >> 64 != 0) borrow = 1 else borrow = 0;
+    }
+    // Add Q if a < b (i.e., result is negative)
+    const cmp = rawCmp(a, b);
+    if (cmp < 0) {
+        const q = Q_LIMBS;
+        inline for (0..4) |i| {
+            const w: u128 = @as(u128, diff[i]) + @as(u128, q[i]);
+            diff[i] = @truncate(w);
+        }
+    }
+    return diff;
+}
+
+// Pure Zig: negation -a mod Q
+pub fn rawNeg(a: [4]u64) [4]u64 {
+    const q = Q_LIMBS;
+    return rawSub(q, a);
+}
+
+// Pure Zig: modular multiplication (a * b) mod Q using schoolbook mul + reduction
+// Q is ~2^253 (BN254 curve order). The lower 256 bits of a*b can be up to ~8*Q,
+// so we reduce by repeatedly subtracting Q until result < Q.
+pub fn rawMMul(a: [4]u64, b: [4]u64) [4]u64 {
+    // 8-limb intermediate product (max 128-bit per limb pair -> 8 limbs)
+    var product: [8]u64 = undefined;
+    inline for (0..4) |i| {
+        inline for (0..4) |j| {
+            const prod: u128 = @as(u128, a[i]) * @as(u128, b[j]);
+            product[i + j] += @truncate(prod);
+            product[i + j + 1] += @truncate(prod >> 64);
+        }
+    }
+    // Extract lower 4 limbs
+    var result: [4]u64 = [_]u64{
+        product[0],
+        product[1],
+        product[2],
+        product[3],
+    };
+    // Reduce mod Q using repeated subtraction (same pattern as reduceModQ)
+    const q = Q_LIMBS;
+    // Since a, b < Q and Q ~ 2^253, the lower 256 bits of a*b can be up
+    // to ~8*Q, so we loop until result < Q.
+    while (rawCmp(result, q) >= 0) {
+        var borrow: u64 = 0;
+        inline for (0..4) |i| {
+            const w: u128 = @as(u128, result[i]) - @as(u128, q[i]) - borrow;
+            result[i] = @truncate(w);
+            if (w >> 64 != 0) borrow = 1 else borrow = 0;
+        }
+    }
+    return result;
+}
+
+// Pure Zig: compare a and b (return negative, 0, or positive)
+pub fn rawCmp(a: [4]u64, b: [4]u64) i32 {
+    inline for (0..4) |i| {
+        if (a[i] < b[i]) return -1;
+        if (a[i] > b[i]) return 1;
+    }
+    return 0;
+}
+
+// Pure Zig: check if a is zero
+pub fn rawIsZero(a: [4]u64) bool {
+    return a[0] == 0 and a[1] == 0 and a[2] == 0 and a[3] == 0;
 }
 
 pub const Fr = struct {
@@ -36,10 +122,7 @@ pub const Fr = struct {
     }
 
     pub fn fromU64(n: u64) Fr {
-        var src = [4]u64{ n, 0, 0, 0 };
-        var dst: [4]u64 = undefined;
-        toMontRaw(&dst, &src);
-        return .{ .limbs = dst };
+        return .{ .limbs = [4]u64{ n, 0, 0, 0 } };
     }
 
     pub fn fromI64(n: i64) Fr {
@@ -47,22 +130,19 @@ pub const Fr = struct {
         return fromU64(@intCast(-n)).neg();
     }
 
-    /// Little-endian normal-form limbs → Montgomery. `limbs` must already be `< q`.
+    /// Little-endian normal-form limbs.
     pub fn fromNormal(limbs: [4]u64) Fr {
-        var src = limbs;
-        var dst: [4]u64 = undefined;
-        toMontRaw(&dst, &src);
-        return .{ .limbs = dst };
+        return .{ .limbs = limbs };
     }
 
-    /// Reduce 256-bit little-endian limbs modulo `Q` with libfr `Fr_rawCmp`, then to Montgomery.
+    /// Reduce 256-bit little-endian limbs modulo `Q`.
     pub fn fromNormalModQ(limbs: [4]u64) Fr {
         var src = limbs;
         reduceModQ(&src);
         return fromNormal(src);
     }
 
-    /// Uniform-ish Fr: 256 random bits from Zig `std.Random`, then `mod q` via libfr.
+    /// Uniform-ish Fr: 256 random bits from Zig `std.Random`, then `mod q` via pure Zig.
     pub fn random(r: std.Random) Fr {
         var limbs: [4]u64 = undefined;
         r.bytes(std.mem.asBytes(&limbs));
@@ -70,46 +150,40 @@ pub const Fr = struct {
     }
 
     pub fn limbsLtQ(limbs: [4]u64) bool {
-        var a = limbs;
-        var q = Q_LIMBS;
-        return Fr_rawCmp(&a, &q) < 0;
+        const a = limbs;
+        const q = Q_LIMBS;
+        return rawCmp(a, q) < 0;
     }
 
     pub fn toNormal(self: Fr) [4]u64 {
-        var src = self.limbs;
-        var dst: [4]u64 = undefined;
-        Fr_rawFromMontgomery(&dst, &src);
-        return dst;
+        return self.limbs;
     }
 
     pub fn add(self: Fr, other: Fr) Fr {
-        var a = self.limbs;
-        var b = other.limbs;
+        const a = self.limbs;
+        const b = other.limbs;
         var dst: [4]u64 = undefined;
-        Fr_rawAdd(&dst, &a, &b);
+        dst = rawAdd(a, b);
         return .{ .limbs = dst };
     }
 
     pub fn sub(self: Fr, other: Fr) Fr {
-        var a = self.limbs;
-        var b = other.limbs;
+        const a = self.limbs;
+        const b = other.limbs;
         var dst: [4]u64 = undefined;
-        Fr_rawSub(&dst, &a, &b);
+        dst = rawSub(a, b);
         return .{ .limbs = dst };
     }
 
     pub fn neg(self: Fr) Fr {
-        var a = self.limbs;
-        var dst: [4]u64 = undefined;
-        Fr_rawNeg(&dst, &a);
-        return .{ .limbs = dst };
+        return .{ .limbs = rawNeg(self.limbs) };
     }
 
     pub fn mul(self: Fr, other: Fr) Fr {
-        var a = self.limbs;
-        var b = other.limbs;
+        const a = self.limbs;
+        const b = other.limbs;
         var dst: [4]u64 = undefined;
-        Fr_rawMMul(&dst, &a, &b);
+        dst = rawMMul(a, b);
         return .{ .limbs = dst };
     }
 
@@ -149,20 +223,20 @@ pub const Fr = struct {
     }
 
     pub fn eql(self: Fr, other: Fr) bool {
-        var a = self.limbs;
-        var b = other.limbs;
-        return Fr_rawIsEq(&a, &b) != 0;
+        const a = self.limbs;
+        const b = other.limbs;
+        return rawCmp(a, b) == 0;
     }
 
     pub fn isZero(self: Fr) bool {
-        var a = self.limbs;
-        return Fr_rawIsZero(&a) != 0;
+        const a = self.limbs;
+        return rawIsZero(a);
     }
 
     pub fn cmpNormal(self: Fr, other: Fr) i32 {
-        var a = self.toNormal();
-        var b = other.toNormal();
-        return Fr_rawCmp(&a, &b);
+        const a = self.toNormal();
+        const b = other.toNormal();
+        return rawCmp(a, b);
     }
 
     pub fn fromBytesLe(bytes: [32]u8) Fr {
@@ -290,8 +364,25 @@ fn subLimbs(a: [4]u64, b: [4]u64) [4]u64 {
 }
 
 fn reduceModQ(l: *[4]u64) void {
-    var q = Q_LIMBS;
-    while (Fr_rawCmp(l, &q) >= 0) {
-        l.* = subLimbs(l.*, Q_LIMBS);
+    const q = Q_LIMBS;
+    // Compare l and q limb-by-limb
+    var gt: bool = false;
+    inline for (0..4) |i| {
+        if (l[i] > q[i]) {
+            gt = true;
+            break;
+        } else if (l[i] < q[i]) {
+            gt = false;
+            break;
+        }
+    }
+    // If l >= q, subtract q
+    if (gt) {
+        var borrow: u64 = 0;
+        inline for (0..4) |i| {
+            const w: u128 = @as(u128, l[i]) - @as(u128, q[i]) - borrow;
+            l[i] = @truncate(w);
+            if (w >> 64 != 0) borrow = 1 else borrow = 0;
+        }
     }
 }
