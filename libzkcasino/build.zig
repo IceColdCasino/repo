@@ -98,7 +98,7 @@ pub fn build(b: *std.Build) void {
     if (!is_apple) fr_cpp_mod.link_libcpp = true;
     addCppCompileIncludes(fr_cpp_mod, sdk_cxx_include, target.result.os.tag, target.result.cpu.arch, true);
     // Pure Zig field arithmetic - fr_raw_to_montgomery no longer needed
-    // fr_generic.cpp replaced by pure Zig implementation
+    fr_cpp_mod.addCSourceFile(.{ .file = b.path("src/witness_common/fr.cpp"), .flags = &[_][]const u8{"-std=c++11", "-fPIC", "-O3"} });
 
     const fr_cpp_obj = b.addObject(.{
         .name = "fr_cpp",
