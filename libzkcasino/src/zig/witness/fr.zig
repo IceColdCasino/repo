@@ -104,8 +104,8 @@ pub fn rawNeg(r: [*c]u64, a: [*c]u64) void {
 
 // Pure Zig modular multiplication: r = (a * b) mod Q using schoolbook multiplication
 pub fn rawMMul(r: [*c]u64, a: [*c]u64, b: [*c]u64) void {
-    // 8-limb intermediate product
-    var product: [8]u64 = undefined;
+    // 8-limb intermediate product (initialized to zero)
+    var product: [8]u64 = .{0, 0, 0, 0, 0, 0, 0, 0};
     inline for (0..4) |i| {
         inline for (0..4) |j| {
             const prod: u128 = @as(u128, a[i]) * @as(u128, b[j]);
@@ -114,7 +114,7 @@ pub fn rawMMul(r: [*c]u64, a: [*c]u64, b: [*c]u64) void {
         }
     }
     // Extract lower 4 limbs
-    var result: [4]u64 = undefined;
+    var result: [4]u64 = .{0, 0, 0, 0};
     inline for (0..4) |i| {
         result[i] = product[i];
     }
@@ -142,6 +142,14 @@ pub fn rawMMul(r: [*c]u64, a: [*c]u64, b: [*c]u64) void {
     inline for (0..4) |i| {
         r[i] = result[i];
     }
+}
+
+// Pure Zig modular division: r = (a / b) mod Q = a * b^(q-2) mod Q
+pub fn rawDiv(r: [*c]u64, a: [*c]u64, b: [*c]u64) void {
+    var inv_b: [4]u64 = undefined;
+    inline for (0..4) |i| inv_b[i] = b[i];
+    rawInv(&inv_b, &inv_b);
+    rawMMul(r, a, &inv_b);
 }
 
 // Pure Zig modular squaring: r = (a * a) mod Q
@@ -333,6 +341,29 @@ pub export fn Fr_mul(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void 
     toMontgomery(b);
     r.*.type = Fr_LONGMONTGOMERY;
     rawMMul(@ptrCast(@alignCast(&r.*.longVal)), @ptrCast(@alignCast(&a.*.longVal)), @ptrCast(@alignCast(&b.*.longVal)));
+}
+
+pub export fn Fr_div(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
+    toLongNormal(a);
+    toLongNormal(b);
+    r.*.type = Fr_LONG;
+    rawDiv(@ptrCast(@alignCast(&r.*.longVal)), @ptrCast(@alignCast(&a.*.longVal)), @ptrCast(@alignCast(&b.*.longVal)));
+}
+
+pub export fn Fr_mod(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
+    toLongNormal(a);
+    toLongNormal(b);
+    // Compute a div b using modular division, then a mod b = a - (a div b) * b
+    var q: [4]u64 = .{0, 0, 0, 0};
+    const a_limbs = a.*.longVal;
+    inline for (0..4) |i| q[i] = a_limbs[i];
+    rawDiv(&q, @ptrCast(@alignCast(&a.*.longVal)), @ptrCast(@alignCast(&b.*.longVal)));
+    // q now contains a / b mod Q
+    var qb: [4]u64 = .{0, 0, 0, 0};
+    inline for (0..4) |i| qb[i] = q[i];
+    rawMMul(&qb, &qb, @ptrCast(@alignCast(&b.*.longVal)));
+    rawSub(@ptrCast(@alignCast(&r.*.longVal)), @ptrCast(@alignCast(&a.*.longVal)), @ptrCast(&qb));
+    r.*.type = Fr_LONG;
 }
 
 pub export fn Fr_square(r: [*c]FrElement, a: [*c]FrElement) void {
