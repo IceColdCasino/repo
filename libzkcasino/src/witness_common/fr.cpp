@@ -4,13 +4,8 @@
 // BN254 curve order Q (little-endian limbs)
 // Q = 0x30644e72e131a029 * 2^256 + 0x43e1f593f0000001
 static const FrElement Q_LIMBS = {
-    {0, 0, {0x43e1f593f0000001ULL, 0x2833e84879b97091ULL, 0xb85045b68181585dULL, 0x30644e72e131a029ULL}}
+    0, 0, {0x43e1f593f0000001ULL, 0x2833e84879b97091ULL, 0xb85045b68181585dULL, 0x30644e72e131a029ULL}
 };
-
-// Helper to get limb pointer from FrElement
-static inline uint64_t* limbs(PFrElement e) {
-    return e->longVal;
-}
 
 // Modular addition: r = (a + b) mod Q
 void Fr_add(PFrElement r, PFrElement a, PFrElement b) {
@@ -20,6 +15,7 @@ void Fr_add(PFrElement r, PFrElement a, PFrElement b) {
         (*r).longVal[i] = (uint64_t)sum;
         carry = sum >> 64;
     }
+    // Subtract Q if sum >= Q
     int cmp = 0;
     for (int i = 3; i >= 0; i--) {
         if ((*r).longVal[i] < Q_LIMBS.longVal[i]) { cmp = -1; break; }
@@ -87,37 +83,39 @@ void Fr_neg(PFrElement r, PFrElement a) {
 
 // Modular multiplication: r = (a * b) mod Q
 void Fr_mul(PFrElement r, PFrElement a, PFrElement b) {
-    unsigned __int128 product[8] = {0};
+    unsigned __int128 result[4] = {0, 0, 0, 0};
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
-            product[i + j] += (unsigned __int128)(*a).longVal[i] * (unsigned __int128)(*b).longVal[j];
+            unsigned __int128 carry = (unsigned __int128)(*a).longVal[i] * (unsigned __int128)(*b).longVal[j];
+            int k = i + j;
+            while (carry != 0) {
+                unsigned __int128 sum = (unsigned __int128)result[k] + carry;
+                result[k] = (uint64_t)sum;
+                carry = sum >> 64;
+                k++;
+            }
         }
     }
-    for (int i = 0; i < 7; i++) {
-        product[i + 1] += product[i] >> 64;
-        product[i] &= 0xFFFFFFFFFFFFFFFFULL;
-    }
-    FrElement result;
-    for (int i = 0; i < 4; i++) result.longVal[i] = (uint64_t)product[i];
+    // Reduce mod Q
     int cmp = 0;
     for (int i = 3; i >= 0; i--) {
-        if (result.longVal[i] < Q_LIMBS.longVal[i]) { cmp = -1; break; }
-        if (result.longVal[i] > Q_LIMBS.longVal[i]) { cmp = 1; break; }
+        if (result[i] < Q_LIMBS.longVal[i]) { cmp = -1; break; }
+        if (result[i] > Q_LIMBS.longVal[i]) { cmp = 1; break; }
     }
     while (cmp >= 0) {
         unsigned __int128 borrow = 0;
         for (int i = 0; i < 4; i++) {
-            unsigned __int128 diff = (unsigned __int128)result.longVal[i] - (unsigned __int128)Q_LIMBS.longVal[i] - borrow;
-            result.longVal[i] = (uint64_t)diff;
+            unsigned __int128 diff = (unsigned __int128)result[i] - (unsigned __int128)Q_LIMBS.longVal[i] - borrow;
+            result[i] = (uint64_t)diff;
             borrow = (diff >> 64) & 1;
         }
         cmp = 0;
         for (int i = 3; i >= 0; i--) {
-            if (result.longVal[i] < Q_LIMBS.longVal[i]) { cmp = -1; break; }
-            if (result.longVal[i] > Q_LIMBS.longVal[i]) { cmp = 1; break; }
+            if (result[i] < Q_LIMBS.longVal[i]) { cmp = -1; break; }
+            if (result[i] > Q_LIMBS.longVal[i]) { cmp = 1; break; }
         }
     }
-    for (int i = 0; i < 4; i++) (*r).longVal[i] = result.longVal[i];
+    for (int i = 0; i < 4; i++) (*r).longVal[i] = result[i];
 }
 
 // Modular squaring: r = (a * a) mod Q
