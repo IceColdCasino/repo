@@ -74,9 +74,6 @@ pub fn build(b: *std.Build) void {
     const witness_poker_options_mod = witness_poker_options.createModule();
 
     const is_apple = target.result.os.tag == .macos or target.result.os.tag == .ios;
-    // rapidsnark's vendored tree only ships arm64 assembly; x86_64 Linux uses the
-    // generic C++ field path (still links the prebuilt librapidsnark.so prover).
-    const use_arm64_asm = target.result.cpu.arch == .aarch64;
     const sdk: []const u8 = if (is_apple)
         (resolveSdkPath(b, target) orelse "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk")
     else
@@ -88,52 +85,10 @@ pub fn build(b: *std.Build) void {
     else
         "";
 
-    const rapidsnark = b.dependency("rapidsnark", .{});
-
-    const opt_flag = switch (optimize) {
-        .Debug => "-O0",
-        .ReleaseSafe => "-O2",
-        .ReleaseFast, .ReleaseSmall => "-O3",
-    };
     var sdk_c_include_buf: [512]u8 = undefined;
     const sdk_c_include = std.fmt.bufPrint(&sdk_c_include_buf, "{s}/usr/include", .{sdk}) catch unreachable;
     const is_ios = target.result.os.tag == .ios;
     const is_ios_sim = is_ios and target.result.abi == .simulator;
-
-    const linux_fr_cpp_flags_asm = [_][]const u8{
-        "-std=c++11",
-        "-fPIC",
-        opt_flag,
-        "-DUSE_ASM",
-        "-DARCH_ARM64",
-        "-stdlib=libc++",
-        "-Wno-vla-cxx-extension",
-        "-Wno-error=vla-cxx-extension",
-    };
-    const linux_fr_cpp_flags_generic = [_][]const u8{
-        "-std=c++11",
-        "-fPIC",
-        opt_flag,
-        "-stdlib=libc++",
-        "-Wno-vla-cxx-extension",
-        "-Wno-error=vla-cxx-extension",
-    };
-    var fr_cpp_flag_buf: [16][]const u8 = undefined;
-    const fr_cpp_flags: []const []const u8 = if (is_apple)
-        appendIosCppFlags(&fr_cpp_flag_buf, &.{
-            "-std=c++11",
-            "-fPIC",
-            opt_flag,
-            "-DUSE_ASM",
-            "-DARCH_ARM64",
-            "-stdlib=libc++",
-            "-isysroot",
-            sdk,
-        }, is_ios, is_ios_sim, sdk_c_include)
-    else if (use_arm64_asm)
-        &linux_fr_cpp_flags_asm
-    else
-        &linux_fr_cpp_flags_generic;
 
     const fr_cpp_mod = b.createModule(.{
         .target = target,
@@ -141,39 +96,14 @@ pub fn build(b: *std.Build) void {
     });
     // libc++ keeps std::map at 24 bytes, matching calcwit.zig. libstdc++ is 48.
     if (!is_apple) fr_cpp_mod.link_libcpp = true;
-    addCppCompileIncludes(fr_cpp_mod, sdk_cxx_include, rapidsnark.path("build"), target.result.os.tag, target.result.cpu.arch, target.result.os.tag == .macos or target.result.os.tag == .ios);
-    fr_cpp_mod.addCSourceFile(.{ .file = rapidsnark.path("build/fr.cpp"), .flags = fr_cpp_flags });
-    fr_cpp_mod.addCSourceFile(.{ .file = rapidsnark.path("build/fr_generic.cpp"), .flags = fr_cpp_flags });
-    fr_cpp_mod.addCSourceFile(.{ .file = b.path("src/witness_common/fr_raw_to_montgomery.cpp"), .flags = fr_cpp_flags });
+    addCppCompileIncludes(fr_cpp_mod, sdk_cxx_include, target.result.os.tag, target.result.cpu.arch, true);
+    // Pure Zig field arithmetic - fr_raw_to_montgomery no longer needed
+    // fr_generic.cpp replaced by pure Zig implementation
 
     const fr_cpp_obj = b.addObject(.{
         .name = "fr_cpp",
         .root_module = fr_cpp_mod,
     });
-    const fr_asm_obj: ?*std.Build.Step.Compile = if (use_arm64_asm) blk: {
-        const fr_asm_mod = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-        });
-        var fr_asm_flag_buf: [16][]const u8 = undefined;
-        const fr_asm_flags = if (is_ios)
-            appendIosCppFlags(&fr_asm_flag_buf, &.{
-                "-fPIC",
-                opt_flag,
-                "-isysroot",
-                sdk,
-            }, true, is_ios_sim, sdk_c_include)
-        else
-            &[_][]const u8{ "-fPIC", "-O3" };
-        fr_asm_mod.addCSourceFile(.{
-            .file = rapidsnark.path("build/fr_raw_arm64.s"),
-            .flags = fr_asm_flags,
-        });
-        break :blk b.addObject(.{
-            .name = "fr_asm",
-            .root_module = fr_asm_mod,
-        });
-    } else null;
 
     const fr_mod = b.createModule(.{
         .target = target,
@@ -181,7 +111,6 @@ pub fn build(b: *std.Build) void {
         .link_libc = !linksLibSystemViaTbd(target.result.os.tag),
     });
     fr_mod.addObject(fr_cpp_obj);
-    if (fr_asm_obj) |obj| fr_mod.addObject(obj);
     linkGmp(fr_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(fr_mod, target, sdk);
 
@@ -197,26 +126,6 @@ pub fn build(b: *std.Build) void {
     }
     b.installArtifact(fr_lib);
 
-    const linux_cpp_flags_asm = [_][]const u8{
-        "-std=c++11",
-        "-fPIC",
-        "-O3",
-        "-fvisibility=hidden",
-        "-DUSE_ASM",
-        "-DARCH_ARM64",
-        "-stdlib=libc++",
-        "-Wno-vla-cxx-extension",
-        "-Wno-error=vla-cxx-extension",
-    };
-    const linux_cpp_flags_generic = [_][]const u8{
-        "-std=c++11",
-        "-fPIC",
-        "-O3",
-        "-fvisibility=hidden",
-        "-stdlib=libc++",
-        "-Wno-vla-cxx-extension",
-        "-Wno-error=vla-cxx-extension",
-    };
     var cpp_flag_buf: [16][]const u8 = undefined;
     const cpp_flags: []const []const u8 = if (is_apple)
         appendIosCppFlags(&cpp_flag_buf, &.{
@@ -230,10 +139,8 @@ pub fn build(b: *std.Build) void {
             "-isysroot",
             sdk,
         }, is_ios, is_ios_sim, sdk_c_include)
-    else if (use_arm64_asm)
-        &linux_cpp_flags_asm
     else
-        &linux_cpp_flags_generic;
+        &[_][]const u8{ "-std=c++11", "-fPIC", "-O3", "-fvisibility=hidden", "-stdlib=libc++", "-Wno-vla-cxx-extension", "-Wno-error=vla-cxx-extension" };
 
     const cpp_common_files = [_][]const u8{
         "src/witness_common/calcwit.cpp",
@@ -250,7 +157,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .sdk = sdk,
             .sdk_cxx_include = sdk_cxx_include,
-            .rapidsnark_build = rapidsnark.path("build"),
             .fr_lib = fr_lib,
             .cpp_flags = cpp_flags,
             .cpp_common_files = &cpp_common_files,
@@ -291,8 +197,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     player_test_mod.addImport("zkey_store", zkey_store_mod);
-    player_test_mod.addObject(fr_cpp_obj);
-    if (fr_asm_obj) |obj| player_test_mod.addObject(obj);
+    
     linkGmp(player_test_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(player_test_mod, target, sdk);
 
@@ -313,8 +218,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    player_lib_mod.addObject(fr_cpp_obj);
-    if (fr_asm_obj) |obj| player_lib_mod.addObject(obj);
+    
     linkGmp(player_lib_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(player_lib_mod, target, sdk);
     if (target.result.os.tag == .macos or target.result.os.tag == .ios) {
@@ -342,8 +246,7 @@ pub fn build(b: *std.Build) void {
     });
     player_bridge_lib_mod.addImport("house_options", house_options_mod);
     player_bridge_lib_mod.addImport("zkey_store", zkey_store_mod);
-    player_bridge_lib_mod.addObject(fr_cpp_obj);
-    if (fr_asm_obj) |obj| player_bridge_lib_mod.addObject(obj);
+    
     linkGmp(player_bridge_lib_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(player_bridge_lib_mod, target, sdk);
     if (target.result.os.tag == .macos or target.result.os.tag == .ios) {
@@ -370,8 +273,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     player_prove_mod.addImport("zkey_store", zkey_store_mod);
-    player_prove_mod.addObject(fr_cpp_obj);
-    if (fr_asm_obj) |obj| player_prove_mod.addObject(obj);
+    
     linkGmp(player_prove_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
     addLibcppLink(player_prove_mod, target, sdk);
 
@@ -384,7 +286,7 @@ pub fn build(b: *std.Build) void {
     if (target.result.os.tag == .macos or target.result.os.tag == .ios) {
         player_prove_test.use_lld = false;
     }
-    const player_prove_step = b.step("player-prove-test", "Run Zig player Groth16 prove (witness + rapidsnark)");
+    const player_prove_step = b.step("player-prove-test", "Run player golden tests");
     player_prove_step.dependOn(&b.addRunArtifact(player_prove_test).step);
 }
 
@@ -396,7 +298,6 @@ const WitnessLibOptions = struct {
     optimize: std.builtin.OptimizeMode,
     sdk: []const u8,
     sdk_cxx_include: []const u8,
-    rapidsnark_build: std.Build.LazyPath,
     fr_lib: *std.Build.Step.Compile,
     cpp_flags: []const []const u8,
     cpp_common_files: []const []const u8,
@@ -474,7 +375,7 @@ fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
                 .strip = true,
             });
             if (opts.target.result.os.tag == .linux) cpp_mod.link_libcpp = true;
-            addCppCompileIncludes(cpp_mod, opts.sdk_cxx_include, opts.rapidsnark_build, opts.target.result.os.tag, opts.target.result.cpu.arch, opts.target.result.os.tag == .macos or opts.target.result.os.tag == .ios);
+            addCppCompileIncludes(cpp_mod, opts.sdk_cxx_include, opts.target.result.os.tag, opts.target.result.cpu.arch, true);
             addCppSourceWithPrefix(cpp_mod, cpp_file, prefix_path, opts.cpp_flags);
 
             const obj = b.addObject(.{
@@ -549,7 +450,6 @@ fn appendIosCppFlags(
 fn addCppCompileIncludes(
     module: *std.Build.Module,
     sdk_cxx_include: []const u8,
-    rapidsnark_build: std.Build.LazyPath,
     os_tag: std.Target.Os.Tag,
     cpu_arch: std.Target.Cpu.Arch,
     include_gmp_headers: bool,
@@ -559,15 +459,14 @@ fn addCppCompileIncludes(
     }
     if (os_tag == .linux) addLinuxCIncludes(module, cpu_arch);
     module.addIncludePath(module.owner.path("src/witness_common"));
-    module.addIncludePath(rapidsnark_build);
     if (include_gmp_headers) {
-        module.addIncludePath(.{ .cwd_relative = gmpIncludePath(os_tag) });
+        module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
     }
 }
 
 fn gmpIncludePath(os_tag: std.Target.Os.Tag) []const u8 {
     return switch (os_tag) {
-        .ios => "../rapidsnark/lib/ios-simulator/include",
+        .ios => "/opt/homebrew/include",
         else => "/opt/homebrew/include",
     };
 }
@@ -629,7 +528,7 @@ fn resolveSdkPath(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const u8 {
 
 fn defaultGmpPath(os_tag: std.Target.Os.Tag) []const u8 {
     return switch (os_tag) {
-        .ios => "../rapidsnark/lib/ios-simulator/lib/libgmp.a",
+        .ios => "/opt/homebrew/lib/libgmp.dylib",
         else => "/opt/homebrew/lib/libgmp.dylib",
     };
 }
