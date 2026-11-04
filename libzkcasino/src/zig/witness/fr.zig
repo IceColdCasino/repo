@@ -104,19 +104,18 @@ pub fn rawNeg(r: [*c]u64, a: [*c]u64) void {
 
 // Pure Zig modular multiplication: r = (a * b) mod Q using schoolbook multiplication
 pub fn rawMMul(r: [*c]u64, a: [*c]u64, b: [*c]u64) void {
-    // 8-limb intermediate product (initialized to zero)
-    var product: [8]u64 = .{0, 0, 0, 0, 0, 0, 0, 0};
-    inline for (0..4) |i| {
-        inline for (0..4) |j| {
-            const prod: u128 = @as(u128, a[i]) * @as(u128, b[j]);
-            product[i + j] += @truncate(prod);
-            product[i + j + 1] += @truncate(prod >> 64);
-        }
-    }
-    // Extract lower 4 limbs
     var result: [4]u64 = .{0, 0, 0, 0};
     inline for (0..4) |i| {
-        result[i] = product[i];
+        inline for (0..4) |j| {
+            var carry: u128 = @as(u128, a[i]) * @as(u128, b[j]);
+            var k: usize = i + j;
+            while (carry != 0) {
+                const sum: u128 = @as(u128, result[k]) + carry;
+                result[k] = @truncate(sum);
+                carry = sum >> 64;
+                k += 1;
+            }
+        }
     }
     // Reduce mod Q using repeated subtraction
     var cmp: i32 = 0;

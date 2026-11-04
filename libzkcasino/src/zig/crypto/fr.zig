@@ -65,22 +65,19 @@ pub fn rawNeg(a: [4]u64) [4]u64 {
 // Q is ~2^253 (BN254 curve order). The lower 256 bits of a*b can be up to ~8*Q,
 // so we reduce by repeatedly subtracting Q until result < Q.
 pub fn rawMMul(a: [4]u64, b: [4]u64) [4]u64 {
-    // 8-limb intermediate product (max 128-bit per limb pair -> 8 limbs)
-    var product: [8]u64 = undefined;
+    var result: [4]u64 = .{0, 0, 0, 0};
     inline for (0..4) |i| {
         inline for (0..4) |j| {
-            const prod: u128 = @as(u128, a[i]) * @as(u128, b[j]);
-            product[i + j] += @truncate(prod);
-            product[i + j + 1] += @truncate(prod >> 64);
+            var carry: u128 = @as(u128, a[i]) * @as(u128, b[j]);
+            var k: usize = i + j;
+            while (carry != 0) {
+                const sum: u128 = @as(u128, result[k]) + carry;
+                result[k] = @truncate(sum);
+                carry = sum >> 64;
+                k += 1;
+            }
         }
     }
-    // Extract lower 4 limbs
-    var result: [4]u64 = [_]u64{
-        product[0],
-        product[1],
-        product[2],
-        product[3],
-    };
     // Reduce mod Q using repeated subtraction (same pattern as reduceModQ)
     const q = Q_LIMBS;
     // Since a, b < Q and Q ~ 2^253, the lower 256 bits of a*b can be up
