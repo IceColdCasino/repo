@@ -1,5 +1,7 @@
 //! BabyJubjub matching circomlibjs `buildBabyjub`.
-const Fr = @import("fr.zig").Fr;
+const field = @import("fr.zig");
+const Fr = field.Fr;
+const Mont = field.Mont;
 
 pub const Point = struct {
     x: Fr,
@@ -67,19 +69,60 @@ pub fn mulU64(base: Point, scalar: u64) Point {
     return mulLimbs(base, .{ scalar, 0, 0, 0 });
 }
 
+/// Projective twisted Edwards point (X:Y:Z) = (X/Z, Y/Z).
+const Proj = struct {
+    x: Mont,
+    y: Mont,
+    z: Mont,
+};
+
+fn projIdentity() Proj {
+    return .{ .x = Mont.zero(), .y = Mont.one(), .z = Mont.one() };
+}
+
+fn projFromAffine(p: Point) Proj {
+    return .{ .x = Mont.fromFr(p.x), .y = Mont.fromFr(p.y), .z = Mont.one() };
+}
+
+/// Complete twisted-Edwards addition, EFD add-2008-bbjlp. No inversion.
+fn projAdd(p: Proj, q: Proj, a: Mont, d: Mont) Proj {
+    const big_a = p.z.mul(q.z);
+    const big_b = big_a.mul(big_a);
+    const big_c = p.x.mul(q.x);
+    const big_d = p.y.mul(q.y);
+    const big_e = d.mul(big_c.mul(big_d));
+    const big_f = big_b.sub(big_e);
+    const big_g = big_b.add(big_e);
+    const sum_p = p.x.add(p.y);
+    const sum_q = q.x.add(q.y);
+    return .{
+        .x = big_a.mul(big_f).mul(sum_p.mul(sum_q).sub(big_c).sub(big_d)),
+        .y = big_a.mul(big_g).mul(big_d.sub(a.mul(big_c))),
+        .z = big_f.mul(big_g),
+    };
+}
+
+fn projToAffine(p: Proj) Point {
+    const inv_z = p.z.inv();
+    return .{
+        .x = p.x.mul(inv_z).toFr(),
+        .y = p.y.mul(inv_z).toFr(),
+    };
+}
+
 pub fn mulLimbs(base: Point, scalar: [4]u64) Point {
-    var res = Point.identity();
-    var exp = base;
+    const a = Mont.fromFr(curveA());
+    const d = Mont.fromFr(curveD());
+    var res = projIdentity();
+    var exp = projFromAffine(base);
     var i: usize = 0;
     while (i < 256) : (i += 1) {
         const limb = i / 64;
         const bit = @as(u64, 1) << @intCast(i % 64);
-        if ((scalar[limb] & bit) != 0) {
-            res = add(res, exp);
-        }
-        exp = double(exp);
+        if ((scalar[limb] & bit) != 0) res = projAdd(res, exp, a, d);
+        exp = projAdd(exp, exp, a, d);
     }
-    return res;
+    return projToAffine(res);
 }
 
 pub fn mulBase8(scalar: Fr) Point {
@@ -116,4 +159,20 @@ pub fn inCurve(p: Point) bool {
     const lhs = curveA().mul(x2).add(y2);
     const rhs = Fr.one().add(x2.mul(y2).mul(curveD()));
     return lhs.eql(rhs);
+}
+
+const std = @import("std");
+
+test "projective scalar mul matches affine addition" {
+    const g = base8();
+    try std.testing.expect(mul(g, Fr.zero()).eql(Point.identity()));
+    try std.testing.expect(mul(g, Fr.one()).eql(g));
+    try std.testing.expect(mul(g, Fr.fromU64(2)).eql(add(g, g)));
+    const three = add(add(g, g), g);
+    try std.testing.expect(mul(g, Fr.fromU64(3)).eql(three));
+    const s = Fr.fromDec("123456789012345678901234567890");
+    const p = mul(g, s);
+    try std.testing.expect(inCurve(p));
+    try std.testing.expect(add(p, p).eql(mul(g, s.add(s))));
+    try std.testing.expect(Mont.one().toFr().eql(Fr.one()));
 }

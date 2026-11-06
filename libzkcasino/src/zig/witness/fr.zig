@@ -191,21 +191,19 @@ pub fn rawMSquare(r: [*c]u64, a: [*c]u64) void {
     rawMMul(r, a, a);
 }
 
-// Pure Zig modular inversion: r = a^(-1) mod Q using Fermat's little theorem
+// Inverse via Fermat, multiplied entirely in Montgomery form.
 pub fn rawInv(r: [*c]u64, a: [*c]u64) void {
-    var result: [4]u64 = .{1, 0, 0, 0};
-    var base: [4]u64 = undefined;
-    inline for (0..4) |i| base[i] = a[i];
-    const exp: [4]u64 = .{Q_LIMBS[0] - 2, Q_LIMBS[1], Q_LIMBS[2], Q_LIMBS[3]};
-    inline for (0..256) |bit| {
+    var result = toMont(.{ 1, 0, 0, 0 });
+    var base = toMont(load4(a));
+    const exp: [4]u64 = .{ Q_LIMBS[0] -% 2, Q_LIMBS[1], Q_LIMBS[2], Q_LIMBS[3] };
+    var bit: usize = 0;
+    while (bit < 256) : (bit += 1) {
         const limb = bit / 64;
-        const bitpos = bit % 64;
-        if (((exp[limb] >> bitpos) & 1) != 0) {
-            rawMMul(&result, &result, &base);
-        }
-        rawMMul(&base, &base, &base);
+        const bitpos: u6 = @intCast(bit % 64);
+        if (((exp[limb] >> bitpos) & 1) != 0) result = montMul(result, base);
+        base = montMul(base, base);
     }
-    inline for (0..4) |i| r[i] = result[i];
+    store4(r, fromMont(result));
 }
 
 // Pure Zig bitwise AND: r = a & b
@@ -359,20 +357,126 @@ fn asI32(limbs: [4]u64) ?i32 {
 }
 
 fn setFromNormal(r: [*c]FrElement, normal: [4]u64) void {
-    const mont = toMont(normal);
     if (asI32(normal)) |s| {
+        storeShort(r, s, normal);
+        return;
+    }
+    r.*.shortVal = 0;
+    r.*.type = Fr_LONGMONTGOMERY;
+    r.*.longVal = toMont(normal);
+}
+
+fn storeZero(r: [*c]FrElement) void {
+    r.*.shortVal = 0;
+    r.*.type = Fr_MONT;
+    r.*.longVal = @as([4]u64, .{ 0, 0, 0, 0 });
+}
+
+fn storeOne(r: [*c]FrElement) void {
+    r.*.shortVal = 1;
+    r.*.type = Fr_MONT;
+    r.*.longVal = R_MOD_Q;
+}
+
+fn storeMont(r: [*c]FrElement, mont: [4]u64, short: ?i32) void {
+    if (short) |s| {
+        if (s == 0) {
+            storeZero(r);
+            return;
+        }
+        if (s == 1) {
+            storeOne(r);
+            return;
+        }
         r.*.shortVal = s;
         r.*.type = Fr_MONT;
         r.*.longVal = mont;
-    } else {
-        r.*.shortVal = 0;
-        r.*.type = Fr_LONGMONTGOMERY;
-        r.*.longVal = mont;
+        return;
     }
+    r.*.shortVal = 0;
+    r.*.type = Fr_LONGMONTGOMERY;
+    r.*.longVal = mont;
+}
+
+fn storeShort(r: [*c]FrElement, s: i32, normal: [4]u64) void {
+    if (s == 0) {
+        storeZero(r);
+        return;
+    }
+    if (s == 1) {
+        storeOne(r);
+        return;
+    }
+    r.*.shortVal = s;
+    r.*.type = Fr_MONT;
+    r.*.longVal = toMont(normal);
+}
+
+fn storeNormal(r: [*c]FrElement, normal: [4]u64) void {
+    if (asI32(normal)) |s| {
+        storeShort(r, s, normal);
+        return;
+    }
+    r.*.shortVal = 0;
+    r.*.type = Fr_LONG;
+    r.*.longVal = normal;
+}
+
+fn isLong(e: FrElement) bool {
+    return (e.type & Fr_LONG) != 0;
+}
+
+fn isMont(e: FrElement) bool {
+    return (e.type & Fr_MONT) != 0;
+}
+
+fn fitsI32(s: i64) ?i32 {
+    if (s < std.math.minInt(i32) or s > std.math.maxInt(i32)) return null;
+    return @intCast(s);
+}
+
+fn copyLimbs(e: FrElement) [4]u64 {
+    return e.longVal;
+}
+
+fn addMod(a: [4]u64, b: [4]u64) [4]u64 {
+    var out: [4]u64 = undefined;
+    var carry: u64 = 0;
+    inline for (0..4) |i| {
+        const sum: u128 = @as(u128, a[i]) + @as(u128, b[i]) + carry;
+        out[i] = @truncate(sum);
+        carry = @truncate(sum >> 64);
+    }
+    if (carry != 0 or cmp4(out, Q_LIMBS) >= 0) {
+        out = subQ(out);
+        if (cmp4(out, Q_LIMBS) >= 0) out = subQ(out);
+    }
+    return out;
+}
+
+fn subMod(a: [4]u64, b: [4]u64) [4]u64 {
+    if (cmp4(a, b) >= 0) return plainSubArr(a, b);
+    return plainSubArr(Q_LIMBS, plainSubArr(b, a));
+}
+
+fn plainSubArr(a: [4]u64, b: [4]u64) [4]u64 {
+    var out: [4]u64 = undefined;
+    var borrow: u64 = 0;
+    inline for (0..4) |i| {
+        const diff: u128 = @as(u128, a[i]) -% @as(u128, b[i]) -% borrow;
+        out[i] = @truncate(diff);
+        borrow = if (diff > 0xffffffffffffffff) 1 else 0;
+    }
+    return out;
+}
+
+fn loadMont(e: FrElement) [4]u64 {
+    if (isMont(e)) return copyLimbs(e);
+    return toMont(normalLimbs(e));
 }
 
 fn setBool(r: [*c]FrElement, v: bool) void {
-    setFromNormal(r, .{ if (v) 1 else 0, 0, 0, 0 });
+    if (v) storeOne(r) else storeZero(r);
 }
 
 fn add4(a: [4]u64, b: [4]u64) [4]u64 {
@@ -404,23 +508,90 @@ pub export fn Fr_toMontgomery(r: [*c]FrElement, a: [*c]FrElement) void {
 }
 
 pub export fn Fr_add(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    setFromNormal(r, add4(normalLimbs(a.*), normalLimbs(b.*)));
+    const both_short = !isLong(a.*) and !isLong(b.*);
+    const short_sum: ?i32 = if (both_short) fitsI32(@as(i64, a.*.shortVal) + @as(i64, b.*.shortVal)) else null;
+    if (isMont(a.*) and isMont(b.*)) {
+        storeMont(r, addMod(copyLimbs(a.*), copyLimbs(b.*)), short_sum);
+        return;
+    }
+    if (short_sum) |s| {
+        if (!isMont(a.*) and !isMont(b.*)) {
+            r.*.shortVal = s;
+            r.*.type = Fr_SHORT;
+            r.*.longVal = @as([4]u64, .{ 0, 0, 0, 0 });
+            return;
+        }
+    }
+    storeMont(r, addMod(loadMont(a.*), loadMont(b.*)), short_sum);
 }
 
 pub export fn Fr_sub(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    setFromNormal(r, sub4(normalLimbs(a.*), normalLimbs(b.*)));
+    const both_short = !isLong(a.*) and !isLong(b.*);
+    const short_diff: ?i32 = if (both_short) fitsI32(@as(i64, a.*.shortVal) - @as(i64, b.*.shortVal)) else null;
+    if (isMont(a.*) and isMont(b.*)) {
+        storeMont(r, subMod(copyLimbs(a.*), copyLimbs(b.*)), short_diff);
+        return;
+    }
+    if (short_diff) |s| {
+        if (!isMont(a.*) and !isMont(b.*)) {
+            r.*.shortVal = s;
+            r.*.type = Fr_SHORT;
+            r.*.longVal = @as([4]u64, .{ 0, 0, 0, 0 });
+            return;
+        }
+    }
+    storeMont(r, subMod(loadMont(a.*), loadMont(b.*)), short_diff);
 }
 
 pub export fn Fr_neg(r: [*c]FrElement, a: [*c]FrElement) void {
-    var n = normalLimbs(a.*);
-    var out: [4]u64 = undefined;
-    rawNeg(&out, &n);
-    setFromNormal(r, out);
+    if (!isLong(a.*) and a.*.shortVal == 0) {
+        storeZero(r);
+        return;
+    }
+    if (!isLong(a.*) and a.*.shortVal != std.math.minInt(i32)) {
+        const s: i32 = -a.*.shortVal;
+        if (!isMont(a.*)) {
+            r.*.shortVal = s;
+            r.*.type = Fr_SHORT;
+            r.*.longVal = @as([4]u64, .{ 0, 0, 0, 0 });
+            return;
+        }
+        const m = copyLimbs(a.*);
+        const neg_m = if (m[0] == 0 and m[1] == 0 and m[2] == 0 and m[3] == 0)
+            m
+        else
+            plainSubArr(Q_LIMBS, m);
+        storeMont(r, neg_m, s);
+        return;
+    }
+    const m = loadMont(a.*);
+    const neg_m = if (m[0] == 0 and m[1] == 0 and m[2] == 0 and m[3] == 0)
+        m
+    else
+        plainSubArr(Q_LIMBS, m);
+    storeMont(r, neg_m, null);
 }
 
 pub export fn Fr_mul(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    const prod = montMul(montLimbs(a.*), montLimbs(b.*));
-    setFromNormal(r, fromMont(prod));
+    if (!isLong(a.*) and a.*.shortVal == 0) {
+        storeZero(r);
+        return;
+    }
+    if (!isLong(b.*) and b.*.shortVal == 0) {
+        storeZero(r);
+        return;
+    }
+    if (!isLong(b.*) and b.*.shortVal == 1 and isMont(b.*)) {
+        r.* = a.*;
+        return;
+    }
+    if (!isLong(a.*) and a.*.shortVal == 1 and isMont(a.*)) {
+        r.* = b.*;
+        return;
+    }
+    const both_short = !isLong(a.*) and !isLong(b.*);
+    const short_prod: ?i32 = if (both_short) fitsI32(@as(i64, a.*.shortVal) * @as(i64, b.*.shortVal)) else null;
+    storeMont(r, montMul(loadMont(a.*), loadMont(b.*)), short_prod);
 }
 
 pub export fn Fr_div(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
@@ -483,13 +654,12 @@ pub export fn Fr_square(r: [*c]FrElement, a: [*c]FrElement) void {
 fn bitOp(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement, op: enum { and_, or_, xor }) void {
     const an = normalLimbs(a.*);
     const bn = normalLimbs(b.*);
-    var out: [4]u64 = undefined;
-    switch (op) {
-        .and_ => rawAnd(&out, @constCast(&an), @constCast(&bn)),
-        .or_ => rawOr(&out, @constCast(&an), @constCast(&bn)),
-        .xor => rawXor(&out, @constCast(&an), @constCast(&bn)),
-    }
-    setFromNormal(r, out);
+    const out: [4]u64 = switch (op) {
+        .and_ => .{ an[0] & bn[0], an[1] & bn[1], an[2] & bn[2], an[3] & bn[3] },
+        .or_ => .{ an[0] | bn[0], an[1] | bn[1], an[2] | bn[2], an[3] | bn[3] },
+        .xor => .{ an[0] ^ bn[0], an[1] ^ bn[1], an[2] ^ bn[2], an[3] ^ bn[3] },
+    };
+    storeNormal(r, out);
 }
 
 pub export fn Fr_band(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
@@ -505,26 +675,25 @@ pub export fn Fr_bxor(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void
 }
 
 pub export fn Fr_bnot(r: [*c]FrElement, a: [*c]FrElement) void {
-    var an = normalLimbs(a.*);
-    var out: [4]u64 = undefined;
-    rawNot(&out, &an);
-    setFromNormal(r, out);
+    const an = normalLimbs(a.*);
+    storeNormal(r, .{ ~an[0], ~an[1], ~an[2], ~an[3] });
+}
+
+fn shiftCountElem(e: FrElement) u32 {
+    if (!isLong(e)) {
+        if (e.shortVal < 0 or e.shortVal >= 256) return 256;
+        return @intCast(e.shortVal);
+    }
+    const n = normalLimbs(e);
+    return shiftCount(@constCast(&n));
 }
 
 pub export fn Fr_shl(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    var an = normalLimbs(a.*);
-    var bn = normalLimbs(b.*);
-    var out: [4]u64 = undefined;
-    rawShl(&out, &an, &bn);
-    setFromNormal(r, out);
+    storeNormal(r, u256Shl(normalLimbs(a.*), shiftCountElem(b.*)));
 }
 
 pub export fn Fr_shr(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    var an = normalLimbs(a.*);
-    var bn = normalLimbs(b.*);
-    var out: [4]u64 = undefined;
-    rawShr(&out, &an, &bn);
-    setFromNormal(r, out);
+    storeNormal(r, u256Shr(normalLimbs(a.*), shiftCountElem(b.*)));
 }
 
 fn getIntValue(pE: [*c]FrElement) i64 {
@@ -546,12 +715,22 @@ fn cmpElements(a: FrElement, b: FrElement) i32 {
     return cmp4(normalLimbs(a), normalLimbs(b));
 }
 
+fn sameValue(a: FrElement, b: FrElement) bool {
+    if (!isLong(a) and !isLong(b)) return a.shortVal == b.shortVal;
+    if (isMont(a) and isMont(b)) {
+        const al = copyLimbs(a);
+        const bl = copyLimbs(b);
+        return al[0] == bl[0] and al[1] == bl[1] and al[2] == bl[2] and al[3] == bl[3];
+    }
+    return cmp4(normalLimbs(a), normalLimbs(b)) == 0;
+}
+
 pub export fn Fr_eq(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    setBool(r, cmpElements(a.*, b.*) == 0);
+    setBool(r, sameValue(a.*, b.*));
 }
 
 pub export fn Fr_neq(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    setBool(r, cmpElements(a.*, b.*) != 0);
+    setBool(r, !sameValue(a.*, b.*));
 }
 
 pub export fn Fr_lt(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
@@ -623,8 +802,15 @@ test "Fr_add simple" {
 
     Fr_add(&r, &a, &b);
 
+    try std.testing.expectEqual(Fr_SHORT, r.type);
+    try std.testing.expectEqual(@as(i32, 8), r.shortVal);
+
+    var m5 = FrElement{ .shortVal = 5, .type = Fr_MONT, .longVal = toMont(.{ 5, 0, 0, 0 }) };
+    var m3 = FrElement{ .shortVal = 3, .type = Fr_MONT, .longVal = toMont(.{ 3, 0, 0, 0 }) };
+    Fr_add(&r, &m5, &m3);
     try std.testing.expectEqual(Fr_MONT, r.type);
     try std.testing.expectEqual(@as(i32, 8), r.shortVal);
+    try std.testing.expectEqual(toMont(.{ 8, 0, 0, 0 }), r.longVal);
 }
 
 test "montgomery mul of dat-style constants" {
@@ -705,7 +891,9 @@ test "div and sub roundtrip" {
     var q = r;
     Fr_div(&q, &one, &seven);
     Fr_mul(&r, &q, &seven);
-    try std.testing.expectEqual(@as(i32, 1), r.shortVal);
+    var eq = r;
+    Fr_eq(&eq, &r, &one);
+    try std.testing.expect(Fr_isTrue(&eq) != 0);
     Fr_sub(&r, &three, &seven);
     Fr_add(&r, &r, &four);
     try std.testing.expectEqual(@as(i32, 0), r.shortVal);
@@ -723,6 +911,9 @@ test "shr moves whole limbs" {
     sh.longVal[0] = 3;
     Fr_shr(&r, &n, &sh);
     try std.testing.expectEqual(@as(i32, 1), r.shortVal);
+    sh.shortVal = 0;
+    Fr_shr(&r, &n, &sh);
+    try std.testing.expectEqual(@as(i32, 8), r.shortVal);
 }
 
 test "descending loop treats short -1 as less than zero" {

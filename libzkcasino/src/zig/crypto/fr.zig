@@ -130,6 +130,73 @@ fn fromMont(a: [4]u64) [4]u64 {
     return montMul(a, .{ 1, 0, 0, 0 });
 }
 
+/// Montgomery form of a field element. Add and mul stay in this domain:
+/// one limb add, or one CIOS multiply. `Fr` itself stays in normal form.
+pub const Mont = struct {
+    limbs: [4]u64,
+
+    pub fn fromNormal(n: [4]u64) Mont {
+        return .{ .limbs = toMont(n) };
+    }
+
+    pub fn toNormal(self: Mont) [4]u64 {
+        return fromMont(self.limbs);
+    }
+
+    pub fn fromFr(f: Fr) Mont {
+        return fromNormal(f.limbs);
+    }
+
+    pub fn toFr(self: Mont) Fr {
+        return .{ .limbs = self.toNormal() };
+    }
+
+    pub fn zero() Mont {
+        return .{ .limbs = .{ 0, 0, 0, 0 } };
+    }
+
+    /// mont(1) = R = 2^256 mod Q.
+    pub fn one() Mont {
+        return fromNormal(.{ 1, 0, 0, 0 });
+    }
+
+    pub fn add(self: Mont, other: Mont) Mont {
+        return .{ .limbs = rawAdd(self.limbs, other.limbs) };
+    }
+
+    pub fn sub(self: Mont, other: Mont) Mont {
+        return .{ .limbs = rawSub(self.limbs, other.limbs) };
+    }
+
+    pub fn neg(self: Mont) Mont {
+        return .{ .limbs = rawNeg(self.limbs) };
+    }
+
+    pub fn mul(self: Mont, other: Mont) Mont {
+        return .{ .limbs = montMul(self.limbs, other.limbs) };
+    }
+
+    /// a^(Q-2) via Montgomery multiplies. Result is mont(a^{-1}).
+    pub fn inv(self: Mont) Mont {
+        const exp = [4]u64{
+            Q_LIMBS[0] - 2,
+            Q_LIMBS[1],
+            Q_LIMBS[2],
+            Q_LIMBS[3],
+        };
+        var base = self;
+        var r = one();
+        var i: usize = 0;
+        while (i < 256) : (i += 1) {
+            const limb = i / 64;
+            const bit = @as(u64, 1) << @intCast(i % 64);
+            if ((exp[limb] & bit) != 0) r = r.mul(base);
+            base = base.mul(base);
+        }
+        return r;
+    }
+};
+
 /// Normal-domain product mod Q. The 512-bit schoolbook product does not fit in four limbs.
 pub fn rawMMul(a: [4]u64, b: [4]u64) [4]u64 {
     return fromMont(montMul(toMont(a), toMont(b)));
