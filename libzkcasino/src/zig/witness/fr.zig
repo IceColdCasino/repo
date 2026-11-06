@@ -534,28 +534,40 @@ fn getIntValue(pE: [*c]FrElement) i64 {
     return @intCast(n[0]);
 }
 
+// Shorts compare as signed int32 so a descending `for (var i = n; i >= 0; i--)`
+// stops at -1. Longs compare as canonical integers. A short and a long are the
+// same field element when their normal forms match, including short -1 and Q-1.
+fn cmpElements(a: FrElement, b: FrElement) i32 {
+    if ((a.type & Fr_LONG) == 0 and (b.type & Fr_LONG) == 0) {
+        if (a.shortVal < b.shortVal) return -1;
+        if (a.shortVal > b.shortVal) return 1;
+        return 0;
+    }
+    return cmp4(normalLimbs(a), normalLimbs(b));
+}
+
 pub export fn Fr_eq(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    setBool(r, cmp4(normalLimbs(a.*), normalLimbs(b.*)) == 0);
+    setBool(r, cmpElements(a.*, b.*) == 0);
 }
 
 pub export fn Fr_neq(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    setBool(r, cmp4(normalLimbs(a.*), normalLimbs(b.*)) != 0);
+    setBool(r, cmpElements(a.*, b.*) != 0);
 }
 
 pub export fn Fr_lt(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    setBool(r, cmp4(normalLimbs(a.*), normalLimbs(b.*)) < 0);
+    setBool(r, cmpElements(a.*, b.*) < 0);
 }
 
 pub export fn Fr_gt(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    setBool(r, cmp4(normalLimbs(a.*), normalLimbs(b.*)) > 0);
+    setBool(r, cmpElements(a.*, b.*) > 0);
 }
 
 pub export fn Fr_leq(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    setBool(r, cmp4(normalLimbs(a.*), normalLimbs(b.*)) <= 0);
+    setBool(r, cmpElements(a.*, b.*) <= 0);
 }
 
 pub export fn Fr_geq(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
-    setBool(r, cmp4(normalLimbs(a.*), normalLimbs(b.*)) >= 0);
+    setBool(r, cmpElements(a.*, b.*) >= 0);
 }
 
 pub export fn Fr_land(r: [*c]FrElement, a: [*c]FrElement, b: [*c]FrElement) void {
@@ -711,4 +723,18 @@ test "shr moves whole limbs" {
     sh.longVal[0] = 3;
     Fr_shr(&r, &n, &sh);
     try std.testing.expectEqual(@as(i32, 1), r.shortVal);
+}
+
+test "descending loop treats short -1 as less than zero" {
+    var neg = FrElement{ .shortVal = 0, .type = Fr_SHORT, .longVal = @splat(0) };
+    var one = FrElement{ .shortVal = 1, .type = Fr_SHORT, .longVal = @splat(0) };
+    var zero = FrElement{ .shortVal = 0, .type = Fr_SHORT, .longVal = @splat(0) };
+    Fr_sub(&neg, &zero, &one);
+    try std.testing.expectEqual(@as(i32, -1), neg.shortVal);
+    var ge = zero;
+    Fr_geq(&ge, &neg, &zero);
+    try std.testing.expectEqual(@as(i32, 0), ge.shortVal);
+    var q_minus = FrElement{ .shortVal = 0, .type = Fr_LONG, .longVal = shortToNormal(-1) };
+    Fr_eq(&ge, &neg, &q_minus);
+    try std.testing.expectEqual(@as(i32, 1), ge.shortVal);
 }
