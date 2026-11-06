@@ -12,6 +12,10 @@ struct FrElement {
 
 using PFrElement = FrElement*;
 
+// Generated witnesses call these. The symbols are the Zig field implementation
+// (C ABI), not a separate rapidsnark libfr.
+extern "C" {
+
 void Fr_add(PFrElement r, PFrElement a, PFrElement b);
 void Fr_sub(PFrElement r, PFrElement a, PFrElement b);
 void Fr_neg(PFrElement r, PFrElement a);
@@ -42,5 +46,7 @@ void Fr_lor(PFrElement r, PFrElement a, PFrElement b);
 void Fr_lnot(PFrElement r, PFrElement a);
 void Fr_leq(PFrElement r, PFrElement a, PFrElement b);
 void Fr_geq(PFrElement r, PFrElement a, PFrElement b);
+
+}
 
 #endif

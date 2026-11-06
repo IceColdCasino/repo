@@ -26,80 +26,118 @@ pub fn rawAdd(a: [4]u64, b: [4]u64) [4]u64 {
     if (cmp >= 0) {
         var borrow: u64 = 0;
         inline for (0..4) |i| {
-            const w: u128 = @as(u128, sum[i]) - @as(u128, q[i]) - borrow;
+            const w: u128 = @as(u128, sum[i]) -% @as(u128, q[i]) -% borrow;
             sum[i] = @truncate(w);
-            if (w >> 64 != 0) borrow = 1 else borrow = 0;
+            borrow = if (w > 0xffffffffffffffff) 1 else 0;
         }
     }
     return sum;
 }
 
-// Pure Zig: modular subtraction (a - b) mod Q
-pub fn rawSub(a: [4]u64, b: [4]u64) [4]u64 {
+fn plainSub(a: [4]u64, b: [4]u64) [4]u64 {
     var diff: [4]u64 = undefined;
     var borrow: u64 = 0;
     inline for (0..4) |i| {
-        const w: u128 = @as(u128, a[i]) - @as(u128, b[i]) - borrow;
+        const w: u128 = @as(u128, a[i]) -% @as(u128, b[i]) -% borrow;
         diff[i] = @truncate(w);
-        if (w >> 64 != 0) borrow = 1 else borrow = 0;
-    }
-    // Add Q if a < b (i.e., result is negative)
-    const cmp = rawCmp(a, b);
-    if (cmp < 0) {
-        const q = Q_LIMBS;
-        inline for (0..4) |i| {
-            const w: u128 = @as(u128, diff[i]) + @as(u128, q[i]);
-            diff[i] = @truncate(w);
-        }
+        borrow = if (w > 0xffffffffffffffff) 1 else 0;
     }
     return diff;
 }
 
+// Pure Zig: modular subtraction (a - b) mod Q
+pub fn rawSub(a: [4]u64, b: [4]u64) [4]u64 {
+    if (rawCmp(a, b) >= 0) return plainSub(a, b);
+    return plainSub(Q_LIMBS, plainSub(b, a));
+}
+
 // Pure Zig: negation -a mod Q
 pub fn rawNeg(a: [4]u64) [4]u64 {
-    const q = Q_LIMBS;
-    return rawSub(q, a);
+    if (rawIsZero(a)) return .{ 0, 0, 0, 0 };
+    return rawSub(Q_LIMBS, a);
 }
 
-// Pure Zig: modular multiplication (a * b) mod Q using schoolbook mul + reduction
-// Q is ~2^253 (BN254 curve order). The lower 256 bits of a*b can be up to ~8*Q,
-// so we reduce by repeatedly subtracting Q until result < Q.
-pub fn rawMMul(a: [4]u64, b: [4]u64) [4]u64 {
-    var result: [4]u64 = .{0, 0, 0, 0};
-    inline for (0..4) |i| {
-        inline for (0..4) |j| {
-            var carry: u128 = @as(u128, a[i]) * @as(u128, b[j]);
-            var k: usize = i + j;
-            while (carry != 0) {
-                const sum: u128 = @as(u128, result[k]) + carry;
-                result[k] = @truncate(sum);
-                carry = sum >> 64;
-                k += 1;
-            }
-        }
-    }
-    // Reduce mod Q using repeated subtraction (same pattern as reduceModQ)
-    const q = Q_LIMBS;
-    // Since a, b < Q and Q ~ 2^253, the lower 256 bits of a*b can be up
-    // to ~8*Q, so we loop until result < Q.
-    while (rawCmp(result, q) >= 0) {
-        var borrow: u64 = 0;
-        inline for (0..4) |i| {
-            const w: u128 = @as(u128, result[i]) - @as(u128, q[i]) - borrow;
-            result[i] = @truncate(w);
-            if (w >> 64 != 0) borrow = 1 else borrow = 0;
-        }
-    }
-    return result;
-}
+const R2 = [4]u64{
+    0x1bb8e645ae216da7,
+    0x53fe3ab1e35c59e3,
+    0x8c49833d53bb8085,
+    0x0216d0b17f4e44a5,
+};
+const MONT_N0: u64 = 0xc2e1f593efffffff;
 
-// Pure Zig: compare a and b (return negative, 0, or positive)
-pub fn rawCmp(a: [4]u64, b: [4]u64) i32 {
+fn cmp4(a: [4]u64, b: [4]u64) i32 {
     inline for (0..4) |i| {
-        if (a[i] < b[i]) return -1;
-        if (a[i] > b[i]) return 1;
+        const j = 3 - i;
+        if (a[j] < b[j]) return -1;
+        if (a[j] > b[j]) return 1;
     }
     return 0;
+}
+
+fn subQ(a: [4]u64) [4]u64 {
+    var out: [4]u64 = undefined;
+    var borrow: u64 = 0;
+    inline for (0..4) |i| {
+        const w: u128 = @as(u128, a[i]) -% @as(u128, Q_LIMBS[i]) -% borrow;
+        out[i] = @truncate(w);
+        borrow = if (w > 0xffffffffffffffff) 1 else 0;
+    }
+    return out;
+}
+
+fn montMul(a: [4]u64, b: [4]u64) [4]u64 {
+    var t = [6]u64{ 0, 0, 0, 0, 0, 0 };
+    inline for (0..4) |i| {
+        var carry: u128 = 0;
+        inline for (0..4) |j| {
+            const prod = @as(u128, t[j]) + @as(u128, a[j]) * @as(u128, b[i]) + carry;
+            t[j] = @truncate(prod);
+            carry = prod >> 64;
+        }
+        const top = @as(u128, t[4]) + carry;
+        t[4] = @truncate(top);
+        t[5] = @truncate(top >> 64);
+        const m: u64 = t[0] *% MONT_N0;
+        var carry2: u128 = 0;
+        {
+            const prod = @as(u128, t[0]) + @as(u128, m) * @as(u128, Q_LIMBS[0]);
+            carry2 = prod >> 64;
+        }
+        inline for (1..4) |j| {
+            const prod = @as(u128, t[j]) + @as(u128, m) * @as(u128, Q_LIMBS[j]) + carry2;
+            t[j - 1] = @truncate(prod);
+            carry2 = prod >> 64;
+        }
+        const prod = @as(u128, t[4]) + carry2;
+        t[3] = @truncate(prod);
+        const extra = (prod >> 64) + t[5];
+        t[4] = @truncate(extra);
+        t[5] = @truncate(extra >> 64);
+    }
+    var r: [4]u64 = .{ t[0], t[1], t[2], t[3] };
+    if (t[4] != 0 or t[5] != 0 or cmp4(r, Q_LIMBS) >= 0) {
+        r = subQ(r);
+        if (cmp4(r, Q_LIMBS) >= 0) r = subQ(r);
+    }
+    return r;
+}
+
+fn toMont(a: [4]u64) [4]u64 {
+    return montMul(a, R2);
+}
+
+fn fromMont(a: [4]u64) [4]u64 {
+    return montMul(a, .{ 1, 0, 0, 0 });
+}
+
+/// Normal-domain product mod Q. The 512-bit schoolbook product does not fit in four limbs.
+pub fn rawMMul(a: [4]u64, b: [4]u64) [4]u64 {
+    return fromMont(montMul(toMont(a), toMont(b)));
+}
+
+// Pure Zig: compare a and b (return negative, 0, or positive). High limb first.
+pub fn rawCmp(a: [4]u64, b: [4]u64) i32 {
+    return cmp4(a, b);
 }
 
 // Pure Zig: check if a is zero
@@ -207,7 +245,7 @@ pub const Fr = struct {
         while (i < 256) : (i += 1) {
             const limb = i / 64;
             const bit = @as(u64, 1) << @intCast(i % 64);
-            if (exp[limb] & bit != 0) {
+            if ((exp[limb] & bit) != 0) {
                 r = r.mul(base);
             }
             base = base.square();
@@ -361,25 +399,22 @@ fn subLimbs(a: [4]u64, b: [4]u64) [4]u64 {
 }
 
 fn reduceModQ(l: *[4]u64) void {
-    const q = Q_LIMBS;
-    // Compare l and q limb-by-limb
-    var gt: bool = false;
-    inline for (0..4) |i| {
-        if (l[i] > q[i]) {
-            gt = true;
-            break;
-        } else if (l[i] < q[i]) {
-            gt = false;
-            break;
-        }
-    }
-    // If l >= q, subtract q
-    if (gt) {
+    // 2^256 < 6Q, so a 256-bit integer needs at most five subtractions.
+    var n: u8 = 0;
+    while (rawCmp(l.*, Q_LIMBS) >= 0) : (n += 1) {
+        if (n == 6) break;
         var borrow: u64 = 0;
         inline for (0..4) |i| {
-            const w: u128 = @as(u128, l[i]) - @as(u128, q[i]) - borrow;
+            const w: u128 = @as(u128, l[i]) -% @as(u128, Q_LIMBS[i]) -% borrow;
             l[i] = @truncate(w);
-            if (w >> 64 != 0) borrow = 1 else borrow = 0;
+            borrow = if (w > 0xffffffffffffffff) 1 else 0;
         }
     }
+}
+
+test "field sub and inverse" {
+    const three = Fr.fromU64(3);
+    const seven = Fr.fromU64(7);
+    try std.testing.expect(three.sub(seven).add(Fr.fromU64(4)).isZero());
+    try std.testing.expect(seven.mul(seven.inv()).eql(Fr.one()));
 }

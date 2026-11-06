@@ -210,7 +210,7 @@ pub fn winnerMasks(pot_masks: []const u64, plaintext: []const u64, out: []u64) v
         var hands: [10]EvaluatedHand = undefined;
         var p: usize = 0;
         while (p < 10) : (p += 1) {
-            if ((pot_mask >> @intCast(p)) & 1 != 0) {
+            if (((pot_mask >> @intCast(p)) & 1) != 0) {
                 var cards: [7]u64 = undefined;
                 cards[0] = plaintext[p * 2];
                 cards[1] = plaintext[p * 2 + 1];

@@ -74,7 +74,7 @@ pub fn mulLimbs(base: Point, scalar: [4]u64) Point {
     while (i < 256) : (i += 1) {
         const limb = i / 64;
         const bit = @as(u64, 1) << @intCast(i % 64);
-        if (scalar[limb] & bit != 0) {
+        if ((scalar[limb] & bit) != 0) {
             res = add(res, exp);
         }
         exp = double(exp);

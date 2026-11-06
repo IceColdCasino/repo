@@ -132,10 +132,10 @@ void Fr_div(PFrElement r, PFrElement a, PFrElement b) {
 
 // Modular inversion: r = a^(-1) mod Q using Fermat's little theorem: a^(q-2)
 void Fr_inv(PFrElement r, PFrElement a) {
-    FrElement result = {{0, 0, {1, 0, 0, 0}}};
+    FrElement result = {0, 0, {1, 0, 0, 0}};
     FrElement base;
     for (int i = 0; i < 4; i++) base.longVal[i] = (*a).longVal[i];
-    FrElement exp = {{0, 0, {Q_LIMBS.longVal[0] - 2, Q_LIMBS.longVal[1], Q_LIMBS.longVal[2], Q_LIMBS.longVal[3]}}};
+    FrElement exp = {0, 0, {Q_LIMBS.longVal[0] - 2, Q_LIMBS.longVal[1], Q_LIMBS.longVal[2], Q_LIMBS.longVal[3]}};
     for (int bit = 0; bit < 256; bit++) {
         int limb = bit / 64;
         int bitpos = bit % 64;
@@ -162,18 +162,18 @@ void Fr_copyn(PFrElement dst, PFrElement src, size_t n) {
 // Equality: result = (a == b) ? 1 : 0
 void Fr_eq(PFrElement result, PFrElement a, PFrElement b) {
     if (std::memcmp(a, b, sizeof(FrElement)) == 0) {
-        (*r).longVal[0] = 1; (*r).longVal[1] = 0; (*r).longVal[2] = 0; (*r).longVal[3] = 0;
+        (*result).longVal[0] = 1; (*result).longVal[1] = 0; (*result).longVal[2] = 0; (*result).longVal[3] = 0;
     } else {
-        (*r).longVal[0] = 0; (*r).longVal[1] = 0; (*r).longVal[2] = 0; (*r).longVal[3] = 0;
+        (*result).longVal[0] = 0; (*result).longVal[1] = 0; (*result).longVal[2] = 0; (*result).longVal[3] = 0;
     }
 }
 
 // Not equal: result = (a != b) ? 1 : 0
 void Fr_neq(PFrElement result, PFrElement a, PFrElement b) {
     if (std::memcmp(a, b, sizeof(FrElement)) == 0) {
-        (*r).longVal[0] = 0; (*r).longVal[1] = 0; (*r).longVal[2] = 0; (*r).longVal[3] = 0;
+        (*result).longVal[0] = 0; (*result).longVal[1] = 0; (*result).longVal[2] = 0; (*result).longVal[3] = 0;
     } else {
-        (*r).longVal[0] = 1; (*r).longVal[1] = 0; (*r).longVal[2] = 0; (*r).longVal[3] = 0;
+        (*result).longVal[0] = 1; (*result).longVal[1] = 0; (*result).longVal[2] = 0; (*result).longVal[3] = 0;
     }
 }
 
@@ -198,9 +198,9 @@ void Fr_lt(PFrElement result, PFrElement a, PFrElement b) {
         if ((*a).longVal[i] > (*b).longVal[i]) { cmp = 1; break; }
     }
     if (cmp < 0) {
-        (*r).longVal[0] = 1; (*r).longVal[1] = 0; (*r).longVal[2] = 0; (*r).longVal[3] = 0;
+        (*result).longVal[0] = 1; (*result).longVal[1] = 0; (*result).longVal[2] = 0; (*result).longVal[3] = 0;
     } else {
-        (*r).longVal[0] = 0; (*r).longVal[1] = 0; (*r).longVal[2] = 0; (*r).longVal[3] = 0;
+        (*result).longVal[0] = 0; (*result).longVal[1] = 0; (*result).longVal[2] = 0; (*result).longVal[3] = 0;
     }
 }
 

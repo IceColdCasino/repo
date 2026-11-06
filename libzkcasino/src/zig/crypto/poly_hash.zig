@@ -9,7 +9,7 @@ pub fn extractAndCombine(value: Fr) Fr {
     var reversed: u128 = 0;
     var i: u7 = 0;
     while (i < 126) : (i += 1) {
-        if ((high126 >> i) & 1 != 0) {
+        if (((high126 >> i) & 1) != 0) {
             reversed |= @as(u128, 1) << (125 - i);
         }
     }
