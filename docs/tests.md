@@ -35,14 +35,14 @@ A poker C++, TypeScript, Zig, zkey, or verification-key file runs the poker
 tests. A shoe file runs the games that prove that shoe. Shared prover code
 and `register_main` run every game. Docs and other files run nothing.
 Typecheck runs when TypeScript or its package config changes. Each selected
-game runs twice, on `ubuntu-24.04-arm` and on `macos-latest`:
+game runs twice, on `ubuntu-24.04` and on `macos-latest`:
 the proving keys are about 12 GB together, and a standard runner cannot hold
-all of them plus the witness build. The macOS job installs the
-IceColdCasino/groth16 formula and uses `zkey lib`. The Linux job points
-`RAPIDSNARK_LIB` at the iden3 arm64 library, because that formula has no
-Linux build yet. It installs GMP, builds the witness
-libraries for that game (`zig build -Dcircuit-set=<game>`), pulls only that
-game’s keys from Git LFS, then runs the matching `complete_*` file.
+all of them plus the witness build. Both jobs use `zkey lib`. macOS installs
+the IceColdCasino/groth16 formula. Linux installs the published 0.3.0 x86_64
+archive. The Linux job installs GMP, builds the witness libraries for that
+game (`zig build -Dcircuit-set=<game>`), uploads them, pulls only that game’s
+keys from Git LFS, then runs the matching `complete_*` file. The Arcium job
+downloads those libraries.
 
 Those jobs need `zkey/` and `.gitattributes` on `main`. The blackjack
 eight-seat case stays skipped.

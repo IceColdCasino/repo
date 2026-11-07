@@ -35,11 +35,12 @@ and bingo have no house seat.
 other files under `test/e2e/` start localnet, load the programs, and stage
 the deck. They are not extra games.
 
-GitHub Actions runs this suite on macOS after the game builds. That job
-downloads the macOS `libzkcasino` libraries and the Linux localnet programs
-(`casino.so`, the `.arcis` circuits, and `light_casino.so`) instead of
-compiling them again. A change under `test/e2e/`, `src/chain/`, `src/arcium/`,
-`src/testing/`, `rust/`, or `app/` selects every game so those libraries exist.
+GitHub Actions runs this suite on `ubuntu-24.04` after the game builds.
+That job downloads the Linux `libzkcasino` libraries from the game jobs and
+the Linux localnet programs (`casino.so`, the `.arcis` circuits, and
+`light_casino.so`). It does not compile either again. A change under
+`test/e2e/`, `src/chain/`, `src/arcium/`, `src/testing/`, `rust/`, or `app/`
+selects every game so those libraries exist.
 
 ## Run
 

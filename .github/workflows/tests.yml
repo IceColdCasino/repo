@@ -162,15 +162,8 @@ jobs:
             zkey lib
           else
             sudo apt-get update
-            sudo apt-get install -y g++ libgmp-dev git-lfs unzip
-            ver=v0.0.8
-            asset="rapidsnark-linux-arm64-${ver}"
-            curl -fsSL -o /tmp/rapidsnark.zip \
-              "https://github.com/iden3/rapidsnark/releases/download/${ver}/${asset}.zip"
-            unzip -q /tmp/rapidsnark.zip -d /tmp/rapidsnark
-            lib="/tmp/rapidsnark/${asset}/lib/librapidsnark.so"
-            test -f "$lib"
-            echo "RAPIDSNARK_LIB=${lib}" >> "$GITHUB_ENV"
+            sudo apt-get install -y g++ libgmp-dev git-lfs libc++1 libc++abi1
+            bash .github/install-groth16.sh
           fi
 
       - uses: mlugg/setup-zig@v2
@@ -202,6 +195,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: libzkcasino-macos-${{ matrix.circuit_set }}
+          if-no-files-found: error
+          overwrite: true
+          path: libzkcasino/zig-out/lib
+
+      - name: Upload Linux libzkcasino libraries
+        if: steps.reuse.outputs.reuse != 'true' && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: libzkcasino-linux-${{ matrix.circuit_set }}
           if-no-files-found: error
           overwrite: true
           path: libzkcasino/zig-out/lib
@@ -426,34 +428,31 @@ jobs:
         with:
           lfs: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-          use-cache: false
       - name: Download Linux localnet programs
         uses: actions/download-artifact@v4
         with:
           name: rust-localnet-linux
           path: .
-      - name: Install prover and build libzkcasino
-        env:
-          GAMES: ${{ needs.changes.outputs.games }}
+      - name: Download Linux libzkcasino libraries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: libzkcasino-linux-*
+          path: libzkcasino-parts
+      - name: Install the downloaded libraries and the prover
         run: |
           set -eux
           sudo apt-get update
-          sudo apt-get install -y g++ libgmp-dev git-lfs unzip
-          sets=""
-          for game in ${GAMES}; do
-            sets="${sets} ${game}"
-          done
-          # Deduplicate circuit sets (matrix game name == circuit_set).
-          sets="$(echo ${sets} | tr ' ' '\n' | sort -u | tr '\n' ' ')"
+          sudo apt-get install -y g++ libgmp-dev libc++1 libc++abi1
+          bash .github/install-groth16.sh
           mkdir -p libzkcasino/zig-out/lib
-          for set in ${sets}; do
-            (cd libzkcasino && zig build -Doptimize=ReleaseFast -Dcircuit-set="${set}")
-          done
+          find libzkcasino-parts -type f -name '*.so' -exec cp -f {} libzkcasino/zig-out/lib/ \;
           test -f libzkcasino/zig-out/lib/libzkcasino-player.so
           test -f libzkcasino/zig-out/lib/libzkcasino-player-bridge.so
+          file libzkcasino/zig-out/lib/libzkcasino-player.so | grep -q 'x86-64'
+          if ldd libzkcasino/zig-out/lib/libzkcasino-player.so | grep -q 'not found'; then
+            ldd libzkcasino/zig-out/lib/libzkcasino-player.so
+            exit 1
+          fi
           for name in verify_deck_hash_chunk reveal_card validate_bet seal_showdown_pair compute_pots distribute_and_settle settle_casino_hand; do
             test -f "rust/casino/build/${name}.arcis"
           done

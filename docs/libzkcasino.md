@@ -33,7 +33,8 @@ Artifacts land in `libzkcasino/zig-out/lib`.
 the poker witnesses. The same option accepts `blackjack`, `baccarat`, `war`,
 `roulette`, `craps`, `keno`, `slots`, and `bingo`. `all` is the default.
 GitHub Actions uses one set per game so the runner only compiles the circuits
-that test proves. Linux builds require aarch64 and link system GMP.
+that test proves. Linux builds link system GMP. The Actions Linux runner is
+x86_64 so the Arcium job can load the libraries that job already built.
 
 `-Dhouse=true` is the house-seat build. It is only valid with `baccarat`,
 `blackjack`, `war`, `roulette`, `craps`, `keno`, or `slots`. Those builds
