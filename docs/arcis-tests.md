@@ -41,6 +41,9 @@ That job downloads the Linux `libzkcasino` libraries from the game jobs and
 the Linux localnet programs (`casino.so`, the `.arcis` compdefs, and
 `light_casino.so`) from the Rust job. It does not compile them again.
 `UPLOAD_COMP_DEFS=1` uploads those compdefs onto the localnet after it starts.
+The Rust job also generates a whitelist admin keypair, compiles that pubkey
+into the programs, and the Arcis job signs with that file. It is not the
+1Password whitelist admin.
 A change under
 `test/e2e/`, `src/chain/`, `src/arcium/`, `src/testing/`, `rust/`, or `app/`
 selects every game so those libraries exist.

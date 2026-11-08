@@ -2,7 +2,9 @@
  * Whitelist admin and MXE authority are different keys.
  *
  * Admin: `WHITELIST_ADMIN_KEYPAIR`, or `~/.config/solana/whitelist-admin.json`.
- * That file must sign as `WHITELIST_ADMIN`. WebView may inject
+ * That file must sign as `WHITELIST_ADMIN`. CI localnet generates its own
+ * keypair and rewrites `WHITELIST_ADMIN`; it does not use the 1Password key.
+ * WebView may inject
  * `__ZK_LAUNCH_CONFIG.whitelistAdminSecret`.
  * MXE: `MXE_AUTHORITY_KEYPAIR`, or `~/.config/solana/id.json`.
  * CompDef upload, and the devnet test fee payer.

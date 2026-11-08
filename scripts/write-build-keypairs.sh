@@ -27,12 +27,16 @@ case "$want" in
   light-casino|light)
     write_one "$ROOT/rust/light-casino/target/deploy/light_casino-keypair.json"
     ;;
+  whitelist-admin)
+    # Localnet-only. The 1Password whitelist admin stays off CI.
+    write_one "$ROOT/rust/casino/target/deploy/whitelist-admin-keypair.json"
+    ;;
   both)
     "$0" casino
     "$0" light-casino
     ;;
   *)
-    echo "usage: $0 [casino|light-casino|both]" >&2
+    echo "usage: $0 [casino|light-casino|whitelist-admin|both]" >&2
     exit 2
     ;;
 esac

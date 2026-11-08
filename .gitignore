@@ -10,6 +10,7 @@ build/
 rust/casino/keys/
 rust/light-casino/keys/
 rust/casino/target/deploy/casino-keypair.json
+rust/casino/target/deploy/whitelist-admin-keypair.json
 rust/light-casino/target/deploy/light_casino-keypair.json
 test-ledger/
 rust-localnet-artifact/

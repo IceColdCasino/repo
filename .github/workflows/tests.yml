@@ -295,6 +295,9 @@ jobs:
           export CASINO_ALLOW_TESTING=1
           export CASINO_FEATURES=testing
           bash scripts/prepare-ephemeral-program-ids.sh
+          test -f rust/casino/target/deploy/whitelist-admin-keypair.json
+          ! grep -q 'CAdmin6xuLQFoANbHQWUpRmfBq9Su3gWeFCtELBh7oc3' rust/casino/programs/casino/src/whitelist.rs
+          ! grep -q 'CAdmin6xuLQFoANbHQWUpRmfBq9Su3gWeFCtELBh7oc3' rust/shared-zk-ids/src/lib.rs
           bash rust/casino/scripts/build.sh
           (
             cd rust/light-casino
@@ -331,6 +334,7 @@ jobs:
           cp -a rust/casino/target/deploy/casino-artifact-mode.json "${stage}/rust/casino/target/deploy/"
           cp -a rust/casino/target/idl/casino.json "${stage}/rust/casino/target/idl/"
           cp -a rust/casino/target/deploy/casino-keypair.json "${stage}/rust/casino/target/deploy/"
+          cp -a rust/casino/target/deploy/whitelist-admin-keypair.json "${stage}/rust/casino/target/deploy/"
           cp -a rust/light-casino/target/deploy/light_casino.so "${stage}/rust/light-casino/target/deploy/"
           cp -a rust/light-casino/target/deploy/.light_casino_features_testing "${stage}/rust/light-casino/target/deploy/"
           cp -a rust/light-casino/target/deploy/light_casino-keypair.json "${stage}/rust/light-casino/target/deploy/"
@@ -437,6 +441,9 @@ jobs:
     timeout-minutes: 600
     env:
       CASINO_EPHEMERAL_PROGRAM_IDS: "1"
+      # Generated in the Rust job and compiled into the programs. Not the
+      # 1Password whitelist admin.
+      WHITELIST_ADMIN_KEYPAIR: ${{ github.workspace }}/rust/casino/target/deploy/whitelist-admin-keypair.json
       # rust-linux already compiled casino.so, light_casino.so, and the .arcis
       # compdefs. This job only uploads those compdefs onto the localnet.
       CASINO_PREBUILT: "1"
@@ -498,6 +505,7 @@ jobs:
             cp -a rust/light-casino/target/idl/light_casino.json rust/light-casino/idl/
           fi
           test -f rust/casino/target/deploy/casino-keypair.json
+          test -f rust/casino/target/deploy/whitelist-admin-keypair.json
           test -f rust/light-casino/target/deploy/light_casino-keypair.json
       - name: Install Solana, Anchor, and Arcium
         run: bash .github/install-localnet-tools.sh
@@ -506,6 +514,7 @@ jobs:
           set -eux
           export PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
           bash scripts/prepare-ephemeral-program-ids.sh --keep-keypairs
+          ! grep -q 'CAdmin6xuLQFoANbHQWUpRmfBq9Su3gWeFCtELBh7oc3' src/room-lifecycle.ts
           python3 -c 'import os,time; now=time.time()+2; [os.utime(os.path.join(d,f),(now,now)) for r in ("rust/casino/build","rust/casino/target","rust/light-casino/target") for d,_,fs in os.walk(r) for f in fs]'
       - uses: oven-sh/setup-bun@v2
       - name: Pull proving keys
