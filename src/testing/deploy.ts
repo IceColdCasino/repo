@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   buildCasinoProgram,
   buildCasinoIdl,
+  casinoPrebuiltRequested,
   ensureCasinoArtifactsForLocalnet,
 } from './build-casino';
 import { createHash } from 'node:crypto';
@@ -140,6 +141,9 @@ export async function ensureCasinoMatchesLocalnet(connection: web3.Connection): 
   const ix = idl.instructions?.find((i) => i.name === 'consume_register_receipt');
   const names = ix?.accounts?.map((a) => a.name) ?? [];
   if (names.includes('payer') || names[0] !== 'authority') {
+    if (casinoPrebuiltRequested()) {
+      throw new Error('Prebuilt casino IDL does not match the CPI bridge layout');
+    }
     buildCasinoIdl({ force: true });
   }
 
@@ -223,6 +227,12 @@ function lightCasinoBuildEnv(): NodeJS.ProcessEnv {
 
 export function buildLightCasinoProgram(options: { force?: boolean; testing?: boolean } = {}): void {
   const testing = options.testing ?? true;
+  if (casinoPrebuiltRequested() && !options.force) {
+    if (!fs.existsSync(LIGHT_CASINO_SO)) {
+      throw new Error(`CASINO_PREBUILT=1 but ${LIGHT_CASINO_SO} is missing`);
+    }
+    return;
+  }
   const needsTestingStamp = testing && !fs.existsSync(LIGHT_CASINO_TESTING_STAMP);
   if (!options.force && lightCasinoProgramBuilt() && !needsTestingStamp) return;
   const features = testing ? ' --features testing' : '';

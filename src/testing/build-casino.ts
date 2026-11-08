@@ -22,6 +22,16 @@ const REQUIRED_ARCIS = [
 ].map((name) => path.join(BUILD_DIR, `${name}.arcis`));
 const ENCRYPTED_IXS_DIR = path.join(CASINO_DIR, 'encrypted-ixs');
 
+/**
+ * The Rust CI job already compiled the program, IDL, and `.arcis` compdefs.
+ * The Arcis job uploads those compdefs; it must not compile them again.
+ * Mtime checks are wrong there: rewriting program ids, and dropping the
+ * dotfile testing stamps from the artifact, both look like a stale binary.
+ */
+export function casinoPrebuiltRequested(): boolean {
+  return process.env.CASINO_PREBUILT === '1';
+}
+
 /** True when required Arcis artifacts exist and are newer than circuit source. */
 export function casinoCircuitsBuilt(): boolean {
   if (!REQUIRED_ARCIS.every((artifact) => fs.existsSync(artifact))) return false;
@@ -52,6 +62,14 @@ export function casinoE2EArtifactsReady(): boolean {
  * Never re-runs arcium build if .arcis files exist — arcium build runs Clean first.
  */
 export function buildArcisCircuits(options: { force?: boolean } = {}): void {
+  if (casinoPrebuiltRequested()) {
+    if (!REQUIRED_ARCIS.every((artifact) => fs.existsSync(artifact))) {
+      throw new Error(
+        `CASINO_PREBUILT=1 but circuit compdefs are missing under ${BUILD_DIR}`,
+      );
+    }
+    return;
+  }
   if (!options.force && casinoCircuitsBuilt()) {
     return;
   }
@@ -144,6 +162,15 @@ export function casinoCpiBridgeReady(): boolean {
 /** Build the on-chain Anchor program (.so) — separate from arcium --skip-program. */
 export function buildCasinoProgram(options: { testing?: boolean; force?: boolean } = {}): void {
   const testing = options.testing ?? false;
+  if (casinoPrebuiltRequested()) {
+    if (!casinoProgramBuilt()) {
+      throw new Error(`CASINO_PREBUILT=1 but ${CASINO_SO} is missing`);
+    }
+    if (testing && casinoArtifactMode() !== 'testing') {
+      throw new Error('CASINO_PREBUILT=1 but casino.so is not a testing build');
+    }
+    return;
+  }
   const needsModeRebuild = casinoNeedsTestingRebuild(testing);
   if (!options.force && casinoProgramIsFresh() && !needsModeRebuild) {
     return;
@@ -190,6 +217,12 @@ export function buildCasinoProgram(options: { testing?: boolean; force?: boolean
 
 /** Generate Anchor IDL (genesis-loaded poker has no on-chain IDL account). */
 export function buildCasinoIdl(options: { force?: boolean } = {}): void {
+  if (casinoPrebuiltRequested()) {
+    if (!casinoIdlBuilt()) {
+      throw new Error(`CASINO_PREBUILT=1 but ${CASINO_IDL} is missing`);
+    }
+    return;
+  }
   if (!options.force && casinoIdlBuilt()) {
     const idl = JSON.parse(fs.readFileSync(CASINO_IDL, 'utf8')) as {
       instructions?: Array<{ name: string; accounts?: Array<{ name: string }> }>;
@@ -234,6 +267,15 @@ export function ensureCasinoArtifactsForLocalnet(options: { testing?: boolean } 
     cwd: process.cwd(),
     stdio: 'inherit',
   });
+  if (casinoPrebuiltRequested()) {
+    if (!REQUIRED_ARCIS.every((artifact) => fs.existsSync(artifact)) || !casinoProgramBuilt() || !casinoIdlBuilt()) {
+      throw new Error(
+        'CASINO_PREBUILT=1 but localnet artifacts are missing. '
+          + 'The Rust job must upload casino.so, the IDL, and build/*.arcis.',
+      );
+    }
+    return;
+  }
   if (!casinoLocalnetArtifactsReady()) {
     throw new Error(
       'Localnet prerequisites missing after build. Run: cd rust/casino && ./scripts/build.sh',

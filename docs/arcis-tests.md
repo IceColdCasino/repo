@@ -38,8 +38,10 @@ the deck. They are not extra games.
 GitHub Actions runs this suite on `ubuntu-24.04` after the game builds.
 That runner is Linux, so localnet uses Docker Engine. `scripts/bin/docker` is the Apple Container shim on a Mac and execs `/usr/bin/docker` in this job.
 That job downloads the Linux `libzkcasino` libraries from the game jobs and
-the Linux localnet programs (`casino.so`, the `.arcis` circuits, and
-`light_casino.so`). It does not compile either again. A change under
+the Linux localnet programs (`casino.so`, the `.arcis` compdefs, and
+`light_casino.so`) from the Rust job. It does not compile them again.
+`UPLOAD_COMP_DEFS=1` uploads those compdefs onto the localnet after it starts.
+A change under
 `test/e2e/`, `src/chain/`, `src/arcium/`, `src/testing/`, `rust/`, or `app/`
 selects every game so those libraries exist.
 

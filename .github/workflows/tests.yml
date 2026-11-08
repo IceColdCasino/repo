@@ -340,6 +340,7 @@ jobs:
         with:
           name: rust-localnet-linux
           if-no-files-found: error
+          include-hidden-files: true
           path: ${{ env.stage }}
 
   macos-app:
@@ -436,6 +437,10 @@ jobs:
     timeout-minutes: 600
     env:
       CASINO_EPHEMERAL_PROGRAM_IDS: "1"
+      # rust-linux already compiled casino.so, light_casino.so, and the .arcis
+      # compdefs. This job only uploads those compdefs onto the localnet.
+      CASINO_PREBUILT: "1"
+      UPLOAD_COMP_DEFS: "1"
       LIGHT_GENESIS: "0"
       ARCIUM_USE_APPLE_CONTAINER: "0"
       DOCKER_DEFAULT_PLATFORM: "linux/amd64"
@@ -569,8 +574,9 @@ jobs:
           fi
           docker info >/dev/null
           # Validator stays on 127.0.0.1 for arcium CLI websockets. Containers dial
-          # the docker bridge gateway, so forward RPC (:8899) and pubsub (:8900)
-          # for the lifetime of this step.
+          # the docker bridge gateway, so forward RPC (:8899) and pubsub (:8900).
+          # Anchor treats any listener on 8899 as "rpc port already in use", so
+          # the forwarder waits until the validator owns the loopback port.
           sudo apt-get update
           sudo apt-get install -y socat
           gateway="$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')"
@@ -578,10 +584,21 @@ jobs:
           export ARCIUM_DOCKER_HOST_GATEWAY="${gateway}"
           sudo pkill -f 'socat TCP-LISTEN:8899' || true
           sudo pkill -f 'socat TCP-LISTEN:8900' || true
-          sudo socat TCP-LISTEN:8899,bind="${gateway}",fork,reuseaddr TCP:127.0.0.1:8899 &
-          sudo socat TCP-LISTEN:8900,bind="${gateway}",fork,reuseaddr TCP:127.0.0.1:8900 &
-          sleep 1
-          ss -ltn | grep -E ":8899|:8900" || true
+          forward_when_ready() {
+            local port="$1"
+            sudo bash -c "
+              for _ in \$(seq 1 2400); do
+                if ss -ltn | grep -Eq '127\\.0\\.0\\.1:${port}([^0-9]|$)'; then
+                  exec socat TCP-LISTEN:${port},bind=${gateway},fork,reuseaddr TCP:127.0.0.1:${port}
+                fi
+                sleep 0.5
+              done
+              echo 'validator did not listen on 127.0.0.1:${port}' >&2
+              exit 1
+            " &
+          }
+          forward_when_ready 8899
+          forward_when_ready 8900
           for game in ${GAMES}; do
             bun test --max-concurrency=1 --timeout=1800000 "test/e2e/full-game-zk-arcis-${game}-2player.test.ts" \
               || {
