@@ -361,8 +361,10 @@ export class LocalnetOrchestrator {
       ['localnet', '--skip-build', '--override-trusted-dealer-ip', tdIpArg],
       {
         cwd: CASINO_DIR,
-        stdio: 'pipe',
-        detached: false,
+        // Ignore stdin so `docker compose up` cannot attach to the test
+        // process. The child stays up while the tests run against it.
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
         env: arciumDockerEnv(),
       },
     );

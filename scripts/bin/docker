@@ -381,6 +381,64 @@ fake_compose_version() {
   echo "Docker Compose version v2.39.1 (apple-container-compose)"
 }
 
+# Arcium runs `docker compose -f … up` and waits on that process only as a
+# supervisor. Attached `up` has no TTY on GitHub Actions and never returns, so
+# the CLI never reaches the validator and the tests never start. Detach the
+# stack, then stay alive until that supervisor is signalled.
+run_engine_compose() {
+  local arg sub="" skip_next=0 has_detach=0
+  local -a global=()
+  for arg in "$@"; do
+    if [[ "$skip_next" -eq 1 ]]; then
+      global+=("$arg")
+      skip_next=0
+      continue
+    fi
+    if [[ -z "$sub" ]]; then
+      case "$arg" in
+        -f|--file|-p|--project-name|--env-file|--profile)
+          global+=("$arg")
+          skip_next=1
+          ;;
+        -f=*|--file=*|-p=*|--project-name=*|--env-file=*|--profile=*)
+          global+=("$arg")
+          ;;
+        up|down|ps|logs|config|exec|pull|stop|start|restart|kill|version|--version)
+          sub="$arg"
+          ;;
+      esac
+      continue
+    fi
+    case "$arg" in
+      -d|--detach) has_detach=1 ;;
+    esac
+  done
+
+  if [[ "$sub" != "up" || "$has_detach" -eq 1 ]]; then
+    run_via_bridge compose "$@"
+  fi
+
+  local bin
+  bin="$(real_docker_bin)" || exit $?
+  echo "docker shim: backgrounding Arcium with docker compose up -d" >&2
+  set +e
+  "$bin" compose "${global[@]}" up -d < /dev/null
+  local up_status=$?
+  set -e
+  if [[ "$up_status" -ne 0 ]]; then
+    exit "$up_status"
+  fi
+
+  cleanup_engine_compose() {
+    "$bin" compose "${global[@]}" down --remove-orphans >/dev/null 2>&1 || true
+    exit 0
+  }
+  trap cleanup_engine_compose TERM INT HUP
+  while true; do
+    sleep 2
+  done
+}
+
 cmd="${1:-}"
 shift || true
 
@@ -408,7 +466,7 @@ case "$cmd" in
       fi
       run_apple_compose "$@"
     fi
-    run_via_bridge compose "$@"
+    run_engine_compose "$@"
     ;;
   info)
     if have_apple_container; then
