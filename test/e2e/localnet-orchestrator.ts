@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  APPLE_CONTAINER_NOT_RUNNING_MESSAGE,
+  containerRuntimeUnavailableMessage,
   arciumDockerEnv,
   arciumDockerPullError,
   ensureArxNodeConfigs,
@@ -13,6 +13,7 @@ import {
   retargetMxeKeygenToCasinoProgram,
   resetAppleArxDhcpNetwork,
   ensureAppleArxNetwork,
+  isAppleContainerRuntime,
   resolveArxNodeIps,
   resolveDockerBinary,
   resolveTrustedDealerIpArg,
@@ -273,8 +274,13 @@ export class LocalnetOrchestrator {
       return;
     }
 
+    log(
+      isAppleContainerRuntime()
+        ? 'runtime: Apple Container'
+        : 'runtime: Docker Engine',
+    );
     if (!isDockerRunning()) {
-      throw new Error(APPLE_CONTAINER_NOT_RUNNING_MESSAGE);
+      throw new Error(containerRuntimeUnavailableMessage());
     }
     ensureAnchorTomlWritable();
 
@@ -574,7 +580,7 @@ export class LocalnetOrchestrator {
         && !isDockerRunning()
       ) {
         throw new Error(
-          `${APPLE_CONTAINER_NOT_RUNNING_MESSAGE}\n`
+          `${containerRuntimeUnavailableMessage()}\n`
             + this.arciumLog.trim().slice(-2000),
         );
       }

@@ -36,6 +36,7 @@ other files under `test/e2e/` start localnet, load the programs, and stage
 the deck. They are not extra games.
 
 GitHub Actions runs this suite on `ubuntu-24.04` after the game builds.
+That runner is Linux, so localnet uses Docker Engine. `scripts/bin/docker` is the Apple Container shim on a Mac and execs `/usr/bin/docker` in this job.
 That job downloads the Linux `libzkcasino` libraries from the game jobs and
 the Linux localnet programs (`casino.so`, the `.arcis` circuits, and
 `light_casino.so`). It does not compile either again. A change under

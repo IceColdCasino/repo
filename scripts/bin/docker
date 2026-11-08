@@ -4,7 +4,9 @@
 # macOS ships bash 3.2; empty "${arr[@]}" under `set -u` aborts the script.
 set -eo pipefail
 
-REAL_DOCKER="${REAL_DOCKER:-/usr/local/bin/docker}"
+# REAL_DOCKER, when set to an executable, wins. Otherwise real_docker_bin
+# searches. Do not default to /usr/local/bin/docker: Ubuntu GitHub Actions
+# installs the engine at /usr/bin/docker.
 CONTAINER_BIN="${CONTAINER_BIN:-container}"
 SOCKTAINER_SOCK="${HOME}/.socktainer/container.sock"
 GOCKER_SOCK="${HOME}/.gocker/gocker.sock"
@@ -16,7 +18,65 @@ DOCKER_SHIM_LOG="${DOCKER_SHIM_LOG:-${TMPDIR:-/tmp}/docker-shim.log}"
   printf '\n'
 } >>"${DOCKER_SHIM_LOG}" 2>/dev/null || true
 
+# True when `candidate` is this shim or the installed Apple Container docker shim.
+is_docker_shim() {
+  local candidate="$1"
+  [[ -n "$candidate" && -f "$candidate" && -x "$candidate" ]] || return 1
+  local self_dir resolved
+  self_dir="$(cd "$(dirname "$0")" && pwd)"
+  resolved="$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"
+  [[ "$resolved" == "$self_dir/docker" ]] && return 0
+  [[ "$resolved" == "${HOME}/.local/bin/docker" ]] && return 0
+  if head -n 8 "$candidate" 2>/dev/null | grep -q 'Apple Container'; then
+    return 0
+  fi
+  return 1
+}
+
+# Engine binary that is not this shim. Linux (GitHub Actions) is /usr/bin/docker.
+real_docker_bin() {
+  if [[ -n "${REAL_DOCKER:-}" && -x "${REAL_DOCKER}" ]] && ! is_docker_shim "${REAL_DOCKER}"; then
+    printf '%s\n' "${REAL_DOCKER}"
+    return 0
+  fi
+  local self_dir candidate path_dir old_ifs
+  self_dir="$(cd "$(dirname "$0")" && pwd)"
+  local -a candidates
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    candidates=(/usr/local/bin/docker /opt/homebrew/bin/docker /usr/bin/docker)
+  else
+    candidates=(/usr/bin/docker /usr/local/bin/docker)
+  fi
+  for candidate in "${candidates[@]}"; do
+    if [[ -x "$candidate" ]] && ! is_docker_shim "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  old_ifs="$IFS"
+  IFS=':'
+  for path_dir in $PATH; do
+    IFS="$old_ifs"
+    if [[ -z "$path_dir" || "$path_dir" == "$self_dir" ]]; then
+      continue
+    fi
+    if [[ -x "${path_dir}/docker" ]] && ! is_docker_shim "${path_dir}/docker"; then
+      printf '%s\n' "${path_dir}/docker"
+      return 0
+    fi
+  done
+  IFS="$old_ifs"
+  echo "docker shim: Docker Engine binary not found" >&2
+  return 127
+}
+
+# Apple Container is a macOS hypervisor. Linux hosts, including the GitHub
+# Actions Arcium job, use Docker Engine. ARCIUM_USE_APPLE_CONTAINER=0 is the
+# same choice on a Mac that has Docker installed.
 have_apple_container() {
+  [[ "$(uname -s)" == "Darwin" ]] || return 1
+  [[ "${ARCIUM_USE_APPLE_CONTAINER:-}" == "0" ]] && return 1
+  [[ "${GITHUB_ACTIONS:-}" == "true" ]] && return 1
   command -v "$CONTAINER_BIN" >/dev/null 2>&1 \
     && "$CONTAINER_BIN" system status 2>/dev/null | grep -qi 'status[[:space:]]\+running'
 }
@@ -261,12 +321,19 @@ PY
 }
 
 run_via_bridge() {
-  if [[ -S "$GOCKER_SOCK" ]]; then
-    export DOCKER_HOST="unix://${GOCKER_SOCK}"
-  elif [[ -S "$SOCKTAINER_SOCK" ]]; then
-    export DOCKER_HOST="unix://${SOCKTAINER_SOCK}"
+  # Apple sockets only when this process is actually on Apple Container.
+  # Pointing DOCKER_HOST at them on Linux sends the Arcium job at a shim
+  # that is not running.
+  if have_apple_container; then
+    if [[ -S "$GOCKER_SOCK" ]]; then
+      export DOCKER_HOST="unix://${GOCKER_SOCK}"
+    elif [[ -S "$SOCKTAINER_SOCK" ]]; then
+      export DOCKER_HOST="unix://${SOCKTAINER_SOCK}"
+    fi
   fi
-  exec "$REAL_DOCKER" "$@"
+  local bin
+  bin="$(real_docker_bin)" || exit $?
+  exec "$bin" "$@"
 }
 
 fake_info() {

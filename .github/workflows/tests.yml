@@ -525,9 +525,22 @@ jobs:
           RUST_BACKTRACE: "1"
         run: |
           set -eux
-          export PATH="/tmp/arcium-0.14/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
+          export PATH="${GITHUB_WORKSPACE}/scripts/bin:/tmp/arcium-0.14/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
           export ARCIUM_USE_APPLE_CONTAINER=0
           export DOCKER_DEFAULT_PLATFORM=linux/amd64
+          # scripts/bin/docker is the Apple Container shim. On this Linux runner
+          # it must exec Docker Engine (/usr/bin/docker), not `container`.
+          docker_bin="$(command -v docker)"
+          echo "docker resolved to ${docker_bin}"
+          case "${docker_bin}" in
+            "${GITHUB_WORKSPACE}/scripts/bin/docker") ;;
+            *) echo "expected the repo docker shim first on PATH" >&2; exit 1 ;;
+          esac
+          if docker version 2>&1 | grep -q 'apple-container'; then
+            echo "docker shim is still talking to Apple Container" >&2
+            exit 1
+          fi
+          docker info >/dev/null
           # Validator stays on 127.0.0.1 for arcium CLI websockets. Containers dial
           # the docker bridge gateway, so forward RPC (:8899) and pubsub (:8900)
           # for the lifetime of this step.

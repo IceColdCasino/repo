@@ -147,19 +147,38 @@ export function isAppleContainerDockerHost(dockerHost = resolveDockerHost()): bo
 }
 
 /**
- * Arcium localnet uses Apple Container, not Docker Desktop.
- * Set ARCIUM_USE_APPLE_CONTAINER=0 only for an explicit unsupported escape hatch.
+ * Apple Container is the macOS hypervisor path. Linux, including the GitHub
+ * Actions Arcium job, uses Docker Engine. `ARCIUM_USE_APPLE_CONTAINER=0` selects
+ * Docker on a Mac as well. `=1` cannot turn Apple Container on in Actions or
+ * on Linux, where `container` is not the runtime.
  */
 export function isAppleContainerRuntime(): boolean {
+  if (process.env.GITHUB_ACTIONS === 'true') return false;
+  if (process.platform !== 'darwin') return false;
   if (process.env.ARCIUM_USE_APPLE_CONTAINER === '0') return false;
   return true;
 }
 
-/** `docker` CLI that talks to Apple Container (never Docker.app). */
+/**
+ * `docker` on PATH. On Apple Container that is the repo shim
+ * (`scripts/bin/docker`), which talks to `container`. On Linux and on GitHub
+ * Actions the same shim execs Docker Engine and does not call `container`.
+ */
 export function resolveDockerBinary(): string {
+  if (!isAppleContainerRuntime()) return 'docker';
   const shim = appleContainerDockerShim();
   if (fs.existsSync(shim)) return shim;
   return 'docker';
+}
+
+export function containerRuntimeUnavailableMessage(): string {
+  if (isAppleContainerRuntime()) return APPLE_CONTAINER_NOT_RUNNING_MESSAGE;
+  if (process.platform === 'linux' || process.env.GITHUB_ACTIONS === 'true') {
+    return (
+      'Docker Engine is not reachable. The Arcium tests on GitHub Actions run on Linux and use docker, not Apple Container.'
+    );
+  }
+  return 'Docker is not reachable (`docker info` failed). Apple Container is off.';
 }
 
 export const APPLE_CONTAINER_NOT_RUNNING_MESSAGE =
@@ -240,6 +259,9 @@ export function resolveArciumDockerHostGateway(
   if (isAppleContainerRuntime()) {
     return resolveHostLanIp() ?? ARCIUM_APPLE_CONTAINER_HOST_GATEWAY;
   }
+  // docker0 on a Linux engine. The Actions job replaces this with the
+  // address from `docker network inspect bridge`.
+  if (process.platform === 'linux') return '172.17.0.1';
   return ARCIUM_DOCKER_DESKTOP_HOST_GATEWAY;
 }
 
@@ -250,10 +272,13 @@ function pathWithLocalBins(basePath = process.env.PATH ?? ''): string {
   const home = process.env.HOME ?? '';
   const prefixes = [
     // Repo shim keeps stdin open for `anchor localnet` (Anchor 0.32.1 EOF panic).
+    // scripts/bin/docker is the Apple Container shim; on Linux it execs the engine.
     path.join(process.cwd(), 'scripts', 'bin'),
-    path.join(home, '.local', 'apple-container', 'bin'),
-    path.join(home, '.local', 'bin'),
-  ].filter(Boolean);
+  ];
+  if (isAppleContainerRuntime()) {
+    prefixes.push(path.join(home, '.local', 'apple-container', 'bin'));
+  }
+  prefixes.push(path.join(home, '.local', 'bin'));
   const parts = basePath.split(path.delimiter).filter(Boolean);
   const ordered = [...prefixes, ...parts.filter((p) => !prefixes.includes(p))];
   return ordered.join(path.delimiter);
@@ -273,8 +298,12 @@ export function arciumDockerEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.P
     env.ARCIUM_USE_APPLE_CONTAINER = '1';
     // Shim talks to Apple Container directly — inherited Desktop DOCKER_HOST breaks it.
     delete env.DOCKER_HOST;
-  } else if (isDockerDesktopHost(env.DOCKER_HOST)) {
-    delete env.DOCKER_HOST;
+  } else {
+    env.ARCIUM_USE_APPLE_CONTAINER = '0';
+    // /var/run/docker.sock is the Linux engine. Only drop a Desktop socket on macOS.
+    if (process.platform === 'darwin' && isDockerDesktopHost(env.DOCKER_HOST)) {
+      delete env.DOCKER_HOST;
+    }
   }
   return env;
 }
@@ -292,8 +321,11 @@ export function houseImageDockerEnv(base: NodeJS.ProcessEnv = process.env): Node
   if (isAppleContainerRuntime()) {
     env.ARCIUM_USE_APPLE_CONTAINER = '1';
     delete env.DOCKER_HOST;
-  } else if (isDockerDesktopHost(env.DOCKER_HOST)) {
-    delete env.DOCKER_HOST;
+  } else {
+    env.ARCIUM_USE_APPLE_CONTAINER = '0';
+    if (process.platform === 'darwin' && isDockerDesktopHost(env.DOCKER_HOST)) {
+      delete env.DOCKER_HOST;
+    }
   }
   return env;
 }
@@ -510,7 +542,10 @@ function collapseBlankLines(text: string): string {
  */
 function pinDockerHostGateway(text: string): string {
   const gateway = resolveArciumDockerHostGateway();
-  if (isAppleContainerRuntime()) {
+  // Apple compose ignores extra_hosts. The Linux engine has no
+  // host.docker.internal; the Actions job publishes the validator on the
+  // bridge gateway, so containers dial that address.
+  if (isAppleContainerRuntime() || process.platform === 'linux') {
     const lines = text.split('\n');
     const out: string[] = [];
     for (let i = 0; i < lines.length; i++) {
@@ -997,7 +1032,7 @@ export function ensureArxNodeConfigs(): void {
     if (!name.includes('node_config') || !name.endsWith('.toml')) continue;
     const filePath = path.join(ARTIFACTS_DIR, name);
     const text = fs.readFileSync(filePath, 'utf8');
-    let next = isAppleContainerRuntime() ? pinDockerHostGateway(text) : text;
+    let next = pinDockerHostGateway(text);
     if (!/^computations_limit\s*=/m.test(next)) {
       next = next.replace(/(\[node\]\r?\n)/, '$1computations_limit = 10\n');
     }

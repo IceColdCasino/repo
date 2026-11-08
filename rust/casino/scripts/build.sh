@@ -25,11 +25,19 @@ REPO_ROOT="$(cd "$ROOT/../.." && pwd)"
 bash "$REPO_ROOT/scripts/assert-casino-release-no-testing.sh"
 
 echo "==> [1/2] Arcis circuits: arcium build --skip-program --skip-keys-sync"
-# Arcium images are amd64-only; run under Apple Container (not Docker Desktop).
+# Arcium images are amd64-only. Apple Container is the Mac path. Linux,
+# including GitHub Actions, uses Docker Engine.
+if [[ "$(uname -s)" != "Darwin" || "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  export ARCIUM_USE_APPLE_CONTAINER=0
+fi
 export ARCIUM_USE_APPLE_CONTAINER="${ARCIUM_USE_APPLE_CONTAINER:-1}"
-unset DOCKER_HOST
-export PATH="${HOME:-}/.local/bin:${HOME:-}/.local/apple-container/bin:${PATH}"
 export DOCKER_DEFAULT_PLATFORM="${DOCKER_DEFAULT_PLATFORM:-linux/amd64}"
+if [[ "${ARCIUM_USE_APPLE_CONTAINER}" == "0" ]]; then
+  export PATH="${HOME:-}/.local/bin:${PATH}"
+else
+  unset DOCKER_HOST
+  export PATH="${HOME:-}/.local/bin:${HOME:-}/.local/apple-container/bin:${PATH}"
+fi
 arcium build --skip-program --skip-keys-sync
 
 # arcium build generates docker-compose-arx-env.yml; pin platform for ARM hosts.
