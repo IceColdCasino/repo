@@ -146,6 +146,31 @@ jobs:
           overwrite: true
           path: libzkcasino/zig-out/lib
 
+      - name: Download the stored Linux libraries
+        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'Linux'
+        uses: actions/download-artifact@v4
+        with:
+          name: libzkcasino-linux-${{ matrix.circuit_set }}
+          path: libzkcasino/zig-out/lib
+          run-id: ${{ steps.reuse.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Check the stored Linux libraries
+        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'Linux'
+        run: |
+          set -eux
+          find libzkcasino/zig-out/lib -type f -name '*.so' -print
+          file libzkcasino/zig-out/lib/libzkcasino-player.so | grep -q 'x86-64'
+
+      - name: Reupload the stored Linux libraries for this run
+        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: libzkcasino-linux-${{ matrix.circuit_set }}
+          if-no-files-found: error
+          overwrite: true
+          path: libzkcasino/zig-out/lib
+
       - name: Install the prover
         if: steps.reuse.outputs.reuse != 'true'
         run: |
@@ -444,6 +469,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y g++ libgmp-dev libc++1 libc++abi1
           bash .github/install-groth16.sh
+          test -d libzkcasino-parts
+          find libzkcasino-parts -type f -name '*.so' -print
           mkdir -p libzkcasino/zig-out/lib
           find libzkcasino-parts -type f -name '*.so' -exec cp -f {} libzkcasino/zig-out/lib/ \;
           test -f libzkcasino/zig-out/lib/libzkcasino-player.so

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Skip a game's proof tests when they already passed and the macOS library is stored.
+"""Skip a game's proof tests when they already passed and the library is stored.
 
 The library artifact is uploaded before the proofs, so an artifact by itself is
 not enough. The game job on this runner and the macOS job for the same game
 must both have succeeded, and the proof inputs must be unchanged since that
-commit. macOS then downloads the library and uploads it again so later jobs in
-this run can still find libzkcasino-macos-<game>.
+commit. The job then downloads that library and uploads it again so later jobs
+in this run can still find it. Linux reuse also requires libzkcasino-linux-<game>
+from that run, because the Arcium job downloads those artifacts and does not
+rebuild them.
 """
 
 import json
@@ -116,6 +118,20 @@ def proof_inputs_match(old_sha, head_sha, paths):
     return False
 
 
+def run_has_artifact(repo, run_id, name):
+    for page in range(1, 6):
+        data = api(
+            f"repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100&page={page}"
+        )
+        batch = data.get("artifacts") or []
+        for artifact in batch:
+            if artifact.get("name") == name and not artifact.get("expired"):
+                return True
+        if len(batch) < 100:
+            break
+    return False
+
+
 def job_conclusions(repo, run_id):
     conclusions = {}
     for page in range(1, 11):
@@ -162,6 +178,11 @@ def find_reuse(game, runner, test_file, lfs, circuit_set):
         conclusions = conclusions_by_run[run_id]
         mac_conclusion = conclusions.get(mac_job)
         job_conclusion = conclusions.get(job_name)
+        if not runner.startswith("macos"):
+            linux_name = f"libzkcasino-linux-{circuit_set}"
+            if not run_has_artifact(repo, run_id, linux_name):
+                print(f"skip run {run_id}: missing {linux_name}")
+                continue
         if mac_conclusion != "success" or job_conclusion != "success":
             if job_name == mac_job:
                 print(f"skip run {run_id}: {job_name}={job_conclusion}")
