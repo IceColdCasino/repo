@@ -7,6 +7,47 @@ mod game_config;
 pub use game_config::*;
 
 pub const LIGHT_CASINO_PROGRAM_ID: &str = "CasinodrqvrdEqRYCMFfWGqQ1aD9mCcGDoWRQNPkWVtc";
+/// Bytes of [`LIGHT_CASINO_PROGRAM_ID`]. The pinocchio entrypoint compares
+/// these, so they have to follow the same string the localnet rewrite edits.
+pub const LIGHT_CASINO_PROGRAM_ID_BYTES: [u8; 32] = decode_base58_32(LIGHT_CASINO_PROGRAM_ID);
+
+const fn decode_base58_32(input: &str) -> [u8; 32] {
+    let alphabet: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let bytes = input.as_bytes();
+    let mut out = [0u8; 32];
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        let mut val = 0usize;
+        let mut found = false;
+        let mut j = 0;
+        while j < alphabet.len() {
+            if alphabet[j] == c {
+                val = j;
+                found = true;
+                break;
+            }
+            j += 1;
+        }
+        if !found {
+            panic!("invalid base58 program id");
+        }
+        let mut carry = val;
+        let mut k = 31isize;
+        while k >= 0 {
+            let idx = k as usize;
+            let acc = (out[idx] as usize) * 58 + carry;
+            out[idx] = (acc & 0xff) as u8;
+            carry = acc >> 8;
+            k -= 1;
+        }
+        if carry != 0 {
+            panic!("base58 program id does not fit in 32 bytes");
+        }
+        i += 1;
+    }
+    out
+}
 pub const CASINO_PROGRAM_ID: &str = "4nPbWQkPAnSWMnSCAsuNicCGA86zrQKjzkZX7JFWRREY";
 pub const CPI_AUTHORITY_SEED: &[u8] = b"cpi_authority";
 /// Per-player SOL float that fronts staging rent. Seeds: `rent_vault || room_id || player`.
@@ -255,5 +296,16 @@ mod tests {
         let ix = payload.consume_proof_ix_data();
         assert_eq!(&ix[8..16], &9u64.to_le_bytes());
         assert_eq!(&ix[20..52], &[7u8; 32]);
+    }
+
+    #[test]
+    fn light_casino_vanity_bytes() {
+        assert_eq!(
+            decode_base58_32("CasinodrqvrdEqRYCMFfWGqQ1aD9mCcGDoWRQNPkWVtc"),
+            [
+                172, 30, 18, 160, 29, 168, 238, 203, 210, 100, 0, 181, 168, 232, 214, 194, 132, 12,
+                23, 220, 26, 79, 193, 140, 151, 156, 188, 112, 103, 235, 198, 89,
+            ],
+        );
     }
 }

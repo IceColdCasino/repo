@@ -61,7 +61,7 @@ use shared_zk_ids::{
 };
 use verifying_keys::registry::{lookup as lookup_vk, VkPhase};
 
-pub const ID: Pubkey = Pubkey([172, 30, 18, 160, 29, 168, 238, 203, 210, 100, 0, 181, 168, 232, 214, 194, 132, 12, 23, 220, 26, 79, 193, 140, 151, 156, 188, 112, 103, 235, 198, 89]);
+pub const ID: Pubkey = Pubkey(shared_zk_ids::LIGHT_CASINO_PROGRAM_ID_BYTES);
 
 pub const LIGHT_CPI_SIGNER: CpiSigner =
     derive_light_cpi_signer!("CasinodrqvrdEqRYCMFfWGqQ1aD9mCcGDoWRQNPkWVtc");
