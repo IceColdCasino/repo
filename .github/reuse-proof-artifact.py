@@ -28,8 +28,8 @@ TOOLCHAIN = (
 )
 LIBRARY_TOOLCHAIN = (
     re.compile(r"version:\s*0\.\d+\.\d+"),
-    # The full zig build line, including -Dcpu=baseline on Linux. A native
-    # CPU library from an older run must not be reused.
+    # Matched per runner. macOS ignores the Linux -Dcpu=baseline line, and
+    # Linux ignores the macOS line, so one side can reuse a stored library.
     re.compile(r"zig build -Doptimize=\S+"),
 )
 
@@ -84,7 +84,7 @@ def proof_paths(test_file, lfs):
     return paths
 
 
-def toolchain_fingerprint(sha, patterns):
+def toolchain_fingerprint(sha, patterns, runner):
     show = subprocess.run(
         ["git", "show", f"{sha}:.github/workflows/tests.yml"],
         check=False,
@@ -93,14 +93,24 @@ def toolchain_fingerprint(sha, patterns):
     )
     if show.returncode != 0:
         return None
+    # The Linux zig line pins -Dcpu=baseline. The macOS line does not.
+    # A change to one must not throw away the other runner's stored library.
+    linux = not runner.startswith("macos")
     hits = []
     for line in show.stdout.splitlines():
-        if any(pattern.search(line) for pattern in patterns):
-            hits.append(line.strip())
+        stripped = line.strip()
+        if not any(pattern.search(stripped) for pattern in patterns):
+            continue
+        if "zig build -Doptimize=" in stripped:
+            if linux and "-Dcpu=baseline" not in stripped:
+                continue
+            if not linux and "-Dcpu=" in stripped:
+                continue
+        hits.append(stripped)
     return "\n".join(hits)
 
 
-def inputs_match(old_sha, head_sha, paths, patterns, label):
+def inputs_match(old_sha, head_sha, paths, patterns, label, runner):
     if old_sha == head_sha:
         return True
     fetch = subprocess.run(
@@ -113,7 +123,7 @@ def inputs_match(old_sha, head_sha, paths, patterns, label):
     if fetch.returncode != 0:
         print(f"could not fetch {old_sha}: {(fetch.stderr or '').strip()}")
         return False
-    if toolchain_fingerprint(old_sha, patterns) != toolchain_fingerprint(head_sha, patterns):
+    if toolchain_fingerprint(old_sha, patterns, runner) != toolchain_fingerprint(head_sha, patterns, runner):
         print(f"{label} toolchain differs since {old_sha[:12]}")
         return False
     diff = subprocess.run(
@@ -192,7 +202,7 @@ def find_reuse(game, runner, test_file, lfs, circuit_set):
             if not run_has_artifact(repo, run_id, linux_name):
                 print(f"skip run {run_id}: missing {linux_name}")
                 continue
-        if not inputs_match(old_sha, head_sha, ["libzkcasino"], LIBRARY_TOOLCHAIN, "library inputs"):
+        if not inputs_match(old_sha, head_sha, ["libzkcasino"], LIBRARY_TOOLCHAIN, "library inputs", runner):
             continue
         if not library_run:
             library_run = run_id
@@ -212,7 +222,7 @@ def find_reuse(game, runner, test_file, lfs, circuit_set):
                     f"skip proofs from run {run_id}: {job_name}={job_conclusion} {mac_job}={mac_conclusion}"
                 )
             continue
-        if not inputs_match(old_sha, head_sha, paths, TOOLCHAIN, "proof inputs"):
+        if not inputs_match(old_sha, head_sha, paths, TOOLCHAIN, "proof inputs", runner):
             continue
         print(
             f"reusing proofs from run {run_id} ({old_sha[:12]}); {job_name} already passed"
