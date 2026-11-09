@@ -176,11 +176,6 @@ export function resolveDockerBinary(): string {
 
 export function containerRuntimeUnavailableMessage(): string {
   if (isAppleContainerRuntime()) return APPLE_CONTAINER_NOT_RUNNING_MESSAGE;
-  if (process.env.GITHUB_ACTIONS === 'true' && process.platform === 'darwin') {
-    return (
-      'Docker Engine is not reachable. The macOS Arcium job runs the Arcium images with Docker (Colima). Apple Container is disabled on GitHub Actions.'
-    );
-  }
   if (process.platform === 'linux' || process.env.GITHUB_ACTIONS === 'true') {
     return (
       'Docker Engine is not reachable. The Arcium tests use docker, not Apple Container.'

@@ -35,13 +35,11 @@ and bingo have no house seat.
 other files under `test/e2e/` start localnet, load the programs, and stage
 the deck. They are not extra games.
 
-GitHub Actions runs this suite on `macos-latest` after the game builds.
-The runner is Apple Silicon, and it loads the macOS arm64 `libzkcasino`
-libraries. Node containers are the published `linux/amd64` Arcium images
-(v0.14.1 has no arm64 manifest), started with Docker (Colima) on an arm64 VM.
-Apple Container stays off in Actions. `scripts/bin/docker` is the Apple
-Container shim on a Mac and execs the Docker engine in this job.
-That job downloads the macOS `libzkcasino` libraries from the game jobs and
+GitHub Actions runs this suite on `ubuntu-24.04` after the game builds.
+The runner is Linux x64, so localnet uses Docker Engine and the published
+`linux/amd64` Arcium images. `scripts/bin/docker` is the Apple Container
+shim on a Mac and execs `/usr/bin/docker` in this job.
+That job downloads the Linux `libzkcasino` libraries from the game jobs and
 the Linux localnet programs (`casino.so`, the `.arcis` compdefs, and
 `light_casino.so`) from the Rust job. It does not compile them again.
 `UPLOAD_COMP_DEFS=1` uploads those compdefs onto the localnet after it starts.
