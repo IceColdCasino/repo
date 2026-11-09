@@ -122,7 +122,7 @@ jobs:
           "${{ matrix.circuit_set }}"
 
       - name: Download the stored macOS libraries
-        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'macOS'
+        if: steps.reuse.outputs.library == 'true' && runner.os == 'macOS'
         uses: actions/download-artifact@v4
         with:
           name: libzkcasino-macos-${{ matrix.circuit_set }}
@@ -131,14 +131,14 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Check the stored libraries
-        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'macOS'
+        if: steps.reuse.outputs.library == 'true' && runner.os == 'macOS'
         run: |
           set -eux
           find libzkcasino/zig-out/lib -type f -name '*.dylib' -print
           find libzkcasino/zig-out/lib -type f -name '*.dylib' | grep -q .
 
       - name: Reupload the stored libraries for this run
-        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'macOS'
+        if: steps.reuse.outputs.library == 'true' && runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: libzkcasino-macos-${{ matrix.circuit_set }}
@@ -147,7 +147,7 @@ jobs:
           path: libzkcasino/zig-out/lib
 
       - name: Download the stored Linux libraries
-        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'Linux'
+        if: steps.reuse.outputs.library == 'true' && runner.os == 'Linux'
         uses: actions/download-artifact@v4
         with:
           name: libzkcasino-linux-${{ matrix.circuit_set }}
@@ -156,14 +156,14 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Check the stored Linux libraries
-        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'Linux'
+        if: steps.reuse.outputs.library == 'true' && runner.os == 'Linux'
         run: |
           set -eux
           find libzkcasino/zig-out/lib -type f -name '*.so' -print
           file libzkcasino/zig-out/lib/libzkcasino-player.so | grep -q 'x86-64'
 
       - name: Reupload the stored Linux libraries for this run
-        if: steps.reuse.outputs.reuse == 'true' && runner.os == 'Linux'
+        if: steps.reuse.outputs.library == 'true' && runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: libzkcasino-linux-${{ matrix.circuit_set }}
@@ -192,14 +192,14 @@ jobs:
           fi
 
       - uses: mlugg/setup-zig@v2
-        if: steps.reuse.outputs.reuse != 'true'
+        if: steps.reuse.outputs.library != 'true'
         with:
           version: 0.17.0
           use-cache: false
 
       - name: Restore Zig cache
         id: zig-cache
-        if: steps.reuse.outputs.reuse != 'true'
+        if: steps.reuse.outputs.library != 'true'
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -211,12 +211,12 @@ jobs:
             zig-0.17.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}
 
       - name: Build libzkcasino
-        if: steps.reuse.outputs.reuse != 'true'
+        if: steps.reuse.outputs.library != 'true'
         working-directory: libzkcasino
         run: zig build -Doptimize=ReleaseFast -Dcircuit-set=${{ matrix.circuit_set }}
 
       - name: Upload macOS libzkcasino libraries
-        if: steps.reuse.outputs.reuse != 'true' && runner.os == 'macOS'
+        if: steps.reuse.outputs.library != 'true' && runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: libzkcasino-macos-${{ matrix.circuit_set }}
@@ -225,7 +225,7 @@ jobs:
           path: libzkcasino/zig-out/lib
 
       - name: Upload Linux libzkcasino libraries
-        if: steps.reuse.outputs.reuse != 'true' && runner.os == 'Linux'
+        if: steps.reuse.outputs.library != 'true' && runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: libzkcasino-linux-${{ matrix.circuit_set }}
@@ -234,7 +234,7 @@ jobs:
           path: libzkcasino/zig-out/lib
 
       - name: Save Zig cache
-        if: steps.reuse.outputs.reuse != 'true' && steps.zig-cache.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.library != 'true' && steps.zig-cache.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
@@ -245,7 +245,7 @@ jobs:
           key: ${{ steps.zig-cache.outputs.cache-primary-key }}
 
       - name: Drop the Zig cache
-        if: steps.reuse.outputs.reuse != 'true'
+        if: steps.reuse.outputs.library != 'true'
         run: rm -rf .zig-cache libzkcasino/.zig-cache libzkcasino/zig-pkg "${HOME}/.cache/zig" "${HOME}/Library/Caches/zig"
 
       - uses: oven-sh/setup-bun@v2
@@ -425,19 +425,20 @@ jobs:
           # suites need headroom past vitest's 5s default.
           npm test --prefix app/frontend -- --testTimeout=120000
 
-  # GitHub-hosted macOS runners cannot run Apple Container (no nested
-  # Virtualization.framework — VZErrorDomain Code=2; actions/runner-images#9460).
-  # Arcium localnet therefore runs on Linux Docker here; Apple Container remains
-  # the supported path on bare-metal Macs.
-  linux-arcium:
-    name: Arcium 2p (linux)
+  # Apple Container cannot start on GitHub-hosted macOS (VZErrorDomain Code=2).
+  # This job uses Docker (Colima) on an arm64 VM. The host process loads the
+  # macOS arm64 libzkcasino dylibs from the game jobs. Arcium v0.14.1 publishes
+  # linux/amd64 images only, so the containers run that platform.
+  # Apple Container remains the supported path on bare-metal Macs.
+  macos-arcium:
+    name: Arcium 2p (macos)
     needs: [changes, games, rust-linux]
     if: >-
       always() &&
       needs.changes.outputs.has_games == 'true' &&
       needs.games.result == 'success' &&
       needs.rust-linux.result == 'success'
-    runs-on: ubuntu-24.04
+    runs-on: macos-latest
     timeout-minutes: 600
     env:
       CASINO_EPHEMERAL_PROGRAM_IDS: "1"
@@ -450,16 +451,23 @@ jobs:
       UPLOAD_COMP_DEFS: "1"
       LIGHT_GENESIS: "0"
       ARCIUM_USE_APPLE_CONTAINER: "0"
+      # v0.14.1 tags on Docker Hub are linux/amd64 only.
       DOCKER_DEFAULT_PLATFORM: "linux/amd64"
       # Host CLI / readiness probes use loopback (Agave rejects 0.0.0.0).
-      # Containers reach RPC/WS via socat on the docker bridge gateway (see below).
+      # Containers reach RPC/WS via socat on the Colima host gateway (see below).
       SOLANA_BIND_ADDRESS: "127.0.0.1"
-      ARCIUM_DOCKER_HOST_GATEWAY: "172.17.0.1"
+      # Colima's VM is 8 GiB. A 4g cap on every Arcium service does not fit.
+      ARCIUM_DOCKER_MEM_LIMIT: "1536m"
     steps:
       - name: Free disk space
         run: |
           set -eux
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/share/swift
+          sudo rm -rf \
+            /Library/Developer/CoreSimulator \
+            "$HOME/Library/Developer/CoreSimulator" \
+            "$HOME/Library/Developer/Xcode/DerivedData" \
+            "$HOME/Library/Android" \
+            /Users/runner/hostedtoolcache
           df -h /
       - uses: actions/checkout@v4
         with:
@@ -470,28 +478,30 @@ jobs:
         with:
           name: rust-localnet-linux
           path: .
-      - name: Download Linux libzkcasino libraries
+      - name: Download macOS libzkcasino libraries
         uses: actions/download-artifact@v4
         with:
-          pattern: libzkcasino-linux-*
+          pattern: libzkcasino-macos-*
           path: libzkcasino-parts
       - name: Install the downloaded libraries and the prover
         run: |
           set -eux
-          sudo apt-get update
-          sudo apt-get install -y g++ libgmp-dev libc++1 libc++abi1
-          bash .github/install-groth16.sh
-          test -d libzkcasino-parts
-          find libzkcasino-parts -type f -name '*.so' -print
-          mkdir -p libzkcasino/zig-out/lib
-          find libzkcasino-parts -type f -name '*.so' -exec cp -f {} libzkcasino/zig-out/lib/ \;
-          test -f libzkcasino/zig-out/lib/libzkcasino-player.so
-          test -f libzkcasino/zig-out/lib/libzkcasino-player-bridge.so
-          file libzkcasino/zig-out/lib/libzkcasino-player.so | grep -q 'x86-64'
-          if ldd libzkcasino/zig-out/lib/libzkcasino-player.so | grep -q 'not found'; then
-            ldd libzkcasino/zig-out/lib/libzkcasino-player.so
-            exit 1
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          brew install gmp
+          if ! command -v git-lfs >/dev/null 2>&1; then
+            brew install git-lfs
           fi
+          brew trust --tap IceColdCasino/groth16
+          brew tap IceColdCasino/groth16 https://github.com/IceColdCasino/groth16
+          brew install icecoldcasino/groth16/zkey
+          zkey lib
+          test -d libzkcasino-parts
+          find libzkcasino-parts -type f -name '*.dylib' -print
+          mkdir -p libzkcasino/zig-out/lib
+          find libzkcasino-parts -type f -name '*.dylib' -exec cp -f {} libzkcasino/zig-out/lib/ \;
+          test -f libzkcasino/zig-out/lib/libzkcasino-player.dylib
+          test -f libzkcasino/zig-out/lib/libzkcasino-player-bridge.dylib
+          file libzkcasino/zig-out/lib/libzkcasino-player.dylib | grep -q 'arm64'
           for name in verify_deck_hash_chunk reveal_card validate_bet seal_showdown_pair compute_pots distribute_and_settle settle_casino_hand; do
             test -f "rust/casino/build/${name}.arcis"
           done
@@ -548,11 +558,30 @@ jobs:
             exit 1
           fi
       - run: bun install --frozen-lockfile
-      - name: Pre-pull Arcium node images
+      - name: Start Colima and pull the Arcium images
         run: |
           set -eux
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          brew install colima docker docker-compose socat
+          mkdir -p "${HOME}/.docker/cli-plugins"
+          ln -sfn "$(brew --prefix docker-compose)/bin/docker-compose" "${HOME}/.docker/cli-plugins/docker-compose"
+          echo "/opt/homebrew/bin" >> "${GITHUB_PATH}"
+          export PATH="/opt/homebrew/bin:${PATH}"
+          start_colima() {
+            colima start --cpu 3 --memory 8 --disk 20 --arch aarch64 --vm-type "$1" --network-address
+          }
+          if ! start_colima vz; then
+            colima delete -f || true
+            start_colima qemu
+          fi
+          docker context use colima
+          sock="${HOME}/.colima/default/docker.sock"
+          test -S "${sock}"
+          echo "DOCKER_HOST=unix://${sock}" >> "${GITHUB_ENV}"
+          export DOCKER_HOST="unix://${sock}"
           docker version
           docker compose version
+          docker info
           for img in \
             arcium/trusted-dealer:v0.14.1 \
             arcium/arx-node:v0.14.1 \
@@ -566,11 +595,11 @@ jobs:
           RUST_BACKTRACE: "1"
         run: |
           set -eux
-          export PATH="${GITHUB_WORKSPACE}/scripts/bin:/tmp/arcium-0.14/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
+          export PATH="${GITHUB_WORKSPACE}/scripts/bin:/opt/homebrew/bin:/tmp/arcium-0.14/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
           export ARCIUM_USE_APPLE_CONTAINER=0
           export DOCKER_DEFAULT_PLATFORM=linux/amd64
-          # scripts/bin/docker is the Apple Container shim. On this Linux runner
-          # it must exec Docker Engine (/usr/bin/docker), not `container`.
+          # scripts/bin/docker is the Apple Container shim. On this runner it
+          # must exec the Colima Docker engine, not `container`.
           docker_bin="$(command -v docker)"
           echo "docker resolved to ${docker_bin}"
           case "${docker_bin}" in
@@ -583,22 +612,28 @@ jobs:
           fi
           docker info >/dev/null
           # Validator stays on 127.0.0.1 for arcium CLI websockets. Containers dial
-          # the docker bridge gateway, so forward RPC (:8899) and pubsub (:8900).
-          # Anchor treats any listener on 8899 as "rpc port already in use", so
-          # the forwarder waits until the validator owns the loopback port.
-          sudo apt-get update
-          sudo apt-get install -y socat
-          gateway="$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')"
+          # the Colima host gateway, so forward RPC (:8899) and pubsub (:8900)
+          # on that address. Anchor treats any listener on 8899 as "rpc port
+          # already in use", so the forwarder waits until the validator owns
+          # the loopback port.
+          docker pull alpine:3.20
+          gateway="$(docker run --rm --add-host=host.docker.internal:host-gateway alpine:3.20 getent hosts host.docker.internal | awk '{print $1}')"
           test -n "${gateway}"
+          if ! ifconfig | awk '/inet / {print $2}' | grep -qx "${gateway}"; then
+            echo "host.docker.internal ${gateway} is not a local address" >&2
+            ifconfig
+            exit 1
+          fi
           export ARCIUM_DOCKER_HOST_GATEWAY="${gateway}"
+          socat_bin="$(command -v socat)"
           sudo pkill -f 'socat TCP-LISTEN:8899' || true
           sudo pkill -f 'socat TCP-LISTEN:8900' || true
           forward_when_ready() {
             local port="$1"
             sudo bash -c "
               for _ in \$(seq 1 2400); do
-                if ss -ltn | grep -Eq '127\\.0\\.0\\.1:${port}([^0-9]|$)'; then
-                  exec socat TCP-LISTEN:${port},bind=${gateway},fork,reuseaddr TCP:127.0.0.1:${port}
+                if lsof -nP -iTCP:${port} -sTCP:LISTEN | grep -q '127.0.0.1:${port}'; then
+                  exec ${socat_bin} TCP-LISTEN:${port},bind=${gateway},fork,reuseaddr TCP:127.0.0.1:${port}
                 fi
                 sleep 0.5
               done

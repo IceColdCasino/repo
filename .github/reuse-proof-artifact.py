@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Skip a game's proof tests when they already passed and the library is stored.
+"""Reuse a stored libzkcasino build, and skip proofs only when they already passed.
 
-The library artifact is uploaded before the proofs, so an artifact by itself is
-not enough. The game job on this runner and the macOS job for the same game
-must both have succeeded, and the proof inputs must be unchanged since that
-commit. The job then downloads that library and uploads it again so later jobs
-in this run can still find it. Linux reuse also requires libzkcasino-linux-<game>
-from that run, because the Arcium job downloads those artifacts and does not
-rebuild them.
+The compiled library depends on libzkcasino and the Zig build line. A change
+under src/ or the Arcis job does not require compiling it again. The job
+downloads that library and uploads it again so later jobs in this run can
+still find it. A Linux game job also requires libzkcasino-linux-<game> from
+that run, because that job downloads the Linux library and does not rebuild it.
+
+Skipping the proof tests is stricter. The game job on this runner and the
+macOS job for the same game must both have succeeded, and the proof inputs
+must be unchanged since that commit. The library artifact is uploaded before
+the proofs, so an artifact by itself is not enough to skip them.
 """
 
 import json
@@ -21,6 +24,10 @@ TOOLCHAIN = (
     re.compile(r"version:\s*0\.\d+\.\d+"),
     re.compile(r"ver=v\d+\.\d+\.\d+"),
     re.compile(r"brew install icecoldcasino/groth16/zkey"),
+    re.compile(r"zig build -Doptimize=\S+"),
+)
+LIBRARY_TOOLCHAIN = (
+    re.compile(r"version:\s*0\.\d+\.\d+"),
     re.compile(r"zig build -Doptimize=\S+"),
 )
 
@@ -38,8 +45,9 @@ def api(path):
     return json.loads(result.stdout)
 
 
-def write_output(reuse, run_id):
+def write_output(reuse, library, run_id):
     print(f"reuse={'true' if reuse else 'false'}")
+    print(f"library={'true' if library else 'false'}")
     if run_id:
         print(f"run_id={run_id}")
     path = os.environ.get("GITHUB_OUTPUT")
@@ -47,6 +55,7 @@ def write_output(reuse, run_id):
         return
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(f"reuse={'true' if reuse else 'false'}\n")
+        handle.write(f"library={'true' if library else 'false'}\n")
         if run_id:
             handle.write(f"run_id={run_id}\n")
 
@@ -73,7 +82,7 @@ def proof_paths(test_file, lfs):
     return paths
 
 
-def toolchain_fingerprint(sha):
+def toolchain_fingerprint(sha, patterns):
     show = subprocess.run(
         ["git", "show", f"{sha}:.github/workflows/tests.yml"],
         check=False,
@@ -84,12 +93,14 @@ def toolchain_fingerprint(sha):
         return None
     hits = []
     for line in show.stdout.splitlines():
-        if any(pattern.search(line) for pattern in TOOLCHAIN):
+        if any(pattern.search(line) for pattern in patterns):
             hits.append(line.strip())
     return "\n".join(hits)
 
 
-def proof_inputs_match(old_sha, head_sha, paths):
+def inputs_match(old_sha, head_sha, paths, patterns, label):
+    if old_sha == head_sha:
+        return True
     fetch = subprocess.run(
         ["git", "fetch", "--no-tags", "--depth", "1", "origin", old_sha],
         check=False,
@@ -100,8 +111,8 @@ def proof_inputs_match(old_sha, head_sha, paths):
     if fetch.returncode != 0:
         print(f"could not fetch {old_sha}: {(fetch.stderr or '').strip()}")
         return False
-    if toolchain_fingerprint(old_sha) != toolchain_fingerprint(head_sha):
-        print(f"prover or Zig version differs since {old_sha[:12]}")
+    if toolchain_fingerprint(old_sha, patterns) != toolchain_fingerprint(head_sha, patterns):
+        print(f"{label} toolchain differs since {old_sha[:12]}")
         return False
     diff = subprocess.run(
         ["git", "diff", "--quiet", old_sha, head_sha, "--", *paths],
@@ -112,7 +123,7 @@ def proof_inputs_match(old_sha, head_sha, paths):
     if diff.returncode == 0:
         return True
     if diff.returncode == 1:
-        print(f"proof inputs differ since {old_sha[:12]}")
+        print(f"{label} differ since {old_sha[:12]}")
         return False
     print(f"git diff failed for {old_sha}: {(diff.stderr or '').strip()}")
     return False
@@ -163,6 +174,7 @@ def find_reuse(game, runner, test_file, lfs, circuit_set):
             break
     artifacts.sort(key=lambda item: item.get("created_at") or "", reverse=True)
     conclusions_by_run = {}
+    library_run = ""
     for artifact in artifacts:
         if artifact.get("name") != artifact_name or artifact.get("expired"):
             continue
@@ -173,32 +185,42 @@ def find_reuse(game, runner, test_file, lfs, circuit_set):
             continue
         if branch and workflow_run.get("head_branch") not in (None, branch):
             continue
-        if run_id not in conclusions_by_run:
-            conclusions_by_run[run_id] = job_conclusions(repo, run_id)
-        conclusions = conclusions_by_run[run_id]
-        mac_conclusion = conclusions.get(mac_job)
-        job_conclusion = conclusions.get(job_name)
         if not runner.startswith("macos"):
             linux_name = f"libzkcasino-linux-{circuit_set}"
             if not run_has_artifact(repo, run_id, linux_name):
                 print(f"skip run {run_id}: missing {linux_name}")
                 continue
+        if not inputs_match(old_sha, head_sha, ["libzkcasino"], LIBRARY_TOOLCHAIN, "library inputs"):
+            continue
+        if not library_run:
+            library_run = run_id
+            print(
+                f"reusing libzkcasino from run {run_id} ({old_sha[:12]}); sources match"
+            )
+        if run_id not in conclusions_by_run:
+            conclusions_by_run[run_id] = job_conclusions(repo, run_id)
+        conclusions = conclusions_by_run[run_id]
+        mac_conclusion = conclusions.get(mac_job)
+        job_conclusion = conclusions.get(job_name)
         if mac_conclusion != "success" or job_conclusion != "success":
             if job_name == mac_job:
-                print(f"skip run {run_id}: {job_name}={job_conclusion}")
+                print(f"skip proofs from run {run_id}: {job_name}={job_conclusion}")
             else:
                 print(
-                    f"skip run {run_id}: {job_name}={job_conclusion} {mac_job}={mac_conclusion}"
+                    f"skip proofs from run {run_id}: {job_name}={job_conclusion} {mac_job}={mac_conclusion}"
                 )
             continue
-        if not proof_inputs_match(old_sha, head_sha, paths):
+        if not inputs_match(old_sha, head_sha, paths, TOOLCHAIN, "proof inputs"):
             continue
         print(
-            f"reusing {artifact_name} from run {run_id} ({old_sha[:12]}); {job_name} already passed"
+            f"reusing proofs from run {run_id} ({old_sha[:12]}); {job_name} already passed"
         )
-        return True, run_id
-    print(f"no stored {artifact_name} from a passed run with the same proof inputs")
-    return False, ""
+        return True, True, run_id
+    if library_run:
+        print("stored library matches; proof inputs changed, so the tests will run")
+        return False, True, library_run
+    print(f"no stored {artifact_name} from a run with the same library sources")
+    return False, False, ""
 
 
 def main():
@@ -209,11 +231,11 @@ def main():
         )
         return 2
     try:
-        reuse, run_id = find_reuse(*sys.argv[1:6])
+        reuse, library, run_id = find_reuse(*sys.argv[1:6])
     except Exception as exc:
         print(f"proof reuse check failed, running tests: {exc}", file=sys.stderr)
-        reuse, run_id = False, ""
-    write_output(reuse, run_id)
+        reuse, library, run_id = False, False, ""
+    write_output(reuse, library, run_id)
     return 0
 
 

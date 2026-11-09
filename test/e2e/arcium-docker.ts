@@ -92,12 +92,15 @@ function socketExists(unixUrlOrPath: string): boolean {
 /** Docker Desktop sockets — never used. Arcium localnet is Apple Container only. */
 export function isDockerDesktopHost(dockerHost: string | undefined | null): boolean {
   if (!dockerHost) return false;
+  // Colima's socket is the engine this job starts. It is not Docker Desktop.
+  if (dockerHost.includes('.colima/')) return false;
   return dockerHost.includes('.docker/run/docker.sock')
     || dockerHost.includes('/var/run/docker.sock')
     || dockerHost.includes('Docker.app')
     || (dockerHost.includes('docker.sock')
       && !dockerHost.includes('socktainer')
-      && !dockerHost.includes('gocker'));
+      && !dockerHost.includes('gocker')
+      && !dockerHost.includes('.colima/'));
 }
 
 export function appleContainerBin(): string {
@@ -173,9 +176,14 @@ export function resolveDockerBinary(): string {
 
 export function containerRuntimeUnavailableMessage(): string {
   if (isAppleContainerRuntime()) return APPLE_CONTAINER_NOT_RUNNING_MESSAGE;
+  if (process.env.GITHUB_ACTIONS === 'true' && process.platform === 'darwin') {
+    return (
+      'Docker Engine is not reachable. The macOS Arcium job runs the Arcium images with Docker (Colima). Apple Container is disabled on GitHub Actions.'
+    );
+  }
   if (process.platform === 'linux' || process.env.GITHUB_ACTIONS === 'true') {
     return (
-      'Docker Engine is not reachable. The Arcium tests on GitHub Actions run on Linux and use docker, not Apple Container.'
+      'Docker Engine is not reachable. The Arcium tests use docker, not Apple Container.'
     );
   }
   return 'Docker is not reachable (`docker info` failed). Apple Container is off.';
@@ -259,8 +267,8 @@ export function resolveArciumDockerHostGateway(
   if (isAppleContainerRuntime()) {
     return resolveHostLanIp() ?? ARCIUM_APPLE_CONTAINER_HOST_GATEWAY;
   }
-  // docker0 on a Linux engine. The Actions job replaces this with the
-  // address from `docker network inspect bridge`.
+  // docker0 on a Linux engine. The Actions job sets
+  // ARCIUM_DOCKER_HOST_GATEWAY to the address containers use for the host.
   if (process.platform === 'linux') return '172.17.0.1';
   return ARCIUM_DOCKER_DESKTOP_HOST_GATEWAY;
 }
@@ -285,14 +293,26 @@ function pathWithLocalBins(basePath = process.env.PATH ?? ''): string {
 }
 
 /**
- * Apple Silicon: Arcium images are amd64-only; run under Rosetta on Apple Container.
+ * Published Arcium images (v0.14.1) are linux/amd64 only. An explicit
+ * DOCKER_DEFAULT_PLATFORM of linux/arm64 or linux/amd64 is kept.
+ */
+export function arciumImagePlatform(
+  env: NodeJS.ProcessEnv = process.env,
+): 'linux/arm64' | 'linux/amd64' {
+  const requested = env.DOCKER_DEFAULT_PLATFORM;
+  if (requested === 'linux/arm64' || requested === 'linux/amd64') return requested;
+  return 'linux/amd64';
+}
+
+/**
  * PATH prefers the Apple Container `docker` shim. Docker Desktop sockets are stripped.
+ * The image platform comes from {@link arciumImagePlatform}.
  */
 export function arciumDockerEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...base,
     PATH: pathWithLocalBins(base.PATH),
-    DOCKER_DEFAULT_PLATFORM: 'linux/amd64',
+    DOCKER_DEFAULT_PLATFORM: arciumImagePlatform(base),
   };
   if (isAppleContainerRuntime()) {
     env.ARCIUM_USE_APPLE_CONTAINER = '1';
@@ -946,9 +966,12 @@ export function patchArciumDockerArtifacts(): void {
     // Apple Container treats mem_limit as a hard per-VM reservation. Six Arcium
     // services at 4g need ~24 GiB; GitHub's macOS runners have ~14 GiB, so
     // compose up never creates containers. Cap via ARCIUM_APPLE_MEM_LIMIT
-    // (default 1536m). Docker Desktop keeps soft 4g cgroup limits.
+    // (default 1536m). Docker Desktop keeps soft 4g cgroup limits unless
+    // ARCIUM_DOCKER_MEM_LIMIT is set (the macOS Actions VM is smaller).
     const appleMemLimit = process.env.ARCIUM_APPLE_MEM_LIMIT?.trim() || '1536m';
-    const memLimitValue = isAppleContainerRuntime() ? appleMemLimit : '4g';
+    const dockerMemLimit = process.env.ARCIUM_DOCKER_MEM_LIMIT?.trim() || '4g';
+    const memLimitValue = isAppleContainerRuntime() ? appleMemLimit : dockerMemLimit;
+    const platform = arciumImagePlatform();
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
       if (/^\s+mem_limit:\s*/.test(line)) {
@@ -956,18 +979,19 @@ export function patchArciumDockerArtifacts(): void {
         out.push(`    mem_limit: ${memLimitValue}`);
         continue;
       }
+      if (/^\s+platform:\s*linux\/(amd64|arm64)\s*$/.test(line)) {
+        out.push(`    platform: ${platform}`);
+        if (!lines.slice(Math.max(0, i - 3), i + 4).some((l) => /mem_limit:/.test(l))) {
+          out.push(`    mem_limit: ${memLimitValue}`);
+        }
+        continue;
+      }
       out.push(line);
       if (line.includes('image: "arcium/') && !line.includes('platform:')) {
         const next = lines[i + 1] ?? '';
         if (!next.includes('platform:')) {
-          out.push('    platform: linux/amd64');
+          out.push(`    platform: ${platform}`);
         }
-      }
-      if (
-        /^\s+platform:\s*linux\/amd64\s*$/.test(line)
-        && !lines.slice(Math.max(0, i - 3), i + 4).some((l) => /mem_limit:/.test(l))
-      ) {
-        out.push(`    mem_limit: ${memLimitValue}`);
       }
     }
 
@@ -998,6 +1022,13 @@ export function arciumDockerPullError(log: string): string | null {
     log.includes('linux/arm64/v8')
     || log.includes('no match for platform in manifest')
   ) {
+    const platform = arciumImagePlatform();
+    if (platform === 'linux/arm64') {
+      return (
+        `Arcium Docker images have no linux/arm64 build for ${ARCIUM_DOCKER_IMAGE_TAG}. `
+        + 'The registry manifest did not include that platform.'
+      );
+    }
     return (
       'Arcium Docker images have no ARM64 build. '
       + 'Ensure DOCKER_DEFAULT_PLATFORM=linux/amd64 (see test/e2e/arcium-docker.ts).'

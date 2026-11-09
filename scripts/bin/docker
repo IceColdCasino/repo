@@ -70,9 +70,9 @@ real_docker_bin() {
   return 127
 }
 
-# Apple Container is a macOS hypervisor. Linux hosts, including the GitHub
-# Actions Arcium job, use Docker Engine. ARCIUM_USE_APPLE_CONTAINER=0 is the
-# same choice on a Mac that has Docker installed.
+# Apple Container is a macOS hypervisor. Linux hosts and the GitHub Actions
+# Arcium job use Docker Engine. ARCIUM_USE_APPLE_CONTAINER=0 is the same
+# choice on a Mac that has Docker installed.
 have_apple_container() {
   [[ "$(uname -s)" == "Darwin" ]] || return 1
   [[ "${ARCIUM_USE_APPLE_CONTAINER:-}" == "0" ]] && return 1

@@ -66,7 +66,7 @@ classify() {
     *war*) add war; return ;;
   esac
   case "$p" in
-    src/*|test/*|libzkcasino/*|circuits/*|zkey/*|scripts/*|package.json|bun.lock|bun.lockb|tsconfig.json|tsconfig.*.json|.github/workflows/tests.yml|.github/select-tests.sh|.github/install-localnet-tools.sh)
+    src/*|test/*|libzkcasino/*|circuits/*|zkey/*|scripts/*|package.json|bun.lock|bun.lockb|tsconfig.json|tsconfig.*.json|.github/workflows/tests.yml|.github/select-tests.sh|.github/install-localnet-tools.sh|.github/reuse-proof-artifact.py|.github/run-proof-tests.sh)
       add all
       ;;
   esac
