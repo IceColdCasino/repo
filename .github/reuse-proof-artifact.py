@@ -28,6 +28,8 @@ TOOLCHAIN = (
 )
 LIBRARY_TOOLCHAIN = (
     re.compile(r"version:\s*0\.\d+\.\d+"),
+    # The full zig build line, including -Dcpu=baseline on Linux. A native
+    # CPU library from an older run must not be reused.
     re.compile(r"zig build -Doptimize=\S+"),
 )
 

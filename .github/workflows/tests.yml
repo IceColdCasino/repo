@@ -206,14 +206,22 @@ jobs:
             .zig-cache
             libzkcasino/.zig-cache
             libzkcasino/zig-pkg
-          key: zig-0.17.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}
+          key: zig-0.17.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}-${{ runner.os == 'Linux' && 'cpu-baseline' || 'cpu-native' }}
           restore-keys: |
-            zig-0.17.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}
+            zig-0.17.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}-${{ runner.os == 'Linux' && 'cpu-baseline' || 'cpu-native' }}
 
       - name: Build libzkcasino
         if: steps.reuse.outputs.library != 'true'
         working-directory: libzkcasino
-        run: zig build -Doptimize=ReleaseFast -Dcircuit-set=${{ matrix.circuit_set }}
+        run: |
+          set -eux
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            zig build -Doptimize=ReleaseFast -Dcircuit-set=${{ matrix.circuit_set }}
+          else
+            # ubuntu-24.04 does not pin a CPU. A native znver4 library SIGILLs
+            # when another runner reuses the artifact.
+            zig build -Doptimize=ReleaseFast -Dcpu=baseline -Dcircuit-set=${{ matrix.circuit_set }}
+          fi
 
       - name: Upload macOS libzkcasino libraries
         if: steps.reuse.outputs.library != 'true' && runner.os == 'macOS'
