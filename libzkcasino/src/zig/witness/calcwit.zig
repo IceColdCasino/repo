@@ -1,6 +1,6 @@
 const std = @import("std");
 pub const fr = @import("fr.zig");
-const host_simd = @import("../host_simd.zig");
+const host_simd = @import("host_simd.zig");
 
 comptime {
     // The C++ witness bridge calls this. Keep the export in the root link.

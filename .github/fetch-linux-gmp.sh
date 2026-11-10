@@ -51,7 +51,7 @@ fetch_arch() {
 
   local out="$dest/$zig_arch"
   mkdir -p "$out/include" "$out/lib"
-  cp "$work/dev/usr/include/gmp.h" "$out/include/gmp.h"
+  cp "$work/dev/usr/include/$multiarch/gmp.h" "$out/include/gmp.h"
   local soname
   soname="$(find "$work/lib/usr/lib/$multiarch" -name 'libgmp.so.*' -type f | head -n 1)"
   if [ -z "$soname" ]; then

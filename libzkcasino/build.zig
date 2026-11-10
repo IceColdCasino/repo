@@ -195,7 +195,7 @@ pub fn build(b: *std.Build) void {
             sdk,
         }, is_ios, is_ios_sim, sdk_c_include)
     else
-        &[_][]const u8{ "-std=c++11", "-fPIC", "-O3", "-fvisibility=hidden", "-stdlib=libc++", "-Wno-vla-cxx-extension", "-Wno-error=vla-cxx-extension" };
+        &[_][]const u8{ "-std=c++11", "-fPIC", "-O3", "-fvisibility=hidden", "-Wno-vla-cxx-extension", "-Wno-error=vla-cxx-extension" };
 
     const cpp_common_files = [_][]const u8{
         "src/witness_common/calcwit.cpp",
@@ -652,7 +652,12 @@ fn addLinuxCIncludes(module: *std.Build.Module, cpu_arch: std.Target.Cpu.Arch) v
 
 fn linkGmp(module: *std.Build.Module, os_tag: std.Target.Os.Tag, gmp_path: []const u8, explicit: bool, gmp_lib_dir: ?[]const u8) void {
     if (os_tag == .linux and !explicit) {
-        if (gmp_lib_dir) |dir| module.addLibraryPath(.{ .cwd_relative = dir });
+        if (gmp_lib_dir) |dir| {
+            // pkg-config on the Mac would hand back the Homebrew archive.
+            module.addLibraryPath(.{ .cwd_relative = dir });
+            module.linkSystemLibrary("gmp", .{ .use_pkg_config = .no });
+            return;
+        }
         module.linkSystemLibrary("gmp", .{});
         return;
     }
