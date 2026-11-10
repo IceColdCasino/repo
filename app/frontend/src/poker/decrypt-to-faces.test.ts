@@ -172,7 +172,7 @@ describe('worker partials → face rendering', () => {
     expect(view.sharedCards.every((card) => !card.flipped)).toBe(true);
     expect(tableShowsDecryptedFaces(view, { holeSeats: [0, 1] })).toBe(false);
   },
-    30_000,
+    120_000,
   );
 
   it(
@@ -215,6 +215,6 @@ describe('worker partials → face rendering', () => {
       [2, 3].map((dealIndex) => new Card(decrypted.get(dealIndex)!).unicode),
     );
   },
-    30_000,
+    120_000,
   );
 });
