@@ -13,7 +13,7 @@ pub fn fast() bool {
     };
 }
 
-export fn zkcasino_host_simd_fast() c_int {
+pub export fn zkcasino_host_simd_fast() c_int {
     return if (fast()) 1 else 0;
 }
 

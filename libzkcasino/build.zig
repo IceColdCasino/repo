@@ -453,6 +453,7 @@ fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
                     });
                     if (fast.result.os.tag == .linux) fast_mod.link_libcpp = true;
                     addCppCompileIncludes(fast_mod, opts.sdk_cxx_include, fast.result.os.tag, fast.result.cpu.arch, opts.gmp_include, opts.cross_linux);
+                    linkGmp(fast_mod, fast.result.os.tag, opts.gmp_path, false, opts.gmp_lib_dir);
                     const simd_define = b.fmt("-DSIMD_RUN_NAME={s}_run_simd", .{circuit});
                     addCppSourceWithPrefix(fast_mod, cpp_file, prefix_path, opts.cpp_flags, &.{
                         simd_define,
