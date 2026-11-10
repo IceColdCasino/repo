@@ -1,5 +1,11 @@
 const std = @import("std");
 pub const fr = @import("fr.zig");
+const host_simd = @import("../host_simd.zig");
+
+comptime {
+    // The C++ witness bridge calls this. Keep the export in the root link.
+    _ = &host_simd.zkcasino_host_simd_fast;
+}
 
 pub const CircomCalcWit = struct {
     inputSignalAssigned: []bool,

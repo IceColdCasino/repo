@@ -43,9 +43,58 @@ const CircuitSet = enum {
     bingo,
 };
 
+const SimdMode = enum { native, runtime };
+
+fn defaultSimdMode(target: std.Build.ResolvedTarget) SimdMode {
+    return if (isLinuxSimdHost(target)) .runtime else .native;
+}
+
+fn isLinuxSimdHost(target: std.Build.ResolvedTarget) bool {
+    if (target.result.os.tag != .linux) return false;
+    return switch (target.result.cpu.arch) {
+        .x86_64, .aarch64 => true,
+        else => false,
+    };
+}
+
+fn resolveQuery(b: *std.Build, query: std.Target.Query) std.Build.ResolvedTarget {
+    return b.resolveTargetQuery(query);
+}
+
+fn portableQuery(query: std.Target.Query) std.Target.Query {
+    var out = query;
+    out.cpu_model = .baseline;
+    out.cpu_features_add = .empty;
+    out.cpu_features_sub = .empty;
+    return out;
+}
+
+fn fastQuery(requested: std.Build.ResolvedTarget) std.Target.Query {
+    var out = portableQuery(requested.query);
+    switch (requested.result.cpu.arch) {
+        .x86_64 => out.cpu_model = .{ .explicit = &std.Target.x86.cpu.x86_64_v3 },
+        .aarch64 => {
+            const Index = std.Target.Cpu.Feature.Set.Index;
+            const features = [_]std.Target.aarch64.Feature{ .neon, .lse, .crc, .dotprod };
+            inline for (features) |feature| {
+                out.cpu_features_add.addFeature(@as(Index, @intCast(@intFromEnum(feature))));
+            }
+        },
+        else => {},
+    }
+    return out;
+}
+
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    const requested = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    // Linux arm64 and amd64 ship a portable witness plus a wide one.
+    // Runtime detection picks the wide copy, and falls back when the CPU
+    // cannot run it. A native znver4 or Neoverse build is not what gets linked.
+    const simd_mode = b.option(SimdMode, "simd", "Linux arm64/amd64 witness ISA: runtime or native") orelse defaultSimdMode(requested);
+    const dispatch = simd_mode == .runtime and isLinuxSimdHost(requested);
+    const target = if (dispatch) resolveQuery(b, portableQuery(requested.query)) else requested;
+    const fast_target: ?std.Build.ResolvedTarget = if (dispatch) resolveQuery(b, fastQuery(requested)) else null;
 
     const witness_link = b.option(std.builtin.LinkMode, "witness-link", "Witness library linkage: dynamic or static") orelse .dynamic;
     const circuit_set = b.option(CircuitSet, "circuit-set", "Witness libraries to build") orelse .all;
@@ -63,6 +112,12 @@ pub fn build(b: *std.Build) void {
     const house_options_mod = house_options.createModule();
     const gmp_path_opt = b.option([]const u8, "gmp-path", "Path to libgmp (.dylib, .so, or .a)");
     const gmp_path = gmp_path_opt orelse defaultGmpPath(target.result.os.tag);
+    const gmp_include_opt = b.option([]const u8, "gmp-include", "Directory containing gmp.h for this target");
+    const gmp_lib_dir = b.option([]const u8, "gmp-lib-dir", "Directory containing libgmp.so for this target");
+    const cross_linux = target.result.os.tag == .linux and @import("builtin").os.tag != .linux;
+    if (cross_linux and (gmp_include_opt == null or gmp_lib_dir == null)) {
+        @panic("cross-compiling Linux needs -Dgmp-include and -Dgmp-lib-dir");
+    }
 
     const witness_export_options = b.addOptions();
     witness_export_options.addOption(bool, "witness_exports", true);
@@ -96,7 +151,7 @@ pub fn build(b: *std.Build) void {
     });
     // libc++ keeps std::map at 24 bytes, matching calcwit.zig. libstdc++ is 48.
     if (!is_apple) fr_cpp_mod.link_libcpp = true;
-    addCppCompileIncludes(fr_cpp_mod, sdk_cxx_include, target.result.os.tag, target.result.cpu.arch, true);
+    addCppCompileIncludes(fr_cpp_mod, sdk_cxx_include, target.result.os.tag, target.result.cpu.arch, gmp_include_opt, cross_linux);
     // Pure Zig field arithmetic - fr_raw_to_montgomery no longer needed
     fr_cpp_mod.addCSourceFile(.{ .file = b.path("src/witness_common/fr.cpp"), .flags = &[_][]const u8{"-std=c++11", "-fPIC", "-O3"} });
 
@@ -111,7 +166,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = !linksLibSystemViaTbd(target.result.os.tag),
     });
     fr_mod.addObject(fr_cpp_obj);
-    linkGmp(fr_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
+    linkGmp(fr_mod, target.result.os.tag, gmp_path, gmp_path_opt != null, gmp_lib_dir);
     addLibcppLink(fr_mod, target, sdk);
 
     const fr_lib = b.addLibrary(.{
@@ -163,10 +218,14 @@ pub fn build(b: *std.Build) void {
             .witness_link = witness_link,
             .gmp_path = gmp_path,
             .gmp_explicit = gmp_path_opt != null,
+            .gmp_include = gmp_include_opt,
+            .gmp_lib_dir = gmp_lib_dir,
+            .cross_linux = cross_linux,
             .witness_export_options_mod = witness_export_options_mod,
             .witness_poker_options_mod = witness_poker_options_mod,
             .house_options_mod = house_options_mod,
             .house = house,
+            .fast_target = fast_target,
         });
     }
 
@@ -198,7 +257,7 @@ pub fn build(b: *std.Build) void {
     });
     player_test_mod.addImport("zkey_store", zkey_store_mod);
     
-    linkGmp(player_test_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
+    linkGmp(player_test_mod, target.result.os.tag, gmp_path, gmp_path_opt != null, gmp_lib_dir);
     addLibcppLink(player_test_mod, target, sdk);
 
     const player_test = b.addTest(.{
@@ -219,7 +278,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     
-    linkGmp(player_lib_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
+    linkGmp(player_lib_mod, target.result.os.tag, gmp_path, gmp_path_opt != null, gmp_lib_dir);
     addLibcppLink(player_lib_mod, target, sdk);
     if (target.result.os.tag == .macos or target.result.os.tag == .ios) {
         player_lib_mod.addRPath(.{ .cwd_relative = "@loader_path" });
@@ -247,7 +306,7 @@ pub fn build(b: *std.Build) void {
     player_bridge_lib_mod.addImport("house_options", house_options_mod);
     player_bridge_lib_mod.addImport("zkey_store", zkey_store_mod);
     
-    linkGmp(player_bridge_lib_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
+    linkGmp(player_bridge_lib_mod, target.result.os.tag, gmp_path, gmp_path_opt != null, gmp_lib_dir);
     addLibcppLink(player_bridge_lib_mod, target, sdk);
     if (target.result.os.tag == .macos or target.result.os.tag == .ios) {
         player_bridge_lib_mod.addRPath(.{ .cwd_relative = "@loader_path" });
@@ -274,7 +333,7 @@ pub fn build(b: *std.Build) void {
     });
     player_prove_mod.addImport("zkey_store", zkey_store_mod);
     
-    linkGmp(player_prove_mod, target.result.os.tag, gmp_path, gmp_path_opt != null);
+    linkGmp(player_prove_mod, target.result.os.tag, gmp_path, gmp_path_opt != null, gmp_lib_dir);
     addLibcppLink(player_prove_mod, target, sdk);
 
     const profile_one = b.option(bool, "profile-one", "Compile only the single-circuit profile test") orelse false;
@@ -304,10 +363,14 @@ const WitnessLibOptions = struct {
     witness_link: std.builtin.LinkMode = .dynamic,
     gmp_path: []const u8,
     gmp_explicit: bool,
+    gmp_include: ?[]const u8,
+    gmp_lib_dir: ?[]const u8,
+    cross_linux: bool,
     witness_export_options_mod: *std.Build.Module,
     witness_poker_options_mod: *std.Build.Module,
     house_options_mod: *std.Build.Module,
     house: bool,
+    fast_target: ?std.Build.ResolvedTarget = null,
 };
 
 fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
@@ -319,7 +382,7 @@ fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
     });
     lib_mod.addObjectFile(opts.fr_lib.getEmittedBin());
     if (opts.witness_link == .dynamic) {
-        linkGmp(lib_mod, opts.target.result.os.tag, opts.gmp_path, opts.gmp_explicit);
+        linkGmp(lib_mod, opts.target.result.os.tag, opts.gmp_path, opts.gmp_explicit, opts.gmp_lib_dir);
     }
     addLibcppLink(lib_mod, opts.target, opts.sdk);
     if (opts.target.result.os.tag == .macos or opts.target.result.os.tag == .ios) {
@@ -375,8 +438,42 @@ fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
                 .strip = true,
             });
             if (opts.target.result.os.tag == .linux) cpp_mod.link_libcpp = true;
-            addCppCompileIncludes(cpp_mod, opts.sdk_cxx_include, opts.target.result.os.tag, opts.target.result.cpu.arch, true);
-            addCppSourceWithPrefix(cpp_mod, cpp_file, prefix_path, opts.cpp_flags);
+            addCppCompileIncludes(cpp_mod, opts.sdk_cxx_include, opts.target.result.os.tag, opts.target.result.cpu.arch, opts.gmp_include, opts.cross_linux);
+            addCppSourceWithPrefix(cpp_mod, cpp_file, prefix_path, opts.cpp_flags, &.{});
+
+            // The generated `run` is the witness. A sibling library holds the
+            // wide copy. calcwit loads it at runtime when the CPU allows it.
+            if (opts.fast_target) |fast| {
+                if (std.mem.eql(u8, cpp_file, circuit_cpp)) {
+                    const fast_mod = b.createModule(.{
+                        .target = fast,
+                        .optimize = .ReleaseFast,
+                        .sanitize_c = .off,
+                        .strip = true,
+                    });
+                    if (fast.result.os.tag == .linux) fast_mod.link_libcpp = true;
+                    addCppCompileIncludes(fast_mod, opts.sdk_cxx_include, fast.result.os.tag, fast.result.cpu.arch, opts.gmp_include, opts.cross_linux);
+                    const simd_define = b.fmt("-DSIMD_RUN_NAME={s}_run_simd", .{circuit});
+                    addCppSourceWithPrefix(fast_mod, cpp_file, prefix_path, opts.cpp_flags, &.{
+                        simd_define,
+                        "-include",
+                        "src/witness_common/run_simd_rename.h",
+                    });
+                    addCppSourceWithPrefix(fast_mod, "src/witness_common/run_simd_export.cpp", prefix_path, opts.cpp_flags, &.{
+                        simd_define,
+                    });
+                    // Separate library so the wide copy's symbols do not collide
+                    // with the portable object. $ORIGIN on the witness lib finds it.
+                    const fast_lib = b.addLibrary(.{
+                        .name = b.fmt("{s}_run_simd", .{circuit}),
+                        .linkage = .dynamic,
+                        .root_module = fast_mod,
+                    });
+                    fast_lib.linker_allow_shlib_undefined = true;
+                    fast_lib.root_module.addRPathSpecial("$ORIGIN");
+                    b.installArtifact(fast_lib);
+                }
+            }
 
             const obj = b.addObject(.{
                 .name = obj_name,
@@ -452,14 +549,19 @@ fn addCppCompileIncludes(
     sdk_cxx_include: []const u8,
     os_tag: std.Target.Os.Tag,
     cpu_arch: std.Target.Cpu.Arch,
-    include_gmp_headers: bool,
+    gmp_include: ?[]const u8,
+    cross_linux: bool,
 ) void {
     if (sdk_cxx_include.len > 0) {
         module.addIncludePath(.{ .cwd_relative = sdk_cxx_include });
     }
-    if (os_tag == .linux) addLinuxCIncludes(module, cpu_arch);
+    // A Mac cross compile uses Zig's libc headers. /usr/include is the Linux
+    // sysroot, and it is not on the macOS runner.
+    if (os_tag == .linux and !cross_linux) addLinuxCIncludes(module, cpu_arch);
     module.addIncludePath(module.owner.path("src/witness_common"));
-    if (include_gmp_headers) {
+    if (gmp_include) |dir| {
+        module.addIncludePath(.{ .cwd_relative = dir });
+    } else if (os_tag != .linux) {
         module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
     }
 }
@@ -476,8 +578,9 @@ fn addCppSourceWithPrefix(
     cpp_file: []const u8,
     prefix_h: []const u8,
     flags_slice: []const []const u8,
+    tail_flags: []const []const u8,
 ) void {
-    const all_flags = module.owner.allocator.alloc([]const u8, flags_slice.len + 2) catch unreachable;
+    const all_flags = module.owner.allocator.alloc([]const u8, flags_slice.len + tail_flags.len + 2) catch unreachable;
     defer module.owner.allocator.free(all_flags);
 
     for (flags_slice, 0..) |flag, i| {
@@ -485,6 +588,9 @@ fn addCppSourceWithPrefix(
     }
     all_flags[flags_slice.len] = "-include";
     all_flags[flags_slice.len + 1] = prefix_h;
+    for (tail_flags, 0..) |flag, i| {
+        all_flags[flags_slice.len + 2 + i] = flag;
+    }
 
     module.addCSourceFile(.{
         .file = module.owner.path(cpp_file),
@@ -544,8 +650,9 @@ fn addLinuxCIncludes(module: *std.Build.Module, cpu_arch: std.Target.Cpu.Arch) v
     module.addIncludePath(.{ .cwd_relative = "/usr/include" });
 }
 
-fn linkGmp(module: *std.Build.Module, os_tag: std.Target.Os.Tag, gmp_path: []const u8, explicit: bool) void {
+fn linkGmp(module: *std.Build.Module, os_tag: std.Target.Os.Tag, gmp_path: []const u8, explicit: bool, gmp_lib_dir: ?[]const u8) void {
     if (os_tag == .linux and !explicit) {
+        if (gmp_lib_dir) |dir| module.addLibraryPath(.{ .cwd_relative = dir });
         module.linkSystemLibrary("gmp", .{});
         return;
     }

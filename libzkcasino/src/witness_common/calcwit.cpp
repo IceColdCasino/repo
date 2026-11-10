@@ -1,6 +1,7 @@
 #include <iomanip>
 #include <sstream>
 #include <assert.h>
+#include <dlfcn.h>
 #include "calcwit.hpp"
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
@@ -42,8 +43,29 @@ __attribute__((weak)) u64 fnv1a(std::string s) {
 // It has C++ linkage, so it cannot be cast to a C function pointer for Zig.
 extern void run(Circom_CalcWit* ctx);
 
+// Linux builds a sibling lib<circuit>_run_simd.so. The prefix makes `run`
+// expand to <circuit>_run, so the file is lib<circuit>_run_simd.so and the
+// C entry is <circuit>_run_simd_entry. Absent, or the CPU lacks the ISA, and
+// the portable run is used.
+#define simd_str2(name) #name
+#define simd_str(name) simd_str2(name)
+extern "C" int zkcasino_host_simd_fast(void);
+
+using SimdRun = void (*)(Circom_CalcWit*);
+
+static SimdRun loadSimdRun() {
+    if (!zkcasino_host_simd_fast()) return nullptr;
+    void* lib = dlopen("lib" simd_str(run) "_simd.so", RTLD_LAZY | RTLD_LOCAL);
+    if (!lib) return nullptr;
+    return reinterpret_cast<SimdRun>(dlsym(lib, simd_str(run) "_simd_entry"));
+}
 
 extern "C" void run_c_bridge(void* ctx) {
+    static SimdRun fast = loadSimdRun();
+    if (fast) {
+        fast((Circom_CalcWit*)ctx);
+        return;
+    }
     run((Circom_CalcWit*)ctx);
 }
 

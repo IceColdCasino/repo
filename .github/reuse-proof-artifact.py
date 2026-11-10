@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Reuse a stored libzkcasino build, and skip proofs only when they already passed.
 
-The compiled library depends on libzkcasino and the Zig build line. A change
-under src/ or the Arcis job does not require compiling it again. The job
-downloads that library and uploads it again so later jobs in this run can
-still find it. A Linux game job also requires libzkcasino-linux-<game> from
-that run, because that job downloads the Linux library and does not rebuild it.
+The compiled library depends on libzkcasino and the Zig build lines. A change
+under src/ or the Arcis job does not require compiling it again. The macOS
+job downloads the stored libraries and uploads them again so later jobs in
+this run can still find them. Reuse also requires the Linux amd64 and arm64
+libraries from that run, because Arcium downloads the amd64 build and does
+not rebuild it.
 
-Skipping the proof tests is stricter. The game job on this runner and the
-macOS job for the same game must both have succeeded, and the proof inputs
-must be unchanged since that commit. The library artifact is uploaded before
-the proofs, so an artifact by itself is not enough to skip them.
+Skipping the proof tests is stricter. The macOS job for this game must have
+succeeded, and the proof inputs must be unchanged since that commit. The
+library artifact is uploaded before the proofs, so an artifact by itself is
+not enough to skip them.
 """
 
 import json
@@ -28,8 +29,7 @@ TOOLCHAIN = (
 )
 LIBRARY_TOOLCHAIN = (
     re.compile(r"version:\s*0\.\d+\.\d+"),
-    # Matched per runner. macOS ignores the Linux -Dcpu=baseline line, and
-    # Linux ignores the macOS line, so one side can reuse a stored library.
+    # The macOS job's zig lines cover the native build and both Linux crosses.
     re.compile(r"zig build -Doptimize=\S+"),
 )
 
@@ -93,19 +93,14 @@ def toolchain_fingerprint(sha, patterns, runner):
     )
     if show.returncode != 0:
         return None
-    # The Linux zig line pins -Dcpu=baseline. The macOS line does not.
-    # A change to one must not throw away the other runner's stored library.
-    linux = not runner.startswith("macos")
+    # Native macOS plus the Linux amd64 and arm64 cross builds. Any of those
+    # zig lines changing means the stored libraries cannot be reused.
+    del runner
     hits = []
     for line in show.stdout.splitlines():
         stripped = line.strip()
         if not any(pattern.search(stripped) for pattern in patterns):
             continue
-        if "zig build -Doptimize=" in stripped:
-            if linux and "-Dcpu=baseline" not in stripped:
-                continue
-            if not linux and "-Dcpu=" in stripped:
-                continue
         hits.append(stripped)
     return "\n".join(hits)
 
@@ -197,11 +192,14 @@ def find_reuse(game, runner, test_file, lfs, circuit_set):
             continue
         if branch and workflow_run.get("head_branch") not in (None, branch):
             continue
-        if not runner.startswith("macos"):
-            linux_name = f"libzkcasino-linux-{circuit_set}"
-            if not run_has_artifact(repo, run_id, linux_name):
-                print(f"skip run {run_id}: missing {linux_name}")
-                continue
+        linux_names = (
+            f"libzkcasino-linux-{circuit_set}",
+            f"libzkcasino-arm64-{circuit_set}",
+        )
+        missing = next((name for name in linux_names if not run_has_artifact(repo, run_id, name)), None)
+        if missing:
+            print(f"skip run {run_id}: missing {missing}")
+            continue
         if not inputs_match(old_sha, head_sha, ["libzkcasino"], LIBRARY_TOOLCHAIN, "library inputs", runner):
             continue
         if not library_run:

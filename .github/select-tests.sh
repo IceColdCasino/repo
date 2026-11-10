@@ -5,7 +5,6 @@
 # every game. Docs and other files select nothing.
 set -euo pipefail
 
-LINUX=ubuntu-24.04
 MAC=macos-latest
 ORDER=(poker blackjack baccarat war roulette craps keno slots bingo)
 
@@ -104,18 +103,16 @@ for g in "${ORDER[@]}"; do
   [ -n "${ON[$g]:-}" ] || continue
   selected+=("$g")
   meta "$g"
-  for runner in "$LINUX" "$MAC"; do
-    [ "$first" = 1 ] || json+=','
-    first=0
-    json+=$(printf '{"game":"%s","runner":"%s","test":"%s","circuit_set":"%s","lfs":"%s"}' "$g" "$runner" "$TEST" "$SET" "$LFS")
-  done
+  [ "$first" = 1 ] || json+=','
+  first=0
+  json+=$(printf '{"game":"%s","runner":"%s","test":"%s","circuit_set":"%s","lfs":"%s"}' "$g" "$MAC" "$TEST" "$SET" "$LFS")
 done
 json+=']'
 
 if [ "${#selected[@]}" -eq 0 ]; then
   HAS_GAMES=false
   # A skipped job still needs a non-empty matrix value.
-  json='[{"game":"none","runner":"ubuntu-24.04","test":"none","circuit_set":"poker","lfs":"zkey/register_main*"}]'
+  json='[{"game":"none","runner":"macos-latest","test":"none","circuit_set":"poker","lfs":"zkey/register_main*"}]'
 else
   HAS_GAMES=true
 fi
