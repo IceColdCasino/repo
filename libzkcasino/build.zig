@@ -472,6 +472,9 @@ fn addWitnessLib(b: *std.Build, opts: WitnessLibOptions) void {
                     });
                     fast_lib.linker_allow_shlib_undefined = true;
                     fast_lib.root_module.addRPathSpecial("$ORIGIN");
+                    // Fr_* and the calcwit helpers live in this library. The wide
+                    // copy is dlopened on its own, so it has to name that dependency.
+                    fast_lib.root_module.linkLibrary(lib);
                     b.installArtifact(fast_lib);
                 }
             }
