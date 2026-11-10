@@ -76,6 +76,6 @@ library that knows each circuit is listed in `libzkcasino/build.zig`.
 | Slots | `shuffle_{3,5}_reel_22_main`, `slot_share_{3,5}_reel_hashout_main`, `slot_showdown_{3,5}_reel_hashout_main` |
 | Bingo | `shuffle_1_deck_{75,90}_main`, `bingo_card_{75,90}_main`, `bingo_share_hashout_main`, `bingo_showdown_{75,90}_hashout_main` |
 
-Isolated mains such as `poker_hand_eval_main` and `craps_bet_eval_main` are
+Isolated mains such as `poker_hand_eval_main` and `poker_compare_hands_main` are
 circuit sources. The complete-game tests do not prove them on their own.
 They are exercised only as templates inside the showdown the test does prove.

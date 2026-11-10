@@ -113,9 +113,9 @@ proof was searched for, or that Solana settlement ran.
 - Arcium MPC, sealed-coefficient delivery, and Solana programs. Those run in
   [arcis-tests.md](./arcis-tests.md).
 - Seat counts other than the cases in the table.
-- Isolated mains (`poker_hand_eval_main`, `poker_compare_hands_main`,
-  `craps_bet_eval_main`). Those templates run inside a showdown, but the
-  tests do not prove the isolated main.
+- Isolated mains (`poker_hand_eval_main`, `poker_compare_hands_main`).
+  Those templates run inside a showdown, but the tests do not prove the
+  isolated main.
 - A second trusted setup. Verification succeeds for the keys currently in
   `zkey/`. Replacing a key without rebuilding the proofs makes that circuit’s
   tests fail.

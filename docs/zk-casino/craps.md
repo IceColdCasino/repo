@@ -41,7 +41,7 @@ point roll.
 |---------|----------------|
 | `craps_eval.circom` | Come-out: natural 7/11, craps 2/3/12, or establish point 4–6/8–10. Point: pass, seven-out, or reroll |
 | `craps_bet.circom` | Encrypted bet objects |
-| `craps_bet_eval.circom` / `craps_bet_eval_main.circom` | Per-bet win/lose given action + point |
+| `craps_bet_eval.circom` | Per-bet win/lose given action + point |
 | `craps_showdown.circom` | Decrypt 2 dice + up to 12 bets; pack bets into `c0` and action/point into `c1` |
 
 `action % 3` is the phase-local class: pass wins, don’t-pass wins, or
@@ -64,7 +64,6 @@ state inside Circom.
 | `craps_bet_main.circom` | Ticket commit |
 | `craps_share_hashout_main.circom` | Die partials |
 | `craps_showdown_hashout_main.circom` | Bets + action + point |
-| `craps_bet_eval_main.circom` | Isolated bet evaluation |
 
 ## Host test
 

@@ -115,7 +115,7 @@ ${zkey_setup} "build/${circuit_basename}.r1cs" "${HOME}/ptau/powersOfTau28_hez_f
 # witness files the game tests load (poker_share_main must not replace
 # poker_share_hashout_main).
 case ${circuit_basename} in
-  poker_share_main|poker_hand_eval_main|poker_compare_hands_main|craps_bet_eval_main)
+  poker_share_main|poker_hand_eval_main|poker_compare_hands_main)
     echo "zkey ready for ${circuit_basename}; game witness comes from another main"
     exit 0
     ;;
