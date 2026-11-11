@@ -113,14 +113,24 @@ if [ "${#selected[@]}" -eq 0 ]; then
   HAS_GAMES=false
   # A skipped job still needs a non-empty matrix value.
   json='[{"game":"none","runner":"macos-latest","test":"none","circuit_set":"poker","lfs":"zkey/register_main*"}]'
+  circuit_sets='["none"]'
 else
   HAS_GAMES=true
+  circuit_sets='['
+  set_first=1
+  for g in "${selected[@]}"; do
+    [ "$set_first" = 1 ] || circuit_sets+=','
+    set_first=0
+    circuit_sets+="\"$g\""
+  done
+  circuit_sets+=']'
 fi
 
 printf 'typecheck=%s\n' "$TYPECHECK"
 printf 'lean=%s\n' "$LEAN"
 printf 'has_games=%s\n' "$HAS_GAMES"
 printf 'games=%s\n' "${selected[*]:-}"
+printf 'circuit_sets=%s\n' "$circuit_sets"
 printf 'matrix=%s\n' "$json"
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
@@ -130,6 +140,7 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
     echo "lean=$LEAN"
     echo "has_games=$HAS_GAMES"
     echo "games=${selected[*]:-}"
+    echo "circuit_sets=$circuit_sets"
     echo "matrix<<$delim"
     echo "$json"
     echo "$delim"

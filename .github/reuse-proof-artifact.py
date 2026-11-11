@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """Reuse a stored libzkcasino build, and skip proofs only when they already passed.
 
-The compiled library depends on libzkcasino and the Zig build lines. A change
-under src/ or the Arcis job does not require compiling it again. The macOS
-job downloads the stored libraries and uploads them again so later jobs in
-this run can still find them. Reuse also requires the Linux amd64 and arm64
-libraries from that run, because Arcium downloads the amd64 build and does
-not rebuild it.
+The compiled library depends on libzkcasino and the Zig build line for this
+runner. A change under src/ or the Arcis job does not require compiling it
+again. The job downloads the stored library and uploads it again so later
+jobs in this run can still find it. macOS reuses the macOS library. Each
+Linux runner reuses only its own arch.
 
-Skipping the proof tests is stricter. The macOS job for this game must have
-succeeded, and the proof inputs must be unchanged since that commit. The
-library artifact is uploaded before the proofs, so an artifact by itself is
-not enough to skip them.
+Skipping the proof tests is stricter and only happens on macOS. That job
+must have succeeded, and the proof inputs must be unchanged since that
+commit. The library artifact is uploaded before the proofs, so an artifact
+by itself is not enough to skip them. Linux jobs never run the proofs.
 """
 
 import json
@@ -29,7 +28,7 @@ TOOLCHAIN = (
 )
 LIBRARY_TOOLCHAIN = (
     re.compile(r"version:\s*0\.\d+\.\d+"),
-    # The macOS job's zig lines cover the native build and both Linux crosses.
+    # macOS keeps the native zig line. Linux keeps the -Dsimd=runtime line.
     re.compile(r"zig build -Doptimize=\S+"),
 )
 
@@ -93,14 +92,19 @@ def toolchain_fingerprint(sha, patterns, runner):
     )
     if show.returncode != 0:
         return None
-    # Native macOS plus the Linux amd64 and arm64 cross builds. Any of those
-    # zig lines changing means the stored libraries cannot be reused.
-    del runner
+    # macOS ignores the Linux -Dsimd=runtime line, and Linux ignores the
+    # native macOS line, so one side can reuse a stored library.
+    linux = not runner.startswith("macos")
     hits = []
     for line in show.stdout.splitlines():
         stripped = line.strip()
         if not any(pattern.search(stripped) for pattern in patterns):
             continue
+        if "zig build -Doptimize=" in stripped:
+            if linux and "-Dsimd=runtime" not in stripped:
+                continue
+            if not linux and "-Dsimd=" in stripped:
+                continue
         hits.append(stripped)
     return "\n".join(hits)
 
@@ -162,14 +166,30 @@ def job_conclusions(repo, run_id):
     return conclusions
 
 
+def library_artifact(runner, circuit_set):
+    if runner.startswith("macos"):
+        return f"libzkcasino-macos-{circuit_set}"
+    if runner.endswith("-arm"):
+        return f"libzkcasino-arm64-{circuit_set}"
+    return f"libzkcasino-linux-{circuit_set}"
+
+
+def build_job_name(game, runner):
+    if runner.startswith("macos"):
+        return f"{game} ({runner})"
+    if runner.endswith("-arm"):
+        return f"linux arm64 ({game})"
+    return f"linux amd64 ({game})"
+
+
 def find_reuse(game, runner, test_file, lfs, circuit_set):
     repo = os.environ["GITHUB_REPOSITORY"]
     head_sha = os.environ["GITHUB_SHA"]
     branch = os.environ.get("GITHUB_REF_NAME") or ""
     current_run = os.environ.get("GITHUB_RUN_ID") or ""
-    artifact_name = f"libzkcasino-macos-{circuit_set}"
-    job_name = f"{game} ({runner})"
-    mac_job = f"{game} (macos-latest)"
+    linux = not runner.startswith("macos")
+    artifact_name = library_artifact(runner, circuit_set)
+    job_name = build_job_name(game, runner)
     paths = proof_paths(test_file, lfs)
     artifacts = []
     quoted = quote(artifact_name, safe="")
@@ -192,34 +212,23 @@ def find_reuse(game, runner, test_file, lfs, circuit_set):
             continue
         if branch and workflow_run.get("head_branch") not in (None, branch):
             continue
-        linux_names = (
-            f"libzkcasino-linux-{circuit_set}",
-            f"libzkcasino-arm64-{circuit_set}",
-        )
-        missing = next((name for name in linux_names if not run_has_artifact(repo, run_id, name)), None)
-        if missing:
-            print(f"skip run {run_id}: missing {missing}")
-            continue
         if not inputs_match(old_sha, head_sha, ["libzkcasino"], LIBRARY_TOOLCHAIN, "library inputs", runner):
+            continue
+        if run_id not in conclusions_by_run:
+            conclusions_by_run[run_id] = job_conclusions(repo, run_id)
+        conclusions = conclusions_by_run[run_id]
+        job_conclusion = conclusions.get(job_name)
+        if job_conclusion != "success":
+            print(f"skip run {run_id}: {job_name}={job_conclusion}")
             continue
         if not library_run:
             library_run = run_id
             print(
                 f"reusing libzkcasino from run {run_id} ({old_sha[:12]}); sources match"
             )
-        if run_id not in conclusions_by_run:
-            conclusions_by_run[run_id] = job_conclusions(repo, run_id)
-        conclusions = conclusions_by_run[run_id]
-        mac_conclusion = conclusions.get(mac_job)
-        job_conclusion = conclusions.get(job_name)
-        if mac_conclusion != "success" or job_conclusion != "success":
-            if job_name == mac_job:
-                print(f"skip proofs from run {run_id}: {job_name}={job_conclusion}")
-            else:
-                print(
-                    f"skip proofs from run {run_id}: {job_name}={job_conclusion} {mac_job}={mac_conclusion}"
-                )
-            continue
+        if linux:
+            print(f"reusing {artifact_name} from run {run_id}; Linux does not run proofs")
+            return False, True, run_id
         if not inputs_match(old_sha, head_sha, paths, TOOLCHAIN, "proof inputs", runner):
             continue
         print(

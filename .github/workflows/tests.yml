@@ -20,6 +20,7 @@ jobs:
       lean: ${{ steps.select.outputs.lean }}
       has_games: ${{ steps.select.outputs.has_games }}
       games: ${{ steps.select.outputs.games }}
+      circuit_sets: ${{ steps.select.outputs.circuit_sets }}
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
@@ -146,49 +147,6 @@ jobs:
           overwrite: true
           path: libzkcasino/zig-out/lib
 
-      - name: Download the stored Linux amd64 libraries
-        if: steps.reuse.outputs.library == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: libzkcasino-linux-${{ matrix.circuit_set }}
-          path: libzkcasino/zig-out-linux-x86_64/lib
-          run-id: ${{ steps.reuse.outputs.run_id }}
-          github-token: ${{ github.token }}
-
-      - name: Download the stored Linux arm64 libraries
-        if: steps.reuse.outputs.library == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: libzkcasino-arm64-${{ matrix.circuit_set }}
-          path: libzkcasino/zig-out-linux-aarch64/lib
-          run-id: ${{ steps.reuse.outputs.run_id }}
-          github-token: ${{ github.token }}
-
-      - name: Check the stored Linux libraries
-        if: steps.reuse.outputs.library == 'true'
-        run: |
-          set -eux
-          file libzkcasino/zig-out-linux-x86_64/lib/libzkcasino-player.so | grep -q 'x86-64'
-          file libzkcasino/zig-out-linux-aarch64/lib/libzkcasino-player.so | grep -q 'aarch64'
-
-      - name: Reupload the stored Linux amd64 libraries for this run
-        if: steps.reuse.outputs.library == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: libzkcasino-linux-${{ matrix.circuit_set }}
-          if-no-files-found: error
-          overwrite: true
-          path: libzkcasino/zig-out-linux-x86_64/lib
-
-      - name: Reupload the stored Linux arm64 libraries for this run
-        if: steps.reuse.outputs.library == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: libzkcasino-arm64-${{ matrix.circuit_set }}
-          if-no-files-found: error
-          overwrite: true
-          path: libzkcasino/zig-out-linux-aarch64/lib
-
       - name: Install the prover
         if: steps.reuse.outputs.reuse != 'true'
         run: |
@@ -218,28 +176,14 @@ jobs:
             .zig-cache
             libzkcasino/.zig-cache
             libzkcasino/zig-pkg
-          key: zig-0.17.0-macOS-${{ runner.arch }}-${{ matrix.circuit_set }}-cross-linux
+          key: zig-0.17.0-macOS-${{ runner.arch }}-${{ matrix.circuit_set }}-native
           restore-keys: |
-            zig-0.17.0-macOS-${{ runner.arch }}-${{ matrix.circuit_set }}-cross-linux
-
-      - name: Fetch Linux GMP
-        if: steps.reuse.outputs.library != 'true'
-        run: bash .github/fetch-linux-gmp.sh "${RUNNER_TEMP}/linux-gmp"
+            zig-0.17.0-macOS-${{ runner.arch }}-${{ matrix.circuit_set }}-native
 
       - name: Build libzkcasino
         if: steps.reuse.outputs.library != 'true'
         working-directory: libzkcasino
-        run: |
-          set -eux
-          unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH
-          gmp="${RUNNER_TEMP}/linux-gmp"
-          zig build -Doptimize=ReleaseFast -Dcircuit-set=${{ matrix.circuit_set }}
-          # Portable plus x86-64-v3, chosen at runtime on the Linux host.
-          zig build -Doptimize=ReleaseFast -Dsimd=runtime -Dtarget=x86_64-linux-gnu -Dcircuit-set=${{ matrix.circuit_set }} -Dgmp-include="${gmp}/x86_64/include" -Dgmp-lib-dir="${gmp}/x86_64/lib" --prefix "${PWD}/zig-out-linux-x86_64"
-          # Portable plus ARMv8.2 (LSE, CRC, dotprod), chosen at runtime.
-          zig build -Doptimize=ReleaseFast -Dsimd=runtime -Dtarget=aarch64-linux-gnu -Dcircuit-set=${{ matrix.circuit_set }} -Dgmp-include="${gmp}/aarch64/include" -Dgmp-lib-dir="${gmp}/aarch64/lib" --prefix "${PWD}/zig-out-linux-aarch64"
-          file zig-out-linux-x86_64/lib/libzkcasino-player.so | grep -q 'x86-64'
-          file zig-out-linux-aarch64/lib/libzkcasino-player.so | grep -q 'aarch64'
+        run: zig build -Doptimize=ReleaseFast -Dcircuit-set=${{ matrix.circuit_set }}
 
       - name: Upload macOS libzkcasino libraries
         if: steps.reuse.outputs.library != 'true'
@@ -249,24 +193,6 @@ jobs:
           if-no-files-found: error
           overwrite: true
           path: libzkcasino/zig-out/lib
-
-      - name: Upload Linux amd64 libzkcasino libraries
-        if: steps.reuse.outputs.library != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: libzkcasino-linux-${{ matrix.circuit_set }}
-          if-no-files-found: error
-          overwrite: true
-          path: libzkcasino/zig-out-linux-x86_64/lib
-
-      - name: Upload Linux arm64 libzkcasino libraries
-        if: steps.reuse.outputs.library != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: libzkcasino-arm64-${{ matrix.circuit_set }}
-          if-no-files-found: error
-          overwrite: true
-          path: libzkcasino/zig-out-linux-aarch64/lib
 
       - name: Save Zig cache
         if: steps.reuse.outputs.library != 'true' && steps.zig-cache.outputs.cache-hit != 'true'
@@ -305,6 +231,122 @@ jobs:
       - name: Run proof tests
         if: steps.reuse.outputs.reuse != 'true'
         run: bash .github/run-proof-tests.sh "test/${{ matrix.test }}"
+
+  linux-libs:
+    name: ${{ matrix.runner == 'ubuntu-24.04-arm' && 'linux arm64' || 'linux amd64' }} (${{ matrix.circuit_set }})
+    needs: changes
+    if: needs.changes.outputs.has_games == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 600
+    strategy:
+      fail-fast: false
+      matrix:
+        circuit_set: ${{ fromJson(needs.changes.outputs.circuit_sets) }}
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - name: Free disk space
+        run: |
+          set -eux
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/share/swift
+          df -h /
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Look for a stored library
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 .github/reuse-proof-artifact.py
+          "${{ matrix.circuit_set }}"
+          "${{ matrix.runner }}"
+          none
+          none
+          "${{ matrix.circuit_set }}"
+      - name: Download the stored libraries
+        if: steps.reuse.outputs.library == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.runner == 'ubuntu-24.04-arm' && format('libzkcasino-arm64-{0}', matrix.circuit_set) || format('libzkcasino-linux-{0}', matrix.circuit_set) }}
+          path: libzkcasino/zig-out/lib
+          run-id: ${{ steps.reuse.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Check the stored libraries
+        if: steps.reuse.outputs.library == 'true'
+        run: |
+          set -eux
+          so=libzkcasino/zig-out/lib/libzkcasino-player.so
+          file "$so"
+          case "$(uname -m)" in
+            x86_64) file "$so" | grep -q 'x86-64' ;;
+            aarch64) file "$so" | grep -q 'aarch64' ;;
+            *) echo "unexpected arch $(uname -m)" >&2; exit 1 ;;
+          esac
+      - name: Reupload the stored libraries for this run
+        if: steps.reuse.outputs.library == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.runner == 'ubuntu-24.04-arm' && format('libzkcasino-arm64-{0}', matrix.circuit_set) || format('libzkcasino-linux-{0}', matrix.circuit_set) }}
+          if-no-files-found: error
+          overwrite: true
+          path: libzkcasino/zig-out/lib
+      - name: Install the compiler libraries
+        if: steps.reuse.outputs.library != 'true'
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y g++ libgmp-dev libc++1 libc++abi1
+      - uses: mlugg/setup-zig@v2
+        if: steps.reuse.outputs.library != 'true'
+        with:
+          version: 0.17.0
+          use-cache: false
+      - name: Restore Zig cache
+        id: zig-cache
+        if: steps.reuse.outputs.library != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .zig-cache
+            libzkcasino/.zig-cache
+            libzkcasino/zig-pkg
+          key: zig-0.17.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}-simd-runtime
+          restore-keys: |
+            zig-0.17.0-${{ runner.os }}-${{ runner.arch }}-${{ matrix.circuit_set }}-simd-runtime
+      - name: Build libzkcasino
+        if: steps.reuse.outputs.library != 'true'
+        working-directory: libzkcasino
+        run: |
+          set -eux
+          zig build -Doptimize=ReleaseFast -Dsimd=runtime -Dcircuit-set=${{ matrix.circuit_set }}
+          so=zig-out/lib/libzkcasino-player.so
+          file "$so"
+          case "$(uname -m)" in
+            x86_64) file "$so" | grep -q 'x86-64' ;;
+            aarch64) file "$so" | grep -q 'aarch64' ;;
+            *) echo "unexpected arch $(uname -m)" >&2; exit 1 ;;
+          esac
+      - name: Upload libzkcasino libraries
+        if: steps.reuse.outputs.library != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.runner == 'ubuntu-24.04-arm' && format('libzkcasino-arm64-{0}', matrix.circuit_set) || format('libzkcasino-linux-{0}', matrix.circuit_set) }}
+          if-no-files-found: error
+          overwrite: true
+          path: libzkcasino/zig-out/lib
+      - name: Save Zig cache
+        if: steps.reuse.outputs.library != 'true' && steps.zig-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .zig-cache
+            libzkcasino/.zig-cache
+            libzkcasino/zig-pkg
+          key: ${{ steps.zig-cache.outputs.cache-primary-key }}
+      - name: Drop the Zig cache
+        if: steps.reuse.outputs.library != 'true'
+        run: rm -rf .zig-cache libzkcasino/.zig-cache libzkcasino/zig-pkg "${HOME}/.cache/zig"
 
   rust-linux:
     name: Rust programs (linux)
@@ -462,16 +504,17 @@ jobs:
 
   # GitHub-hosted macOS has no hypervisor, so this job stays on ubuntu-24.04
   # x64. Docker Engine runs the published linux/amd64 Arcium images. The host
-  # loads the Linux amd64 libzkcasino libraries cross-compiled by the macOS
-  # game job. Those libraries pick AVX2 at runtime and fall back when it is
-  # missing. Apple Container remains the supported path on bare-metal Macs.
+  # loads the Linux amd64 libraries built by the x86 Linux job. Those
+  # libraries pick AVX2 at runtime and fall back when it is missing. Apple
+  # Container remains the supported path on bare-metal Macs.
   linux-arcium:
     name: Arcium 2p (linux)
-    needs: [changes, games, rust-linux]
+    needs: [changes, games, linux-libs, rust-linux]
     if: >-
       always() &&
       needs.changes.outputs.has_games == 'true' &&
       needs.games.result == 'success' &&
+      needs.linux-libs.result == 'success' &&
       needs.rust-linux.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 600
