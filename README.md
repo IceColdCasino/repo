@@ -107,6 +107,9 @@ The implementation docs are separate:
   instruction.
 - **[docs/arcis-tests.md](docs/arcis-tests.md)** — what the nine localnet
   Arcis hands actually run and assert.
+- **[docs/getting-started-macos.md](docs/getting-started-macos.md)** — Apple
+  silicon setup for the witness libraries, the host proofs, the localnet,
+  and the desktop app.
 - **[docs/sol-cost.md](docs/sol-cost.md)** — vault float in bytes. Lamports
   are that count times the cluster's lamports per byte.
 
